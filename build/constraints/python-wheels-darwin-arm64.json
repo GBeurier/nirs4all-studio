@@ -15,7 +15,7 @@
       "nirs4all-core==0.5.0",
       "dag-ml==0.4.2",
       "dag-ml-data==0.2.17",
-      "nirs4all-io==0.3.4",
+      "nirs4all-io==0.3.5",
       "nirs4all-methods==1.3.18"
     ]
   },
@@ -50,10 +50,10 @@
     },
     {
       "name": "nirs4all-io",
-      "version": "0.3.4",
-      "filename": "nirs4all_io-0.3.4-cp311-abi3-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/b8/45/abb780e0b858aa022ff1b469182f1fc8b660ea9f857b9f719d673e0336b6/nirs4all_io-0.3.4-cp311-abi3-macosx_11_0_arm64.whl",
-      "sha256": "6e1792ecfcd0497dd862041b768619968e9f29bb27e8dd3bb716a2a22945ddf4"
+      "version": "0.3.5",
+      "filename": "nirs4all_io-0.3.5-cp311-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/0a/08/774e147276c47c8613f617e7076403b84b4e054b3e96545c1f590996dca1/nirs4all_io-0.3.5-cp311-abi3-macosx_11_0_arm64.whl",
+      "sha256": "b77ca6512808a70bcf087747df507f2bcdb304fa51a0c7caa2ed17c8724f07e7"
     },
     {
       "name": "nirs4all-methods",
