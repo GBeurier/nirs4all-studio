@@ -459,6 +459,55 @@ leg stages the [build inputs](#build-inputs) for its target, verifies the
 runtime contract, packages its installer, and runs both smokes described under
 [Verification](#verification) on the unpacked application.
 
+### Candidate package lane
+
+`.github/workflows/multimodal-package-candidate.yml` is a manual, nonpublishing
+lane. It qualifies unpublished candidates of `nirs4all`, `nirs4all-io` and
+`dag-ml` inside the real product, before they are published and before Studio
+pins them. It creates no release, tag or registry entry; installers and
+identity files are kept as workflow artifacts for seven days.
+
+Inputs `nirs4all_ref`, `nirs4all_io_ref` and `dag_ml_ref` are 40-character
+commit SHAs of the candidate sources. An empty input selects the source commit
+of the published cohort member recorded in `build/runtime-cohort.json`.
+
+The candidates enter through the mechanism of the product:
+
+1. The wheels are built from the selected commits (`dag-ml` with the unpublished
+   version its own `scripts/prepare_python_candidate.py` assigns).
+2. `scripts/prepare-multimodal-package-candidate.cjs` patches the disposable
+   checkout: each candidate becomes the `install` version of its `required`
+   entry in `recommended-config.json` and the file name and SHA-256 of its
+   entry in the target's wheel lock, and is copied to `backend-dist/wheels/`.
+   The accepted `range` is not changed: a candidate outside it is refused by
+   the application, and the range is then a change for the Studio branch. The
+   checkout also receives the app version `<version>-dev.0`.
+3. `build-wheelhouse.cjs` keeps a staged wheel only when its SHA-256 is the
+   locked one and downloads the other required wheels; the installer is built
+   from the [build inputs](#build-inputs) and its runtime contract is verified
+   with the Python payload.
+4. `smoke-archive-standalone.cjs` checks the payload. The environment it
+   provisions from the shipped `uv` and wheels must hold every file of the
+   candidate wheels (`scripts/verify-installed-candidate-wheels.py`) and pass
+   the candidate SDK's `tests/qualification/installed_multimodal_provider.py`.
+5. `smoke-multimodal-ui.cjs` lets the application create its environment from
+   the setup page and runs the multimodal journey in the renderer: import of a
+   four-source cohort, a run, its `.n4a` export and a replay without training.
+   The environment that the application created is compared with the candidate
+   wheels as well, whatever the outcome of the journey.
+
+A candidate may carry the version of a published release: `uv` 0.10.4 installs
+the shipped wheel rather than the index file of the same version, and the
+comparison of installed files is what proves it.
+
+The lane covers Linux (installed DEB) and Windows (unpacked NSIS application).
+macOS is excluded: a macOS application embeds no wheels and installs its
+required packages from the package index, so it cannot ship an unpublished
+candidate. Only the standard installer is built; the offline and Docker
+closures of the patched lock still describe the published cohort. The Rust
+sidecar and `native/libn4m` keep the sources and the Methods library pinned by
+the checkout.
+
 ## Asset Name Contract
 
 These patterns describe outputs of the release workflow. The workflow must
@@ -628,6 +677,10 @@ installs its required packages from the package index.
 | `scripts/smoke-first-launch-ui.cjs` | Application smoke: environment created by Studio from its setup page |
 | `scripts/smoke-packaged-ui.cjs` | Release gate: the application smoke with release identity checks and a training + SHAP journey |
 | `scripts/finalize-release-assets.cjs` | Published asset names and checksum sidecars |
+| `.github/workflows/multimodal-package-candidate.yml` | Manual nonpublishing qualification of unpublished Python candidates |
+| `scripts/prepare-multimodal-package-candidate.cjs` | Selects candidate wheels in the catalogue and the wheel lock of a disposable checkout |
+| `scripts/smoke-multimodal-ui.cjs` | Application smoke with the multimodal import, run, archive and replay journey |
+| `scripts/verify-installed-candidate-wheels.py` | Compares an environment with the exact files of candidate wheels |
 | `build/constraints/python-wheels-<platform>-<arch>.json` | Wheel locks |
 | `recommended-config.json` | Package catalogue (`required`, `optional`) |
 | `Dockerfile` | Native container image |

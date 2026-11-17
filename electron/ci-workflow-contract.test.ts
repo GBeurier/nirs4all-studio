@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 // js-yaml is already installed by the checked-in ESLint toolchain.
 const yaml = require("js-yaml") as { load(source: string): Workflow };
-interface Step { name?: string; run?: string; if?: string; env?: Record<string, string>; "continue-on-error"?: boolean; with?: Record<string, unknown> }
+interface Step { name?: string; run?: string; uses?: string; if?: string; env?: Record<string, string>; "continue-on-error"?: boolean; with?: Record<string, unknown> }
 interface Job {
   needs?: string | string[]; if?: string; steps?: Step[]; uses?: string; with?: Record<string, unknown>; "continue-on-error"?: boolean;
   strategy?: { matrix?: { include?: Array<Record<string, string>> } };
@@ -108,6 +108,47 @@ describe("CI release protection graph", () => {
     const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
     for (const fullJourney of ["installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
       expect(remoteCommands).not.toContain(fullJourney);
+    }
+  });
+
+  it("keeps the multimodal candidate lane manual, nonpublishing and on the product's own wheel mechanism", () => {
+    const source = fs.readFileSync(".github/workflows/multimodal-package-candidate.yml", "utf8");
+    const lane = yaml.load(source) as Workflow & { permissions: unknown };
+    expect(Object.keys(lane.on)).toEqual(["workflow_dispatch"]);
+    expect(lane.permissions).toEqual({ contents: "read" });
+    const steps = Object.values(lane.jobs).flatMap(job => job.steps ?? []);
+    for (const job of Object.values(lane.jobs)) expect((job as { permissions?: unknown }).permissions).toBeUndefined();
+    // No action of the lane can publish: these build, read and keep workflow artifacts.
+    expect([...new Set(steps.flatMap(step => step.uses ?? []))].sort()).toEqual([
+      "./.github/actions/build-native-methods", "actions/checkout@v4", "actions/download-artifact@v4", "actions/setup-node@v4",
+      "actions/setup-python@v5", "actions/upload-artifact@v4", "dtolnay/rust-toolchain@stable",
+    ]);
+    expect(source).not.toContain("secrets.");
+    const commands = steps.map(step => step.run ?? "").join("\n");
+    for (const publication of ["gh release", "docker push", "git push", "git tag", "npm publish", "twine", "--publish always"]) {
+      expect(commands).not.toContain(publication);
+    }
+    // Every Studio script the lane runs exists: it once outlived the scripts it called.
+    const scripts = [...source.matchAll(/(?:node|python) (scripts\/[\w.-]+\.(?:cjs|py))/g)].map(match => match[1]);
+    for (const [, pattern] of source.matchAll(/unittest discover -s scripts -p '([\w.-]+)'/g)) scripts.push(`scripts/${pattern}`);
+    expect(scripts).toEqual(expect.arrayContaining([
+      "scripts/prepare-multimodal-package-candidate.cjs", "scripts/smoke-multimodal-ui.cjs", "scripts/test_verify_installed_candidate_wheels.py",
+    ]));
+    const candidateRepositoryScripts = ["scripts/prepare_python_candidate.py", "scripts/validate_release_metadata.py"];
+    for (const script of new Set(scripts)) {
+      if (!candidateRepositoryScripts.includes(script)) expect(fs.existsSync(script), script).toBe(true);
+    }
+    for (const name of ["linux-package", "windows-package"]) {
+      const jobSteps = lane.jobs[name].steps!;
+      const order = [
+        "scripts/prepare-multimodal-package-candidate.cjs", "scripts/build-wheelhouse.cjs",
+        "--require-python-payload", "--publish never", "scripts/smoke-archive-standalone.cjs", "scripts/smoke-multimodal-ui.cjs",
+      ].map(marker => jobSteps.findIndex(step => step.run?.includes(marker)));
+      expect(order.every(index => index >= 0), `${name}: ${order}`).toBe(true);
+      expect(order, name).toEqual([...order].sort((left, right) => left - right));
+      expect(jobSteps.filter(step => step.run?.includes("electron-builder")).every(step => step.run!.includes("--publish never")), name).toBe(true);
+      // The environment made from the shipped payload and the one Studio creates are both compared with the candidates.
+      expect(jobSteps.filter(step => step.run?.includes("scripts/verify-installed-candidate-wheels.py")), name).toHaveLength(2);
     }
   });
 
