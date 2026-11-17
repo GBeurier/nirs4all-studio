@@ -370,7 +370,10 @@ any version. The `nirs4all` range is the exception: Studio reinstalls the
 required cohort at its `install` versions only when an environment falls
 outside these ranges, so the SDK range floor (`>=1.4.18,<1.5`) is how a Studio
 release delivers an SDK fix to existing environments, and its minor cap is
-where Studio qualifies its Python host. Exact versions are not
+where Studio qualifies its Python host. This is a documented exception to the
+minor-granularity rule, decided by the maintainer: a product's
+environment-admission floor may carry a patch floor when it is the delivery
+mechanism for a fix, whereas library-to-library constraints may not. Exact versions are not
 constraints: the `install` versions, the hash-pinned wheel locks above,
 `sidecar/Cargo.lock`, `build/runtime-cohort.json` and the packaged Methods
 identity define exactly what Studio installs and ships, and stay exact. An
