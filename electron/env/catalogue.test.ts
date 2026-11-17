@@ -37,9 +37,10 @@ describe("package catalogue", () => {
       expect(spec.description, spec.name).toBeTruthy();
       expect(versionSatisfies(spec.recommended, spec.min), `${spec.name} ${spec.recommended} meets '${spec.min}'`).toBe(true);
     }
-    // PyTorch is installed on request, when a neural-network model is selected.
+    // PyTorch is installed on request, when a neural-network model is selected; XGBoost from Settings > Python.
     expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "torch")).toMatchObject({ defaultInstall: false, recommended: "2.6.0" });
-    expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "xgboost")).toMatchObject({ defaultInstall: true, recommended: "3.0.0" });
+    expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "xgboost")).toMatchObject({ defaultInstall: false, recommended: "3.0.0" });
+    expect(RECOMMENDED_PACKAGES.filter((spec) => spec.defaultInstall).map((spec) => spec.name)).toEqual(["pyopls", "trendfitter", "umap-learn"]);
     expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "autogluon")).toMatchObject({ defaultInstall: false, python: "<3.13" });
   });
 

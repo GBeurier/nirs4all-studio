@@ -3511,7 +3511,7 @@ notFound: {
       extendedLoadFailed: "Failed to load extended registry",
       extendedHttpError: "Failed to load extended registry: {{status}} {{statusText}}",
       availabilityLoadFailed: "Failed to load operator availability",
-      pipelineIssueInstall: "Pipeline '{{pipeline}}': {{reason}}. Install it via Settings > Advanced > Dependencies.",
+      pipelineIssueInstall: "Pipeline '{{pipeline}}': {{reason}}. Install it via Settings > Python.",
       pipelineIssueUnavailable: "Pipeline '{{pipeline}}': {{name}} is unavailable.",
       notExecutable: "{{name}} is not executable in the selected backend.",
       pipelineIssue: "Pipeline '{{pipeline}}': {{reason}}",

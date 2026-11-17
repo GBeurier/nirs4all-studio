@@ -20,10 +20,10 @@
     "recommended": [
       "pyopls==20.3.post1",
       "trendfitter==0.0.6",
-      "xgboost==3.0.0",
       "umap-learn==0.5.7"
     ],
     "offline_extras": [
+      "xgboost==3.0.0",
       "torch==2.6.0"
     ]
   },
@@ -373,10 +373,10 @@
     },
     {
       "name": "sqlalchemy",
-      "version": "2.1.8",
-      "filename": "sqlalchemy-2.1.8-cp311-cp311-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/0d/33/108f557dba8278bb910b76437b3f93fed9a6ade4e01379dd435ba330ddd6/sqlalchemy-2.1.8-cp311-cp311-win_amd64.whl",
-      "sha256": "e0ade636fb77c4e4156edd584292d2b1d2033fe544da8288590561257c99bd03"
+      "version": "2.1.9",
+      "filename": "sqlalchemy-2.1.9-cp311-cp311-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/2f/e6/374b4cac312e7165511e21b387de4fa728e7e5db540175df74f62196de7c/sqlalchemy-2.1.9-cp311-cp311-win_amd64.whl",
+      "sha256": "a5e474bbfdf98c01e17e625954759f6237f0394af18bae7c0bc742151aca507a"
     },
     {
       "name": "sympy",

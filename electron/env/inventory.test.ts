@@ -92,7 +92,7 @@ describe("inventory evaluation", () => {
 
   it("matches distribution names regardless of their spelling", () => {
     const report = evaluate(withPackages({ "umap-learn": "0.5.7", pypdf2: "3.0.1" }));
-    expect(report.recommended.find((item) => item.name === "umap-learn")?.status).toBe("ok");
+    expect(report.recommended.find((item) => item.name === "umap-learn")).toMatchObject({ status: "ok", defaultInstall: true });
     expect(report.recommended.find((item) => item.name === "PyPDF2")).toMatchObject({ installedVersion: "3.0.1", status: "ok" });
   });
 
@@ -104,7 +104,7 @@ describe("inventory evaluation", () => {
       status: "older", belowMinimum: false, defaultInstall: false, category: "deep_learning",
     });
     expect(byName.shap).toMatchObject({ status: "older", belowMinimum: true });
-    expect(byName.xgboost).toMatchObject({ status: "ok", belowMinimum: false, defaultInstall: true });
+    expect(byName.xgboost).toMatchObject({ status: "ok", belowMinimum: false, defaultInstall: false });
     expect(byName.lightgbm).toMatchObject({ status: "ok", belowMinimum: false });
     expect(byName.catboost).toMatchObject({ installedVersion: null, status: "missing", belowMinimum: false });
     expect(report.outdatedRecommendedCount).toBe(2);

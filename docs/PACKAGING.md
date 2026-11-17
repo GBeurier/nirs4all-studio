@@ -28,7 +28,7 @@ The source of truth is:
 | Product | Target platforms | Asset patterns | Runtime model |
 |---|---|---|---|
 | Installer | Windows x64, macOS arm64 (Apple Silicon), Linux x64 | `.exe` (NSIS), `.dmg`, `.deb` | Electron + Rust `native/studio-sidecar` + `uv`, the document adapters and, on Windows and Linux, the wheels of the required packages; on macOS the required packages come from the package index. The Python environment is created or selected at first launch. |
-| Offline installer | Windows x64, Linux x64 | `.exe`, `.deb` with the `-offline` suffix | The installer plus the offline payload: the pinned Python runtime archive and the wheels of the default package set and of PyTorch, so the environment is created, and PyTorch added later, without network access. |
+| Offline installer | Windows x64, Linux x64 | `.exe`, `.deb` with the `-offline` suffix | The installer plus the offline payload: the pinned Python runtime archive and the wheels of the default package set, of XGBoost and of PyTorch, so the environment is created, and XGBoost or PyTorch added later, without network access. |
 | Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar + a Python environment built at image build time from the same catalogue; no Python HTTP backend. |
 
 macOS is supported on Apple Silicon only. A macOS application embeds no wheels,
@@ -53,10 +53,12 @@ no all-in-one archive.
 - `Recommended packages`: the packages listed under `optional`. Those with
   `default_install: true` are preselected when Studio creates an environment.
   PyTorch is not one of them: Studio offers to install it when the user
-  selects a neural-network model.
+  selects a neural-network model. XGBoost is not one either: the user installs
+  it in Settings > Python.
 - `offline_payload: true` on a recommended package keeps its wheels in the
-  offline installers although it is not installed by default. PyTorch carries
-  it, so that it can be added on a machine without network access.
+  offline installers although it is not installed by default. PyTorch and
+  XGBoost carry it, so that they can be added on a machine without network
+  access.
 - `Wheelhouse`: one wheel per package of the required cohort. Windows and
   Linux installers embed it as `resources/backend/wheels/`; a macOS
   application has none.
@@ -120,15 +122,16 @@ resources/
   `scripts/python-runtime-config.cjs`.
 - `offline/wheels/` holds the rest of the locked closure: the dependencies of
   the required cohort, the `default_install` recommended packages and the
-  `offline_payload` ones (`torch`, locked as CPU wheels), with their
-  dependencies.
+  `offline_payload` ones (`xgboost`; `torch`, locked as CPU wheels), with
+  their dependencies.
 
 With this payload Studio creates the environment and installs the required
 packages and every default recommended package without network access, and
-later installs PyTorch the same way when the user asks for it: the payload is
-the closure that `uv` resolved for exactly that set, and the release workflow
-installs it with `--offline --no-index` on each platform before publication,
-the default packages first and PyTorch afterwards into the same environment.
+later installs XGBoost or PyTorch the same way when the user asks for them:
+the payload is the closure that `uv` resolved for exactly that set, and the
+release workflow installs it with `--offline --no-index` on each platform
+before publication, the default packages first and XGBoost and PyTorch
+afterwards into the same environment.
 Studio tries the payload first for every installation except PyTorch; a
 package that is not in it (any other recommended package) is then requested
 from the package index.
@@ -229,21 +232,26 @@ Measured on disk on Linux x64 on 2026-11-16:
 | `resources/backend/` of the installer | about 150 MB |
 | `offline/` | 1.10 GB: 54 wheels, 1.05 GB, of which `xgboost` and `nvidia-nccl-cu12` 590 MB and CPU `torch` with its own dependencies 188 MB; Python archive 46 MB |
 
-PyTorch is no longer installed by default but stays in the offline payload, so
-the payload has the size it had when PyTorch was a default package.
+PyTorch and XGBoost are no longer installed by default but stay in the offline
+payload, so the payload has the size it had when they were default packages.
 
 Time to create the default environment (Python runtime, required cohort and
-default recommended packages), measured the same day on the same machine with
+default recommended packages), measured on 2026-11-17 on the same machine with
 an empty `uv` cache:
 
-| Source | Default environment | Adding PyTorch afterwards |
+| Source | Default environment | Adding XGBoost and PyTorch afterwards |
 |---|---|---|
-| Offline installer, no network | 7 s, 2.0 GB on disk | 2 s, CPU build from the payload, 0.7 GB more |
-| Standard installer, package index | 4 min 22 s, 2.0 GB on disk | 6 min 22 s on a machine with an NVIDIA GPU (CUDA build), 4.5 GB more |
+| Offline installer, no network | 2 s, 1.2 GB on disk | 3 s for both from the payload (PyTorch as the CPU build), 1.6 GB more: XGBoost 0.8 GB, PyTorch 0.7 GB |
+| Standard installer, package index | 57 s, 1.2 GB on disk | XGBoost: about 1 min 10 s, 0.8 GB more. PyTorch: 6 min 22 s on a machine with an NVIDIA GPU (CUDA build), 4.5 GB more (measured on 2026-11-16) |
 
-The second row is download time on that machine's connection (about 1 GB,
-then about 2.5 GB); it varies with the network. An offline installer on a
-machine with a network installs PyTorch like the second row.
+The second row is download time on that machine's connection (about 0.3 GB
+for the default environment, 0.6 GB for XGBoost with `nvidia-nccl-cu12`, about
+2.5 GB for the CUDA build of PyTorch); it varies with the network. With
+XGBoost among the default packages, as before, the same measurement took
+2 min 6 s on 2026-11-17 and 4 min 22 s on 2026-11-16, for 2.0 GB on disk; the
+XGBoost figure of the second row is the difference of the two measurements of
+2026-11-17. An offline installer on a machine with a network installs PyTorch
+like the second row.
 
 A `resources/backend/` that carries a complete Python runtime weighs about
 1.5 GB.
@@ -385,8 +393,8 @@ node scripts/smoke-packaged-ui.cjs --extracted-root <unpacked app> --platform <p
   (`provision-environment.cjs`) creates an environment with the shipped `uv`
   from the shipped wheels in a private profile; when the application carries
   `offline/`, nothing comes from the network (`--offline --no-index`), the
-  default recommended packages are installed too and PyTorch is then added to
-  that environment, which proves that the payload is complete on that
+  default recommended packages are installed too and XGBoost and PyTorch are
+  then added to that environment, which proves that the payload is complete on that
   platform. The packaged application is then
   launched on that environment: the smoke waits for `/api/system/readiness` to
   report `ml_ready`, checks `/api/system/env-coherence`, and exercises the

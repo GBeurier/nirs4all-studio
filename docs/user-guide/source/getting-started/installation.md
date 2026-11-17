@@ -42,6 +42,10 @@ build that matches your machine (CPU, CUDA or Apple Metal). The offline
 installer does the same when the machine has network access; without it,
 PyTorch is installed from the installer's own files, as the CPU build.
 
+XGBoost is another one: install it in **Settings > Python** before using the
+XGBoost models, which the pipeline editor marks as unavailable until then. The
+offline installer carries it, so this needs no network access either.
+
 You can switch environment or add packages at any time in **Settings >
 Python**.
 

@@ -58,8 +58,8 @@ This document is the working specification for the branch
     into its own extension).
   - `optional`: the recommended catalogue (`min`, `recommended`, `category`,
     `description`, `default_install`, optional `python`, optional
-    `offline_payload`). PyTorch is not installed by default; it stays in the
-    offline payload (`offline_payload`).
+    `offline_payload`). PyTorch and XGBoost are not installed by default; they
+    stay in the offline payload (`offline_payload`).
   - `profiles` are removed at the end of the work (the GPU choice is handled by
     `uv --torch-backend auto`); until then nothing new may depend on them.
   `scripts/python-runtime-config.cjs` and the Rust sidecar derive their values
@@ -89,7 +89,8 @@ This document is the working specification for the branch
   (Windows and Linux). The macOS application embeds no wheels and installs the
   required packages from the package index. The offline installer also carries
   `resources/backend/offline/` (Python archive and the full wheel closure of
-  the required packages, the default recommended packages and PyTorch); when
+  the required packages, the default recommended packages, PyTorch and
+  XGBoost); when
   present, creation and required installs run with `--offline --no-index`.
 - Create: obtain the pinned python-build-standalone archive (offline payload,
   else the existing hardened download), extract into

@@ -23,7 +23,7 @@ Installers contain no Python runtime. They redistribute, unmodified:
 The offline installer variant (`-offline`, Windows and Linux) additionally redistributes, under
 `resources/backend/offline/`, the python-build-standalone CPython runtime archive
 (https://github.com/astral-sh/python-build-standalone) and third-party wheels of the default
-package set and of PyTorch (CPU build), each under its own license.
+package set, of XGBoost and of PyTorch (CPU build), each under its own license.
 None of these Python components owns an HTTP listener, scheduler, store, or fallback path.
 
 Its frontend is built on the npm/Node ecosystem; the vast majority of dependencies are **MIT**-licensed, with some **Apache-2.0** and **BSD** components. Principal dependencies:
