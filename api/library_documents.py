@@ -296,15 +296,13 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         return inspect_dataset_document(operation, document)
     if operation == "documents.batch":
         requests = document.get("requests")
-        if set(document) != {"requests"} or not isinstance(requests, list) or not 1 <= len(requests) <= 128:
-            raise ValueError("Document batch requires 1 to 128 requests")
+        if set(document) != {"requests"} or not isinstance(requests, list) or not requests:
+            raise ValueError("Document batch requires at least one request")
         for item in requests:
             if not isinstance(item, dict) or set(item) != {"operation", "payload"}:
                 raise ValueError("Invalid document batch member")
             if item["operation"] not in {"dataset.configure", "pipeline.normalize", "pipeline.import", "dataset.fingerprint"} or not isinstance(item["payload"], dict):
                 raise ValueError("Document batch only supports normalization and pipeline import")
-            if len(json.dumps(item["payload"], allow_nan=False).encode("utf-8")) > 2 * 1024 * 1024:
-                raise ValueError("Document batch member exceeds 2 MiB")
         results = []
         for item in requests:
             try:
@@ -374,23 +372,17 @@ def retire_run_documents(workspace: Path, run_id: str, store: Any) -> list[str]:
         return []
     warnings = []
     with os.scandir(runs) as entries:
-        for index, entry in enumerate(entries):
-            if index >= 2000:
-                break
+        for entry in entries:
             directory = Path(entry.path)
             if not entry.is_dir(follow_symlinks=False) or entry.is_symlink():
                 continue
             matched = False
-            for filename, maximum in (("manifest.json", 2 * 1024 * 1024), ("execution_job_record.json", 256 * 1024)):
+            for filename in ("manifest.json", "execution_job_record.json"):
                 path = directory / filename
                 try:
-                    if path.is_symlink() or not path.is_file() or path.stat().st_size > maximum:
+                    if path.is_symlink() or not path.is_file():
                         continue
-                    with path.open("rb") as stream:
-                        raw = stream.read(maximum + 1)
-                    if len(raw) > maximum:
-                        continue
-                    document = json.loads(raw)
+                    document = json.loads(path.read_bytes())
                     if not isinstance(document, dict):
                         continue
                     if filename == "manifest.json":

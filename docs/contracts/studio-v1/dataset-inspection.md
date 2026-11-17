@@ -30,9 +30,9 @@ Assembled preview/statistics delegate to library-owned scientific projections.
 They pass the aggregate raw-byte budget and retain reader evidence. The native
 library route additionally applies IO defaults; the non-native Excel/MAT route
 does not claim native decompression or shape budgets. These distinctions must
-remain visible to the host. The attested worker bounds encoded inspection
-output to 32 MiB without truncating scientific arrays. Neither output limits nor
-generic IO defaults are an assurance that a workload fits available RAM.
+remain visible to the host. Encoded inspection output is bounded only by the
+memory the host can spare, never by a fixed size, and scientific arrays are
+never truncated. Generic IO defaults are no assurance that a workload fits RAM.
 
 Validation: eight focused Rust tests exercise a real 150-by-300 CSV, small
 resource limits, path rejection before callbacks, deterministic non-native
@@ -50,7 +50,8 @@ Routes cover `detect-files`, `detect-unified`, `detect-files-list`, `scan-folder
 `detect-format`, `auto-detect`, `validate-files`, `preview`, and linked-dataset
 `GET {id}/preview` / `GET {id}/stats`. Individual-file selection inspects only
 selected files, preserving their order; unrelated sibling inputs are not read.
-The wizard transport admits 256 MiB per input and 512 MiB aggregate raw inputs.
+The wizard transport bounds each input and the aggregate raw input by the
+memory the host can spare (a quarter of the available memory).
 Native decoding limits apply per inspected table. Assembled projections retain
 the separate library policy described above.
 

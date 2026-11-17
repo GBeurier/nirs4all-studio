@@ -9,9 +9,8 @@ use serde_json::{json, Value};
 use studio_sidecar::{
     route_request,
     run_detail_cpython::{
-        MAX_RUN_DETAIL_OWNER_INPUT_BYTES, MAX_RUN_DETAIL_OWNER_OUTPUT_BYTES,
-        MAX_RUN_DETAIL_OWNER_STDERR_BYTES, RUN_DETAIL_OWNER_PREFLIGHT_TIMEOUT,
-        RUN_DETAIL_OWNER_TIMEOUT,
+        MAX_RUN_DETAIL_OWNER_INPUT_BYTES, MAX_RUN_DETAIL_OWNER_STDERR_BYTES,
+        RUN_DETAIL_OWNER_PREFLIGHT_TIMEOUT, RUN_DETAIL_OWNER_TIMEOUT,
     },
     run_detail_preselection::STUDIO_RUN_DETAIL_PRESELECTION_CONTRACT,
     SidecarState,
@@ -160,10 +159,7 @@ fn contract_freezes_per_request_preselection_and_no_native_fallback() {
         contract["bridge_bounds"]["request_timeout_ms"],
         u64::try_from(RUN_DETAIL_OWNER_TIMEOUT.as_millis()).unwrap()
     );
-    assert_eq!(
-        contract["bridge_bounds"]["stdout_bytes"],
-        MAX_RUN_DETAIL_OWNER_OUTPUT_BYTES
-    );
+    assert_eq!(contract["bridge_bounds"]["stdout_bytes"], "host_memory");
     assert_eq!(
         contract["bridge_bounds"]["stderr_bytes"],
         MAX_RUN_DETAIL_OWNER_STDERR_BYTES

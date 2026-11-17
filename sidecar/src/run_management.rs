@@ -9,8 +9,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-/// Cap on job directories examined per request; the newest are kept.
-const MAX_RUN_DIRECTORIES: usize = 2000;
 /// A change this recent may share its timestamp with a later one, so results
 /// derived from it are not reused.
 const TIMESTAMP_SETTLE: Duration = Duration::from_millis(100);
@@ -441,7 +439,7 @@ fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Ht
     if let Some(host) = host.as_deref() {
         reconcile_records(&settings, host, workspace.id(), workspace.path());
     }
-    let ids = match newest_run_directories(&workspace.path().join("runs")) {
+    let ids = match run_directories(&workspace.path().join("runs")) {
         Ok(ids) => ids,
         Err(detail) if detail.kind() == std::io::ErrorKind::NotFound => {
             return HttpResponse::json(200, json!({"records":[],"total":0}).to_string())
@@ -559,7 +557,7 @@ fn reconcile_records(
     workspace_id: &str,
     workspace: &std::path::Path,
 ) {
-    let Ok(ids) = newest_run_directories(&workspace.join("runs")) else {
+    let Ok(ids) = run_directories(&workspace.join("runs")) else {
         return;
     };
     let scientific_resolver =
@@ -630,32 +628,16 @@ pub fn job_id_for_store_run(workspace: &std::path::Path, run_id: &str) -> Option
     RUN_JOB_INDEX.job_id_for_store_run(workspace, run_id)
 }
 
-/// Job directory names under `runs`. Beyond the cap the newest directories win,
-/// so a large history never hides the latest jobs behind `read_dir` order.
 fn settled(modified: SystemTime) -> bool {
     modified.elapsed().is_ok_and(|age| age >= TIMESTAMP_SETTLE)
 }
 
-fn newest_run_directories(runs: &Path) -> std::io::Result<Vec<String>> {
-    let mut ids = std::fs::read_dir(runs)?
+/// Every job directory of the workspace: a long history is listed whole.
+fn run_directories(runs: &Path) -> std::io::Result<Vec<String>> {
+    Ok(std::fs::read_dir(runs)?
         .flatten()
         .filter_map(|entry| entry.file_name().to_str().map(str::to_owned))
-        .collect::<Vec<_>>();
-    if ids.len() > MAX_RUN_DIRECTORIES {
-        let mut stamped = ids
-            .into_iter()
-            .map(|id| {
-                let modified = std::fs::symlink_metadata(runs.join(&id))
-                    .and_then(|metadata| metadata.modified())
-                    .ok();
-                (modified, id)
-            })
-            .collect::<Vec<_>>();
-        stamped.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        stamped.truncate(MAX_RUN_DIRECTORIES);
-        ids = stamped.into_iter().map(|(_, id)| id).collect();
-    }
-    Ok(ids)
+        .collect())
 }
 
 /// Store run id to job id, rebuilt only when a job directory or one of its two
@@ -683,7 +665,7 @@ impl RunJobIndex {
     }
 
     fn job_id_for_store_run(&self, workspace: &Path, run_id: &str) -> Option<String> {
-        let mut ids = newest_run_directories(&workspace.join("runs")).ok()?;
+        let mut ids = run_directories(&workspace.join("runs")).ok()?;
         ids.sort();
         let fingerprint = ids
             .iter()
@@ -1167,29 +1149,18 @@ mod tests {
         assert_eq!(snapshots.entries.lock().unwrap().len(), 0);
     }
 
-    #[cfg(unix)]
     #[test]
-    fn oversized_run_histories_keep_the_newest_directories() {
+    fn long_run_histories_are_listed_whole() {
+        // Beyond the former 2,000-directory cap that silently hid older runs.
         let workspace = tempfile::tempdir().unwrap();
         let runs = workspace.path().join("runs");
-        let total = MAX_RUN_DIRECTORIES + 5;
-        for index in 0..total {
-            let directory = runs.join(format!("job-{index:05}"));
-            std::fs::create_dir_all(&directory).unwrap();
-            std::fs::File::open(&directory)
-                .unwrap()
-                .set_modified(
-                    SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000 + index as u64),
-                )
-                .unwrap();
+        for index in 0..2_005 {
+            std::fs::create_dir_all(runs.join(format!("job-{index:05}"))).unwrap();
         }
-        let kept = newest_run_directories(&runs).unwrap();
-        assert_eq!(kept.len(), MAX_RUN_DIRECTORIES);
-        assert_eq!(kept[0], format!("job-{:05}", total - 1));
-        assert!(kept.contains(&format!("job-{:05}", total - 1)));
-        assert!(!kept.contains(&"job-00000".to_owned()));
-        assert!(!kept.contains(&"job-00004".to_owned()));
-        assert!(kept.contains(&"job-00005".to_owned()));
+        let kept = run_directories(&runs).unwrap();
+        assert_eq!(kept.len(), 2_005);
+        assert!(kept.contains(&"job-00000".to_owned()));
+        assert!(kept.contains(&"job-02004".to_owned()));
     }
 
     #[test]
@@ -1198,10 +1169,10 @@ mod tests {
         for id in ["a", "b", "c"] {
             std::fs::create_dir_all(workspace.path().join("runs").join(id)).unwrap();
         }
-        let mut ids = newest_run_directories(&workspace.path().join("runs")).unwrap();
+        let mut ids = run_directories(&workspace.path().join("runs")).unwrap();
         ids.sort();
         assert_eq!(ids, ["a", "b", "c"]);
-        assert!(newest_run_directories(&workspace.path().join("missing")).is_err());
+        assert!(run_directories(&workspace.path().join("missing")).is_err());
     }
 
     fn job_record(job_id: &str, store_run_ids: &[&str]) -> Value {

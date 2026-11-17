@@ -254,7 +254,7 @@ fn probe_host(root: &Path, name: &str, report_command: &str) -> PathBuf {
     shell_host(
         root,
         name,
-        &format!("{report_command} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'"),
+        &format!("{report_command} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(8, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'"),
     )
 }
 

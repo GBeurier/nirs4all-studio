@@ -134,8 +134,8 @@ fn inspector(root: &Path) -> Result<DatasetInspection, String> {
     DatasetInspection::new(
         root,
         LoadLimits {
-            max_file_bytes: 256 * 1024 * 1024,
-            max_total_bytes: 512 * 1024 * 1024,
+            max_file_bytes: crate::host_memory::allowance_u64(),
+            max_total_bytes: crate::host_memory::allowance_u64(),
             ..LoadLimits::default()
         },
     )

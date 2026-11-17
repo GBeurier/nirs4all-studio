@@ -66,6 +66,21 @@ results with missing provenance are refused explicitly. Individual prediction
 pages remain available. The legacy prediction-row dashboard refuses this mode;
 its averages cannot represent chain macro scores.
 
+## Size bounds: host memory only
+
+Studio imposes no content-size or entry-count ceiling of its own: request
+bodies, Python worker requests and responses, workspace documents and
+catalogues, uploads, run histories and model catalogues are bounded only by
+`host_memory::allowance()`, a quarter of the memory the operating system reports
+as available when the operation runs (cgroup-aware on Linux, installed memory
+on macOS). A refusal tells the user the operation needs more memory than the
+computer can spare. Kept fixed bounds are protocol frames of fixed shape (HTTP
+headers, WebSocket control messages, the admission probe and fixed receipts),
+the frozen native Archive V2 prediction/training contract, and bounds owned by
+the libraries (IO decoding defaults, the SDK model-catalogue maximum). The
+Playground worker raises the SDK's fixed 8/32 MiB Playground transport ceilings,
+which the host bounds by memory instead.
+
 ## Status and boundary
 
 R1 provides a small local HTTP control surface, a bounded native WebSocket
@@ -197,8 +212,8 @@ CPython library host is configured and preflights the exact owner callable.
 The route surface is always registered but remains fail-closed; static
 capabilities distinguish that surface from host configuration and never claim
 scientific Python execution. Each preflight and target uses a fresh isolated
-(`-I`) process, strict JSON stdin, a 15 second deadline, 8 KiB input, 4 MiB stdout, and 64 KiB stderr
-bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
+(`-I`) process, strict JSON stdin, a 15 second deadline, 8 KiB input, stdout bounded by the memory
+the host can spare, and 64 KiB stderr bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
 response, and never exposes stderr or the resolved workspace path. Missing or
 old stores reject before the target HTTP request in the default session; an
 explicit diagnostic session owns all renderer routes before probing. A native

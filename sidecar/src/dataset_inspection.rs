@@ -39,9 +39,7 @@ fn inspection_loading_params(params: &Value) -> Result<LoadingParams, String> {
 pub mod cache;
 mod discovery;
 
-const MAX_ENTRIES: usize = 4096;
 const MAX_SAMPLE_ROWS: usize = 1000;
-const MAX_PRESENTATION_BYTES: usize = 32 * 1024 * 1024;
 
 /// Read-only inspection scoped to one user-selected or catalogue-authorized root.
 pub struct DatasetInspection {
@@ -168,8 +166,9 @@ impl DatasetInspection {
             .len()
             .checked_mul(samples + 2)
             .ok_or("Presentation size overflow")?;
-        if slots > MAX_PRESENTATION_BYTES / 32 {
-            return Err("Table inspection exceeds presentation cardinality budget".into());
+        let allowance = crate::host_memory::allowance();
+        if slots > allowance / 32 {
+            return Err(crate::host_memory::exceeded("Previewing this table"));
         }
         // Account for worst-case JSON escaping before cloning string cells or
         // duplicating the historical headers/column_names presentation fields.
@@ -185,8 +184,8 @@ impl DatasetInspection {
                         .ok_or("Presentation size overflow")?;
                 }
             }
-            if bytes > MAX_PRESENTATION_BYTES {
-                return Err("Table inspection exceeds presentation byte budget".into());
+            if bytes > allowance {
+                return Err(crate::host_memory::exceeded("Previewing this table"));
             }
         }
         let sample_data: Vec<Vec<String>> = (0..samples)
@@ -213,13 +212,8 @@ impl DatasetInspection {
     fn files(&self, recursive: bool) -> Result<Vec<PathBuf>, String> {
         let mut pending = vec![self.root.clone()];
         let mut files = Vec::new();
-        let mut entries = 0;
         while let Some(directory) = pending.pop() {
             for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
-                entries += 1;
-                if entries > MAX_ENTRIES {
-                    return Err("Dataset folder exceeds directory-entry budget".into());
-                }
                 let entry = entry.map_err(|error| error.to_string())?;
                 if entry.file_name().to_string_lossy().starts_with('.') {
                     continue;
@@ -278,7 +272,7 @@ impl DatasetInspection {
 
     /// Authorize and admit a complete selected list before any reader callback.
     pub fn admit_files(&self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
-        if paths.len() > MAX_ENTRIES || paths.len() as u64 > self.limits.max_files {
+        if paths.len() as u64 > self.limits.max_files {
             return Err("Selected files exceed count budget".into());
         }
         let mut result = Vec::new();

@@ -614,9 +614,6 @@ fn observation_ids_to_samples(
 }
 
 pub fn parse_request(body: &[u8]) -> Result<NativeArchiveTrainingRequest, &'static str> {
-    if body.len() > crate::MAX_REQUEST_BODY_BYTES {
-        return Err("body_too_large");
-    }
     let value: Value = serde_json::from_slice(body).map_err(|_| "invalid_json")?;
     parse_request_value(&value)
 }

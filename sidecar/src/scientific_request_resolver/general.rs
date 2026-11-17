@@ -11,9 +11,6 @@ use super::{
     ScientificResolveError, ScientificSubmissionPreflight, Value,
 };
 
-const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
-const MAX_GENERAL_BYTES: usize = 8 * 1024 * 1024;
-const MAX_MULTIMODAL_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 const MULTIMODAL_DATASET_SCHEMA: &str = "nirs4all.studio-multimodal-dataset.v1";
 
 pub(super) fn resolve(
@@ -90,7 +87,6 @@ pub(super) fn resolve(
         "pipeline": single_or_batch(pipelines), "dataset": single_or_batch(datasets),
         "options": options,
     });
-    bounded(&request, MAX_GENERAL_BYTES)?;
     Ok(request)
 }
 
@@ -155,7 +151,6 @@ fn dataset_request(
     if let Some(ref descriptor) = descriptor {
         record["config"]["dataset_document"] = descriptor.clone();
     }
-    bounded(&record, MAX_DOCUMENT_BYTES)?;
     let mut payload = json!({"record":record,"scientific_run":true});
     if let Some(policy) = missing_target_policy {
         payload["missing_target_policy"] = policy.clone();
@@ -211,18 +206,18 @@ fn normalize_documents(
     for (id, inline) in &selection.pipelines {
         let mut document = match inline {
             Some(value) => value.clone(),
-            None => {
-                read_pipeline_with_limit(&preflight.workspace_path, id, MAX_DOCUMENT_BYTES as u64)?
-            }
+            None => read_pipeline_with_limit(
+                &preflight.workspace_path,
+                id,
+                crate::host_memory::allowance_u64(),
+            )?,
         };
         if inline.is_none() && document.get("id").and_then(Value::as_str) != Some(id) {
             return Err(ScientificResolveError::PipelineInvalid);
         }
         document["scientific_run"] = json!(true);
-        bounded(&document, MAX_DOCUMENT_BYTES)?;
         requests.push(json!({"operation":"pipeline.normalize", "payload":document}));
     }
-    bounded(&json!({"requests":requests}), MAX_GENERAL_BYTES)?;
     let normalized = adapt(&requests).map_err(|message| {
         document_failure(
             "document_translation_failed",
@@ -233,7 +228,6 @@ fn normalize_documents(
     if normalized.len() != requests.len() {
         return Err(ScientificResolveError::PipelineInvalid);
     }
-    bounded(&json!(normalized), MAX_GENERAL_BYTES)?;
     let mut normalized = normalized.into_iter();
     let mut datasets = Vec::new();
     for DatasetCheck {
@@ -290,7 +284,6 @@ fn runtime_pipelines(
 ) -> Result<Vec<Value>, ScientificResolveError> {
     let mut pipelines = Vec::new();
     for normalized in normalized {
-        bounded(&normalized, MAX_GENERAL_BYTES)?;
         let execution = &normalized["execution_validation"];
         if execution["valid"] == false {
             let code = execution["code"]
@@ -330,11 +323,10 @@ fn validate_multimodal_descriptor(value: &Value) -> Result<(), ScientificResolve
         document.len() == 2
             && document.get("schema").and_then(Value::as_str) == Some(MULTIMODAL_DATASET_SCHEMA)
             && document.get("cohort").and_then(Value::as_object).is_some()
-    }) && serde_json::to_vec(value)
-        .is_ok_and(|bytes| bytes.len() <= MAX_MULTIMODAL_DESCRIPTOR_BYTES);
+    });
     if !valid {
         return Err(dataset_invalid(format!(
-            "its multimodal dataset document is not a {MULTIMODAL_DATASET_SCHEMA} descriptor of at most 1 MiB"
+            "its multimodal dataset document is not a {MULTIMODAL_DATASET_SCHEMA} descriptor"
         )));
     }
     Ok(())
@@ -617,17 +609,6 @@ fn identities(
             Ok(id.to_owned())
         })
         .collect()
-}
-
-fn bounded(value: &Value, limit: usize) -> Result<(), ScientificResolveError> {
-    if serde_json::to_vec(value)
-        .map_err(|_| ScientificResolveError::InvalidSubmission)?
-        .len()
-        > limit
-    {
-        return Err(ScientificResolveError::PipelineTooLarge);
-    }
-    Ok(())
 }
 
 fn single_or_batch(mut values: Vec<Value>) -> Value {
@@ -1007,7 +988,7 @@ mod tests {
                 "open descriptor must fail before adapter"
             )),
             Err(dataset_invalid(format!(
-                "dataset \"Dataset A\": its multimodal dataset document is not a {MULTIMODAL_DATASET_SCHEMA} descriptor of at most 1 MiB"
+                "dataset \"Dataset A\": its multimodal dataset document is not a {MULTIMODAL_DATASET_SCHEMA} descriptor"
             )))
         );
         fs::remove_dir_all(root).unwrap();

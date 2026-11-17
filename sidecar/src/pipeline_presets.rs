@@ -81,9 +81,6 @@ fn normalize(source: &str) -> Result<Value, String> {
 }
 
 fn selection(id: &str, body: &[u8]) -> Result<(Value, String), (u16, String)> {
-    if body.len() > crate::document_cpython::MAX_DOCUMENT_BYTES {
-        return Err((413, "Preset request exceeds 2 MiB".into()));
-    }
     let mut request = if body.is_empty() {
         json!({})
     } else {

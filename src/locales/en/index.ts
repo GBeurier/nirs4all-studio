@@ -1831,7 +1831,6 @@ notFound: {
       summary: "{{samples}} samples · {{sources}} sources · {{alignment}} alignment",
       submit: "Import dataset",
       importing: "Importing…",
-      tooLarge: "The multimodal descriptor exceeds 1 MiB of compact JSON.",
       invalid: "Invalid typed multimodal cohort descriptor.",
       invalidJson: "The selected file is not valid JSON.",
       readError: "Could not read the descriptor.",

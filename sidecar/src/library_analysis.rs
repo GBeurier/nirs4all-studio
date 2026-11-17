@@ -22,8 +22,6 @@ use std::{
     time::Instant,
 };
 
-const RESULT_LIMIT: u64 = 32 * 1024 * 1024;
-
 pub fn owns_path(path: &str) -> bool {
     path.starts_with("/api/analysis/shap/")
         || matches!(
@@ -59,9 +57,6 @@ fn identifier(raw: &str) -> Result<String, String> {
 }
 
 fn body(request: &HttpRequest) -> Result<Value, String> {
-    if request.body.len() > 65536 {
-        return Err("Analysis request exceeds 64 KiB".into());
-    }
     let value: Value =
         serde_json::from_slice(&request.body).map_err(|_| "Expected a JSON object")?;
     if !value.is_object() {
@@ -97,8 +92,11 @@ fn result_dir(workspace: &Path, create: bool) -> Result<PathBuf, String> {
 fn load_result(workspace: &Path, id: &str) -> Result<Value, String> {
     let path = result_dir(workspace, false)?.join(format!("{id}.native.json"));
     let meta = fs::symlink_metadata(&path).map_err(|_| "not_found: SHAP result does not exist")?;
-    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > RESULT_LIMIT {
+    if !meta.is_file() || meta.file_type().is_symlink() {
         return Err("Invalid SHAP result file".into());
+    }
+    if meta.len() > crate::host_memory::allowance_u64() {
+        return Err(crate::host_memory::exceeded("Opening this SHAP result"));
     }
     serde_json::from_slice(&fs::read(path).map_err(|error| error.to_string())?)
         .map_err(|error| error.to_string())
@@ -145,7 +143,6 @@ impl ScientificJobExecutor for AnalysisExecutor {
             let outcome = host.adapt_document_cancellable("analysis.shap_compute", &payload, &cancel).and_then(|result| {
                 if cancel.load(Ordering::Acquire) { return Err("cancelled".into()); }
                 let bytes = serde_json::to_vec(&result).map_err(|error| error.to_string())?;
-                if bytes.len() as u64 > RESULT_LIMIT { return Err("SHAP result exceeds byte budget".into()); }
                 let directory = result_dir(&request.workspace_path, true)?;
                 let mut staged = tempfile::NamedTempFile::new_in(&directory).map_err(|error| error.to_string())?;
                 staged.write_all(&bytes).map_err(|error| error.to_string())?;
@@ -441,9 +438,6 @@ impl Context<'_> {
             let directory = result_dir(workspace, false)?;
             let bytes =
                 serde_json::to_vec(&payload["result"]).map_err(|error| error.to_string())?;
-            if bytes.len() as u64 > RESULT_LIMIT {
-                return Err("Updated SHAP result exceeds byte budget".into());
-            }
             let mut file =
                 tempfile::NamedTempFile::new_in(&directory).map_err(|error| error.to_string())?;
             file.write_all(&bytes).map_err(|error| error.to_string())?;
@@ -846,13 +840,10 @@ fn validate_synthesis(operation: &str, value: &Value) -> Result<(), String> {
         .get("n_samples")
         .and_then(Value::as_u64)
         .unwrap_or(1000);
-    if !(10..=100_000).contains(&samples) {
+    if samples < 10 {
         return Err("Invalid synthesis sample count".into());
     }
-    if config
-        .get("steps")
-        .is_some_and(|steps| steps.as_array().is_none_or(|steps| steps.len() > 32))
-    {
+    if config.get("steps").is_some_and(|steps| !steps.is_array()) {
         return Err("Invalid synthesis steps".into());
     }
     if operation == "preview"
@@ -876,16 +867,15 @@ fn validate_synthesis(operation: &str, value: &Value) -> Result<(), String> {
     } else {
         samples
     };
-    let limit = if operation == "preview" {
-        1_000_000
-    } else {
-        10_000_000
-    };
+    // The generated matrix holds one 8-byte value per cell.
     if count
         .checked_mul(features)
-        .is_none_or(|cells| cells > limit)
+        .and_then(|cells| cells.checked_mul(8))
+        .is_none_or(|bytes| bytes > crate::host_memory::allowance_u64())
     {
-        return Err("Synthetic dataset exceeds the bounded cell budget; reduce samples or wavelength resolution".into());
+        return Err(crate::host_memory::exceeded(
+            "Generating this synthetic dataset",
+        ));
     }
     Ok(())
 }

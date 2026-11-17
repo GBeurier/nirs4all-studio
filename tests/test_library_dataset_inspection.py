@@ -1,20 +1,25 @@
 """Inspection adapter is a closed projection, not a second science engine."""
 
+import sys
+
 import pytest
 
 from api.library_dataset_inspection import inspect_dataset_document
 
+# Studio sets no input or response ceiling: only the worker's memory bounds them.
+UNBOUNDED = {"max_input_bytes": sys.maxsize}
 
-@pytest.mark.parametrize("operation,symbol,options", [
-    ("dataset.preview", "preview_dataset", {"max_samples": 12}),
-    ("dataset.stats", "dataset_statistics", {"partition": "test"}),
+
+@pytest.mark.parametrize("operation,symbol,options,bounds", [
+    ("dataset.preview", "preview_dataset", {"max_samples": 12}, {**UNBOUNDED, "max_response_bytes": sys.maxsize}),
+    ("dataset.stats", "dataset_statistics", {"partition": "test"}, UNBOUNDED),
 ])
-def test_projection_delegates_exact_config_and_options(monkeypatch, operation, symbol, options):
+def test_projection_delegates_exact_config_and_options(monkeypatch, operation, symbol, options, bounds):
     import nirs4all.api.dataset_inspection as library
     config = {"train_x": "/authorized/X.csv"}
     result = {"reader": {"backend": "witness"}, "summary": {"num_samples": 150}}
     def witness(**kwargs):
-        assert kwargs == {"config": config, **options}
+        assert kwargs == {"config": config, **options, **bounds}
         return result
     monkeypatch.setattr(library, symbol, witness)
     assert inspect_dataset_document(operation, {"config": config, **options}) is result

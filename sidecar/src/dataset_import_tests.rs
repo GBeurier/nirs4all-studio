@@ -170,17 +170,18 @@ fn multimodal_import_rejects_invalid_or_failed_inspection_without_publishing() {
 }
 
 #[test]
-fn multimodal_import_reserves_catalogue_capacity_for_other_datasets() {
+fn multimodal_import_is_not_limited_by_the_catalogue_size() {
     let (_root, settings) = workspace();
+    // Above the former 1 MiB descriptor and 2 MiB catalogue ceilings.
     let descriptor = json!({"schema":"nirs4all.studio-multimodal-dataset.v1",
-        "cohort":{"values": vec![0u8; 115_000]}});
-    assert!(serde_json::to_vec(&descriptor).unwrap().len() < 1024 * 1024);
+        "cohort":{"values": vec![0u8; 1_200_000]}});
+    assert!(serde_json::to_vec(&descriptor).unwrap().len() > 2 * 1024 * 1024);
     let request = HttpRequest {
         method: "POST".into(),
         path: "/api/datasets/import-multimodal".into(),
         query: None,
         headers: BTreeMap::new(),
-        body: json!({"name":"Oversized catalogue", "dataset_document":descriptor})
+        body: json!({"name":"Large cohort", "dataset_document":descriptor})
             .to_string()
             .into_bytes(),
     };
@@ -191,18 +192,10 @@ fn multimodal_import_reserves_catalogue_capacity_for_other_datasets() {
             "train_samples":1,"test_samples":0,"n_sources":1}}),
         )
     });
-    assert_eq!(response.status, 413, "{}", response.body);
-    assert!(response.body.contains("insufficient catalogue space"));
-    assert_eq!(
-        fs::read_dir(import_parent(&settings).unwrap())
-            .unwrap()
-            .count(),
-        0
-    );
-    assert_eq!(
-        workspace_documents::catalogue(&settings).unwrap()["datasets"],
-        json!([])
-    );
+    assert_eq!(response.status, 200, "{}", &response.body[..200]);
+    let datasets = workspace_documents::catalogue(&settings).unwrap()["datasets"].clone();
+    assert_eq!(datasets.as_array().map(Vec::len), Some(1));
+    assert_eq!(datasets[0]["config"]["dataset_document"], descriptor);
 }
 
 #[test]
@@ -316,7 +309,8 @@ fn preview_preserves_explicit_parsing_in_the_stored_config_adapter_shape() {
                 assert_eq!(value["record"]["config"]["has_header"], false);
             }
             if operation == "dataset.preview" {
-                assert_eq!(value["max_input_bytes"], 512 * 1024 * 1024);
+                // Bounded by the host's memory, not by the former 512 MiB.
+                assert!(value["max_input_bytes"].as_u64().unwrap() > 512 * 1024 * 1024);
             }
             adapter(operation, value)
         },

@@ -4,6 +4,7 @@ Rust authorizes every file/config reference before this adapter is invoked.
 There is no server, job, filesystem discovery or numeric parser here.
 """
 
+import sys
 from typing import Any
 
 
@@ -33,12 +34,12 @@ def _missing_spectra(payload: dict[str, Any]) -> dict[str, int]:
     from nirs4all.api.dataset_inspection import load_dataset_for_analysis
 
     dataset, _reader = load_dataset_for_analysis(payload["config"], load_limits=payload.get("load_limits"),
-                                                 **({"max_input_bytes": payload["max_input_bytes"]} if "max_input_bytes" in payload else {}))
+                                                 max_input_bytes=payload.get("max_input_bytes", sys.maxsize))
     values = 0
     affected: set[Any] = set()
     for source in range(dataset.n_sources):
         batch = extract_playground_dataset(dataset, partition="all", source_index=source,
-                                           limits=PreviewLimits(max_samples=1_000_000, max_features=100_000, max_cells=64_000_000)).batch
+                                           limits=PreviewLimits(max_samples=sys.maxsize, max_features=sys.maxsize, max_cells=sys.maxsize)).batch
         missing = ~np.isfinite(np.asarray(batch.x, dtype=float))
         values += int(missing.sum())
         rows = np.flatnonzero(missing.any(axis=1))
@@ -73,9 +74,11 @@ def inspect_dataset_document(operation: str, payload: dict[str, Any]) -> dict[st
         return inspect_format_file(**payload)
     if not isinstance(payload.get("config"), dict):
         raise ValueError("Dataset inspection requires an explicit authorized config")
+    # Studio sets no input ceiling: the memory of this worker bounds the load.
+    payload.setdefault("max_input_bytes", sys.maxsize)
     if operation == "dataset.preview":
         count_missing = payload.pop("count_missing_spectra", False) is True
-        preview = preview_dataset(**payload)
+        preview = preview_dataset(**payload, max_response_bytes=sys.maxsize)
         if count_missing and preview.get("success") is True:
             preview["summary"]["missing_spectra"] = _missing_spectra(payload)
         return preview

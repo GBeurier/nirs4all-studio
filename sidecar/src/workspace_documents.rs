@@ -4,7 +4,7 @@
 
 use std::{
     fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -14,9 +14,6 @@ use serde_json::{json, Map, Value};
 
 use crate::{settings::AppSettingsStore, websocket_transport::rfc3339_now, HttpResponse};
 
-pub const MAX_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024;
-const MULTIMODAL_CATALOGUE_RESERVE_BYTES: u64 = 256 * 1024;
-const MAX_PIPELINES: usize = 256;
 pub static DOCUMENT_LOCK: Mutex<()> = Mutex::new(());
 pub type DocumentResult<T> = Result<T, (u16, String)>;
 
@@ -40,15 +37,12 @@ fn read_document(path: &Path) -> DocumentResult<Value> {
             "Document must be a regular file, not a symbolic link",
         ));
     }
-    let mut bytes = Vec::new();
-    fs::File::open(path)
-        .map_err(storage)?
-        .take(MAX_DOCUMENT_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(storage)?;
-    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
-        return Err((413, "Document exceeds the 2 MiB limit".into()));
-    }
+    let bytes = crate::host_memory::read_within(
+        fs::File::open(path).map_err(storage)?,
+        crate::host_memory::allowance_u64(),
+    )
+    .map_err(storage)?
+    .ok_or_else(|| (413, crate::host_memory::exceeded("Reading this document")))?;
     let document: Value = serde_json::from_slice(&bytes).map_err(storage)?;
     if !document.is_object() {
         return Err(storage("Document must be a JSON object"));
@@ -61,9 +55,6 @@ fn write_document(path: &Path, document: &Value, replace: bool) -> DocumentResul
         return Err(invalid("Refusing to replace a symbolic link"));
     }
     let bytes = serde_json::to_vec_pretty(document).map_err(storage)?;
-    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
-        return Err((413, "Document exceeds the 2 MiB limit".into()));
-    }
     AtomicFile::new(
         path,
         if replace {
@@ -185,18 +176,6 @@ pub fn save_catalogue(settings: &AppSettingsStore, catalogue: &Value) -> Documen
     )
 }
 
-fn ensure_multimodal_catalogue_capacity(catalogue: &Value) -> DocumentResult<()> {
-    if serde_json::to_vec_pretty(catalogue).map_err(storage)?.len() as u64
-        > MAX_DOCUMENT_BYTES - MULTIMODAL_CATALOGUE_RESERVE_BYTES
-    {
-        return Err((
-            413,
-            "Multimodal descriptor leaves insufficient catalogue space".into(),
-        ));
-    }
-    Ok(())
-}
-
 fn link_dataset(settings: &AppSettingsStore, body: &[u8]) -> DocumentResult<Value> {
     link_dataset_with_inspection(settings, body, None)
 }
@@ -250,9 +229,6 @@ fn link_dataset_with_inspection(
     {
         return Err((409, "Dataset already linked".into()));
     }
-    if datasets.len() >= 256 {
-        return Err((413, "Dataset catalogue exceeds 256 records".into()));
-    }
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(storage)?
@@ -268,9 +244,6 @@ fn link_dataset_with_inspection(
         apply_inspection(&mut dataset, inspection)?;
     }
     datasets.push(dataset.clone());
-    if config.get("dataset_document").is_some() {
-        ensure_multimodal_catalogue_capacity(&catalogue)?;
-    }
     save_catalogue(settings, &catalogue)?;
     Ok(json!({"success": true, "dataset": dataset}))
 }
@@ -478,10 +451,6 @@ fn dataset_record(
         return Ok(json!({"success": true}));
     }
     let update = request(body)?;
-    let replaces_multimodal = update
-        .get("config")
-        .and_then(|config| config.get("dataset_document"))
-        .is_some();
     let dataset = &mut datasets[index];
     for field in [
         "name",
@@ -526,9 +495,6 @@ fn dataset_record(
     }
     string(dataset, "name")?;
     let response = json!({"success": true, "dataset": dataset});
-    if replaces_multimodal {
-        ensure_multimodal_catalogue_capacity(&catalogue)?;
-    }
     save_catalogue(settings, &catalogue)?;
     Ok(response)
 }
@@ -708,17 +674,12 @@ fn pipeline_directory(settings: &AppSettingsStore) -> DocumentResult<PathBuf> {
 fn list_pipelines(settings: &AppSettingsStore) -> DocumentResult<Value> {
     let mut pipelines = Vec::new();
     let mut warnings = Vec::new();
-    let mut examined = 0;
     for entry in fs::read_dir(pipeline_directory(settings)?).map_err(storage)? {
         let path = entry.map_err(storage)?.path();
         if path
             .extension()
             .is_some_and(|extension| extension == "json")
         {
-            if examined >= MAX_PIPELINES {
-                return Err((413, "Pipeline catalogue exceeds 256 documents".into()));
-            }
-            examined += 1;
             match read_editor_pipeline(&path) {
                 Ok(document) => pipelines.push(document),
                 Err((_, detail)) => warnings.push(json!({"file": path.file_name().and_then(|name| name.to_str()), "detail": detail})),
@@ -892,6 +853,7 @@ pub fn owns_path(path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::{route_request_with_body, SidecarState};
+    use std::io::Read;
 
     #[test]
     fn inspection_projects_real_target_count_and_preserves_declared_names() {
@@ -1329,32 +1291,41 @@ mod tests {
     }
 
     #[test]
-    fn network_preserves_route_specific_prediction_and_document_budgets() {
+    fn network_bounds_every_request_body_by_host_memory_only() {
         use std::net::{TcpListener, TcpStream};
-        for path in [
-            "/api/predict/archive-v2",
-            "/api/pipelines",
-            "/api/app/settings",
-        ] {
+        let read = |path: &str, head: String, body: String| {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let address = listener.local_addr().unwrap();
             let reader = std::thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
                 crate::read_http_request(&mut stream, std::time::Duration::from_secs(5))
             });
-            let body = json!({"wide_payload": "x".repeat(70_000)}).to_string();
             let mut stream = TcpStream::connect(address).unwrap();
-            let _ = write!(stream, "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len());
+            let _ = write!(stream, "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{head}\r\n{body}");
             drop(stream);
-            let result = reader.join().unwrap();
-            if path == "/api/app/settings" {
-                assert!(matches!(
-                    result,
-                    Err(crate::RequestReadError::BodyTooLarge { .. })
-                ));
-            } else {
-                assert_eq!(result.unwrap().body.len(), body.len());
-            }
+            reader.join().unwrap()
+        };
+        // 3 MiB: above the former 64 KiB control, 2 MiB document and per-route ceilings.
+        let body = json!({"wide_payload": "x".repeat(3 * 1024 * 1024)}).to_string();
+        for path in [
+            "/api/predict/archive-v2",
+            "/api/pipelines",
+            "/api/app/settings",
+        ] {
+            let head = format!("Content-Length: {}\r\n", body.len());
+            assert_eq!(
+                read(path, head, body.clone()).unwrap().body.len(),
+                body.len()
+            );
         }
+        // A body announced beyond what the host can spare is refused before
+        // reading it. Twice the available memory stays beyond the allowance
+        // (a quarter of it) however memory moves between the two reads.
+        let beyond = crate::host_memory::available_bytes().unwrap() * 2;
+        let head = format!("Content-Length: {beyond}\r\n");
+        assert!(matches!(
+            read("/api/pipelines", head, String::new()),
+            Err(crate::RequestReadError::BodyTooLarge { .. })
+        ));
     }
 }

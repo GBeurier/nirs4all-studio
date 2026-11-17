@@ -1831,7 +1831,6 @@ notFound: {
       summary: "{{samples}} échantillons · {{sources}} sources · alignement {{alignment}}",
       submit: "Importer le jeu",
       importing: "Importation…",
-      tooLarge: "Le descripteur multimodal dépasse 1 Mio de JSON compact.",
       invalid: "Descripteur de cohorte multimodale typée invalide.",
       invalidJson: "Le fichier choisi n'est pas un JSON valide.",
       readError: "Lecture du descripteur impossible.",

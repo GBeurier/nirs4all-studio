@@ -293,24 +293,13 @@ def test_multimodal_prediction_reconstructs_ragged_missing_cohort_without_fit(tm
     assert output["runtime"]["reader"]["source"] == "inline_multimodal"
     json.dumps(output, allow_nan=False)
 
-    # serde_json counts compact UTF-8 bytes. Ordinary json.dumps spacing would
-    # reject this exact-boundary document before the scientific loader sees it.
-    boundary = {"schema": descriptor["schema"], "cohort": {"padding": ""}}
-    def compact(value):
-        return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
-
-    boundary["cohort"]["padding"] = "x" * (1024 * 1024 - len(compact(boundary)))
-    assert len(compact(boundary)) == 1024 * 1024
-    assert len(json.dumps(boundary).encode("utf-8")) > 1024 * 1024
+    # No size ceiling: a descriptor beyond the former 1 MiB limit reaches the loader.
+    large = {"schema": descriptor["schema"], "cohort": {"padding": "x" * (4 * 1024 * 1024)}}
     monkeypatch.setattr("nirs4all.api.studio_scientific_general._inline_dataset_arrays", lambda _: observed[0])
-    assert run_prediction({**payload, "config": boundary})["sample_ids"] == ["sample-b", "sample-a"]
+    assert run_prediction({**payload, "config": large})["sample_ids"] == ["sample-b", "sample-a"]
 
-    for invalid in [
-        {**descriptor, "extra": True},
-        {"schema": descriptor["schema"], "cohort": {"padding": "x" * (1024 * 1024)}},
-    ]:
-        with pytest.raises(ValueError, match="descriptor"):
-            run_prediction({**payload, "config": invalid})
+    with pytest.raises(ValueError, match="descriptor"):
+        run_prediction({**payload, "config": {**descriptor, "extra": True}})
     with pytest.raises(ValueError, match="fingerprinted exported bundle"):
         run_prediction({**payload, "model_source": "chain"})
 

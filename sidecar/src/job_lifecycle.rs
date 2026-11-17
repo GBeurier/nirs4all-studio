@@ -14,12 +14,8 @@ use serde_json::{Map, Value};
 pub const DEFAULT_JOB_CAPACITY: usize = 64;
 /// Default time a terminal job remains retained before it is eligible for TTL pruning.
 pub const DEFAULT_TERMINAL_TTL: Duration = Duration::from_secs(24 * 60 * 60);
-/// Maximum serialized size accepted for a JSON object stored by the registry.
-pub const MAX_JOB_JSON_BYTES: usize = 1024 * 1024;
 /// Maximum UTF-8 byte length accepted for an opaque job identifier.
 pub const MAX_JOB_ID_BYTES: usize = 256;
-/// Maximum UTF-8 byte length accepted for progress and failure text.
-pub const MAX_JOB_TEXT_BYTES: usize = 64 * 1024;
 /// Maximum byte length accepted for an ISO-8601 wall-clock timestamp.
 pub const MAX_JOB_TIMESTAMP_BYTES: usize = 64;
 
@@ -125,9 +121,7 @@ pub enum JobLifecycleError {
     JobNotFound,
     InvalidTimestamp,
     InvalidJsonObject(&'static str),
-    JsonObjectTooLarge(&'static str),
     InvalidProgress,
-    TextTooLarge(&'static str),
     InvalidTransition {
         from: JobStatus,
         operation: &'static str,
@@ -532,7 +526,6 @@ impl JobRegistry {
             return Err(JobLifecycleError::InvalidProgress);
         }
         let message = message.into();
-        validate_text(&message, "progress_message")?;
         let record = self.running_record(id, "progress")?;
         record.snapshot.progress = progress.clamp(0.0, 100.0);
         record.snapshot.progress_message.clone_from(&message);
@@ -661,10 +654,6 @@ impl JobRegistry {
     ) -> Result<JobMutation, JobLifecycleError> {
         validate_timestamp(timestamp)?;
         let error = error.into();
-        validate_text(&error, "error")?;
-        if let Some(value) = &traceback {
-            validate_text(value, "traceback")?;
-        }
         let record = self.running_record(id, "fail")?;
         record.snapshot.status = JobStatus::Failed;
         record.snapshot.completed_at = Some(timestamp.into());
@@ -884,22 +873,12 @@ fn validate_job_id(id: &str) -> Result<(), JobLifecycleError> {
     Ok(())
 }
 
-const fn validate_text(value: &str, field: &'static str) -> Result<(), JobLifecycleError> {
-    if value.len() > MAX_JOB_TEXT_BYTES {
-        return Err(JobLifecycleError::TextTooLarge(field));
-    }
-    Ok(())
-}
-
 fn validate_json_object(value: &Value, field: &'static str) -> Result<(), JobLifecycleError> {
     if !value.is_object() {
         return Err(JobLifecycleError::InvalidJsonObject(field));
     }
     let serialized =
         serde_json::to_vec(value).map_err(|_| JobLifecycleError::InvalidJsonObject(field))?;
-    if serialized.len() > MAX_JOB_JSON_BYTES {
-        return Err(JobLifecycleError::JsonObjectTooLarge(field));
-    }
     let round_trip: Value = serde_json::from_slice(&serialized)
         .map_err(|_| JobLifecycleError::InvalidJsonObject(field))?;
     if round_trip != *value {

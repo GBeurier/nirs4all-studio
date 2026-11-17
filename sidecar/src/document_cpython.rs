@@ -7,10 +7,6 @@ use sha2::{Digest, Sha256};
 
 pub const REQUEST_SCHEMA: &str = "nirs4all.studio-document-request.v1";
 pub const RESPONSE_SCHEMA: &str = "nirs4all.studio-document-response.v1";
-pub const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
-pub const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
-pub const MAX_INSPECTION_BYTES: usize = 32 * 1024 * 1024;
-pub const MAX_PREDICTION_BYTES: usize = 32 * 1024 * 1024;
 const MANIFEST: &str = include_str!("../contracts/studio_document_adapters_v1.json");
 const PACKAGE: &str = "studio_document_adapters";
 
@@ -39,12 +35,6 @@ pub fn route(
         "/api/pipelines/count-variants" => "pipeline.count_variants",
         _ => return None,
     };
-    if body.len() > MAX_DOCUMENT_BYTES {
-        return Some(crate::HttpResponse::json(
-            413,
-            json!({"detail":"Document exceeds 2 MiB"}).to_string(),
-        ));
-    }
     let Some(host) = host else {
         return Some(crate::HttpResponse::json(
             503,
@@ -101,9 +91,6 @@ fn route_prediction(
             crate::general_prediction::catalogue_payload(&workspace),
         )
     } else {
-        if body.len() > MAX_PREDICTION_BYTES {
-            return error(413, "Prediction request exceeds 32 MiB".into());
-        }
         let request = match serde_json::from_slice::<Value>(body) {
             Ok(value) if value.is_object() => value,
             _ => return error(400, "Expected a prediction request object".into()),
@@ -244,7 +231,6 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             .ok_or("Invalid document batch")?;
         if payload.as_object().is_none_or(|object| object.len() != 1)
             || members.is_empty()
-            || members.len() > 128
             || members.iter().any(|member| {
                 member.as_object().is_none_or(|object| object.len() != 2)
                     || !matches!(
@@ -257,12 +243,9 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
                         )
                     )
                     || !member["payload"].is_object()
-                    || member["payload"].to_string().len() > MAX_DOCUMENT_BYTES
             })
         {
-            return Err(
-                "Document batch must contain only bounded normalization or import requests".into(),
-            );
+            return Err("Document batch must contain only normalization or import requests".into());
         }
     }
     Ok(

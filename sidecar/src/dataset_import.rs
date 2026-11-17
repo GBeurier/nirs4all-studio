@@ -15,9 +15,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub const MAX_UPLOAD_BYTES: usize = 64 * 1024 * 1024;
-const MAX_FILES: usize = 256;
-
 struct ImportError(u16, String);
 impl From<String> for ImportError {
     fn from(value: String) -> Self {
@@ -97,9 +94,6 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
 }
 
 fn object(bytes: &[u8]) -> Result<Value, String> {
-    if bytes.len() > 2 * 1024 * 1024 {
-        return Err("Dataset metadata exceeds 2 MiB".into());
-    }
     let value: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     if !value.is_object() {
         return Err("Dataset metadata must be an object".into());
@@ -142,16 +136,13 @@ fn parse(request: &HttpRequest) -> Result<Upload<'_>, String> {
         .ok_or("Upload content type is missing")?;
     let mut files = BTreeMap::new();
     let mut names = std::collections::BTreeSet::new();
-    for part in multipart_parts(content_type, &request.body, MAX_UPLOAD_BYTES, MAX_FILES + 1)? {
+    for part in multipart_parts(content_type, &request.body)? {
         if part.name == "metadata" && part.filename.is_none() && document.is_none() {
             document = Some(object(part.payload)?);
         } else if part.name == "files" {
             let name = part.filename.ok_or("Upload filename is missing")?;
             filename(&name)?;
-            if !names.insert(name.to_lowercase())
-                || part.payload.is_empty()
-                || files.len() >= MAX_FILES
-            {
+            if !names.insert(name.to_lowercase()) || part.payload.is_empty() {
                 return Err("Dataset upload requires unique nonempty files".into());
             }
             files.insert(name, part.payload);
@@ -171,7 +162,7 @@ fn parse(request: &HttpRequest) -> Result<Upload<'_>, String> {
 fn materialize(upload: &Upload<'_>, root: &Path, config: &mut Value) -> Result<(), String> {
     let files = config["files"]
         .as_array_mut()
-        .filter(|files| !files.is_empty() && files.len() <= MAX_FILES)
+        .filter(|files| !files.is_empty())
         .ok_or("Dataset upload requires selected file roles")?;
     let mut selected = std::collections::BTreeSet::new();
     for file in files {
@@ -215,8 +206,8 @@ fn inspect(
     let result = DatasetInspection::new(
         root,
         LoadLimits {
-            max_file_bytes: 256 * 1024 * 1024,
-            max_total_bytes: 512 * 1024 * 1024,
+            max_file_bytes: crate::host_memory::allowance_u64(),
+            max_total_bytes: crate::host_memory::allowance_u64(),
             ..LoadLimits::default()
         },
     )?
@@ -407,12 +398,8 @@ fn import_multimodal(
             || fields.get("schema").and_then(Value::as_str)
                 != Some("nirs4all.studio-multimodal-dataset.v1")
             || fields.get("cohort").and_then(Value::as_object).is_none()
-    }) || serde_json::to_vec(descriptor)
-        .map_err(|error| error.to_string())?
-        .len()
-        > 1024 * 1024
-    {
-        return Err("Invalid or oversized multimodal dataset descriptor".into());
+    }) {
+        return Err("Invalid multimodal dataset descriptor".into());
     }
     let directory = tempfile::Builder::new()
         .prefix("multimodal-")

@@ -23,9 +23,6 @@ mod general;
 pub(crate) use general::library_dataset_path;
 
 const DATASET_LINKS_FILE: &str = "dataset_links.json";
-const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
-const MAX_PIPELINE_BYTES: u64 = 256 * 1024;
-const MAX_DATASETS: usize = 256;
 const MAX_DATASET_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_DATASET_TOTAL_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DATASET_RECORD_BYTES: u64 = 128 * 1024;
@@ -80,7 +77,7 @@ impl ScientificResolveError {
             ),
             Self::CatalogueTooLarge => (
                 "scientific_dataset_catalogue_too_large",
-                "the linked-dataset catalogue exceeds its size limit",
+                "the linked-dataset catalogue is larger than the memory this computer can spare now; close other applications and try again",
             ),
             Self::CatalogueInvalid => (
                 "scientific_dataset_catalogue_invalid",
@@ -106,7 +103,7 @@ impl ScientificResolveError {
             ),
             Self::PipelineTooLarge => (
                 "scientific_pipeline_too_large",
-                "the selected pipeline file exceeds its size limit",
+                "the selected pipeline file is larger than the memory this computer can spare now; close other applications and try again",
             ),
             Self::PipelineInvalid => (
                 "scientific_pipeline_invalid",
@@ -310,7 +307,7 @@ impl ScientificRequestResolver {
         let value = read_confined_json(
             &path,
             &config_root,
-            MAX_DATASET_LINKS_BYTES,
+            crate::host_memory::allowance_u64(),
             ScientificResolveError::CatalogueUnsafe,
             ScientificResolveError::CatalogueTooLarge,
             ScientificResolveError::CatalogueInvalid,
@@ -327,7 +324,6 @@ impl ScientificRequestResolver {
         let datasets = root
             .get("datasets")
             .and_then(Value::as_array)
-            .filter(|values| values.len() <= MAX_DATASETS)
             .ok_or(ScientificResolveError::CatalogueInvalid)?;
         if datasets.iter().any(|dataset| !dataset.is_object()) {
             return Err(ScientificResolveError::CatalogueInvalid);
@@ -576,7 +572,7 @@ struct ResolvedPipeline {
 }
 
 fn read_pipeline(workspace: &Path, pipeline_id: &str) -> Result<Value, ScientificResolveError> {
-    read_pipeline_with_limit(workspace, pipeline_id, MAX_PIPELINE_BYTES)
+    read_pipeline_with_limit(workspace, pipeline_id, crate::host_memory::allowance_u64())
 }
 
 fn read_pipeline_with_limit(

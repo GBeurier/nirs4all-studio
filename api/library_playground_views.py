@@ -1,6 +1,7 @@
 """Pure Playground catalogues and spectra presentation; numerical work stays in nirs4all."""
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from .shared.filter_catalogue import get_filter_methods
@@ -161,11 +162,12 @@ def read_spectra(operation: str, payload: dict[str, Any]) -> dict[str, Any]:
     allowed = {"config", "dataset_id", "partition", "source", "target_index", "start", "end", "include_y", "include_metadata", "max_wavelengths_returned"}
     if set(payload) - allowed or not isinstance(payload.get("config"), dict):
         raise ValueError("Spectra require an authorized dataset config and bounded query fields")
-    dataset, reader = load_dataset_for_analysis(payload["config"])
+    # Studio sets no size or count ceiling: the memory of this worker bounds the load.
+    dataset, reader = load_dataset_for_analysis(payload["config"], max_input_bytes=sys.maxsize)
     partition, source = payload.get("partition", "train"), payload.get("source", 0)
     selection = extract_playground_dataset(dataset, partition=partition, source_index=source,
                                            target_index=payload.get("target_index", 0),
-                                           limits=PreviewLimits(max_samples=1_000_000, max_features=100_000, max_cells=64_000_000))
+                                           limits=PreviewLimits(max_samples=sys.maxsize, max_features=sys.maxsize, max_cells=sys.maxsize))
     batch = selection.batch
     headers = selection.evidence.get("original_headers") or batch.wavelengths.tolist()
     result: dict[str, Any] = {"dataset_id": payload["dataset_id"], "partition": partition, "source": source,

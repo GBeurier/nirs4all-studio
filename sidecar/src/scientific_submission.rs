@@ -2,22 +2,18 @@
 //!
 //! Rust validates and transports this manifest but deliberately does not
 //! interpret pipeline steps, dataset schema projections, or robustness
-//! scenarios. Those explicitly named values remain bounded scientific payloads
-//! for a separately selected executor.
+//! scenarios. Those explicitly named values remain opaque scientific payloads
+//! for a separately selected executor. The listener bounds the body by the
+//! memory the host can spare; this contract adds no size or count ceiling, and
+//! the JSON parser's recursion limit bounds nesting.
 
 use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
-use crate::MAX_REQUEST_BODY_BYTES;
-
 pub const SCIENTIFIC_SUBMISSION_ROUTE: &str = "/api/runs/run-groups";
 pub const SCIENTIFIC_SUBMISSION_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_submission_v1.json");
-pub const MAX_SCIENTIFIC_SPLIT_SPECS: usize = 64;
-const MAX_COLLECTION_ITEMS: usize = 256;
-const MAX_STRING_BYTES: usize = 4096;
-const MAX_NESTING_DEPTH: usize = 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ScientificSubmissionValidationError {
@@ -62,12 +58,9 @@ pub fn validate_scientific_submission(
     body: &[u8],
 ) -> Result<ValidatedScientificSubmission, ScientificSubmissionValidationError> {
     validate_contract()?;
-    if body.len() > MAX_REQUEST_BODY_BYTES {
-        return Err(ScientificSubmissionValidationError::BodyTooLarge);
-    }
     let payload: Value = serde_json::from_slice(body)
         .map_err(|_| ScientificSubmissionValidationError::InvalidJson)?;
-    validate_bounded_json(&payload, 0)?;
+    validate_json_values(&payload)?;
     let root = object_with_exact_keys(
         &payload,
         &["legacyConfig", "manifest", "strictCampaignSpecs"],
@@ -301,11 +294,6 @@ fn validate_legacy_inline_pipelines(
     let inline_many = match object.get("inline_pipelines") {
         None => 0,
         Some(Value::Array(values)) => {
-            if values.len() > MAX_COLLECTION_ITEMS {
-                return Err(ScientificSubmissionValidationError::InvalidShape(
-                    "legacyConfig.inline_pipelines is too large",
-                ));
-            }
             for value in values {
                 validate_inline_pipeline(Some(value))?;
             }
@@ -381,11 +369,6 @@ fn validate_grouping_map(value: Option<&Value>) -> Result<(), ScientificSubmissi
         .ok_or(ScientificSubmissionValidationError::InvalidShape(
             "legacyConfig.split_group_by_by_dataset must be an object",
         ))?;
-    if object.len() > MAX_COLLECTION_ITEMS {
-        return Err(ScientificSubmissionValidationError::InvalidShape(
-            "legacyConfig.split_group_by_by_dataset is too large",
-        ));
-    }
     for (key, value) in object {
         identity(key, "grouping dataset id")?;
         optional_text(Some(value), "grouping column", true)?;
@@ -418,11 +401,6 @@ fn validate_strict_specs(
         "strictCampaignSpecs.splitSpecs",
         false,
     )?;
-    if specs.len() > MAX_SCIENTIFIC_SPLIT_SPECS {
-        return Err(ScientificSubmissionValidationError::InvalidShape(
-            "strictCampaignSpecs.splitSpecs exceeds 64 entries",
-        ));
-    }
     let mut identities = Vec::with_capacity(specs.len());
     let mut ids = BTreeSet::new();
     for spec in specs {
@@ -839,8 +817,8 @@ fn validate_contract() -> Result<(), ScientificSubmissionValidationError> {
         || contract.get("schema_version").and_then(Value::as_u64) != Some(1)
         || contract
             .pointer("/route/maximum_body_bytes")
-            .and_then(Value::as_u64)
-            != Some(MAX_REQUEST_BODY_BYTES as u64)
+            .and_then(Value::as_str)
+            != Some("host_memory")
         || contract
             .pointer("/accepted_submission/http_status")
             .and_then(Value::as_u64)
@@ -853,45 +831,24 @@ fn validate_contract() -> Result<(), ScientificSubmissionValidationError> {
     Ok(())
 }
 
-fn validate_bounded_json(
-    value: &Value,
-    depth: usize,
-) -> Result<(), ScientificSubmissionValidationError> {
-    if depth > MAX_NESTING_DEPTH {
-        return Err(ScientificSubmissionValidationError::InvalidShape(
-            "JSON nesting exceeds the native limit",
-        ));
-    }
+/// Keys are nonempty text and numbers finite. Sizes and counts are bounded by
+/// the host memory that admitted the body; nesting by the JSON parser.
+fn validate_json_values(value: &Value) -> Result<(), ScientificSubmissionValidationError> {
     match value {
         Value::Object(object) => {
-            if object.len() > MAX_COLLECTION_ITEMS {
-                return Err(ScientificSubmissionValidationError::InvalidShape(
-                    "JSON object exceeds the native field limit",
-                ));
-            }
             for (key, value) in object {
-                if key.is_empty() || key.len() > 128 || key.chars().any(char::is_control) {
+                if key.is_empty() || key.chars().any(char::is_control) {
                     return Err(ScientificSubmissionValidationError::InvalidShape(
                         "JSON object contains an invalid key",
                     ));
                 }
-                validate_bounded_json(value, depth + 1)?;
+                validate_json_values(value)?;
             }
         }
         Value::Array(values) => {
-            if values.len() > MAX_COLLECTION_ITEMS {
-                return Err(ScientificSubmissionValidationError::InvalidShape(
-                    "JSON array exceeds the native item limit",
-                ));
-            }
             for value in values {
-                validate_bounded_json(value, depth + 1)?;
+                validate_json_values(value)?;
             }
-        }
-        Value::String(value) if value.len() > MAX_STRING_BYTES => {
-            return Err(ScientificSubmissionValidationError::InvalidShape(
-                "JSON string exceeds the native byte limit",
-            ));
         }
         Value::Number(number) if !number.as_f64().is_some_and(f64::is_finite) => {
             return Err(ScientificSubmissionValidationError::InvalidShape(
@@ -1035,7 +992,7 @@ fn bounded_array<'a>(
     let values = value
         .as_array()
         .ok_or(ScientificSubmissionValidationError::InvalidShape(label))?;
-    if values.len() > MAX_COLLECTION_ITEMS || (!allow_empty && values.is_empty()) {
+    if !allow_empty && values.is_empty() {
         return Err(ScientificSubmissionValidationError::InvalidShape(label));
     }
     Ok(values)
@@ -1130,6 +1087,23 @@ mod tests {
             validate_scientific_submission(&serde_json::to_vec(&payload).unwrap()).unwrap();
         assert_eq!(validated.run_name(), "Native campaign");
         assert_eq!(validated.requested_backend(), "cluster");
+    }
+
+    #[test]
+    fn opaque_scientific_payloads_have_no_size_count_or_depth_ceiling() {
+        // Above the former 64 KiB body, 256 items, 4096-byte string and depth-16 ceilings.
+        let mut nested = json!({"leaf": "x".repeat(10_000)});
+        for _ in 0..40 {
+            nested = json!({"branch": [nested]});
+        }
+        let mut payload = payload();
+        payload["legacyConfig"]["robustness"] =
+            json!({"mode": "clean_frozen", "scenarios": vec![nested; 300]});
+        let body = serde_json::to_vec(&payload).unwrap();
+        assert!(body.len() > 2 * 1024 * 1024);
+        validate_scientific_submission(&body).unwrap();
+        payload["legacyConfig"]["robustness"]["scenarios"] = json!([{"": 1}]);
+        assert!(validate_scientific_submission(&serde_json::to_vec(&payload).unwrap()).is_err());
     }
 
     #[test]

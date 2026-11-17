@@ -15,7 +15,11 @@ use std::{
 
 const REQUEST_SCHEMA: &str = "nirs4all.studio-playground-job.v1";
 const RESPONSE_SCHEMA: &str = "nirs4all.studio-playground-result.v1";
-pub const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
+/// The library's Playground admission bounds (samples, features, cells, input
+/// bytes, response and covariance cells) are defaults its host may raise.
+/// Studio raises them out of reach: only the memory of the worker and of the
+/// host bounds a Playground workload, never a fixed count.
+const LIBRARY_ADMISSION_BOUND: u64 = (1 << 53) - 1;
 
 pub fn owns_path(path: &str) -> bool {
     matches!(
@@ -106,7 +110,7 @@ fn invoke_cached_execution(
                 message
             })?;
             project_response(
-                &response,
+                response,
                 document["request_id"].as_str().unwrap_or(""),
                 "execute",
                 Projection::Result,
@@ -198,9 +202,6 @@ fn dispatch(
     if request.method != required_method {
         return crate::method_not_allowed(&request.method, &request.path, required_method);
     }
-    if request.body.len() > MAX_REQUEST_BYTES {
-        return error(413, "Playground request exceeds 8 MiB");
-    }
     let prepared = match prepare(settings, request, adapt) {
         Ok(value) => value,
         Err((status, detail)) => return error(status, &detail),
@@ -210,7 +211,7 @@ fn dispatch(
         Err(failure) => return error(facade_error_status(&failure.code), &failure.message),
     };
     match project_response(
-        &response,
+        response,
         &prepared.request_id,
         prepared.operation,
         prepared.projection,
@@ -289,7 +290,7 @@ fn project_complete_samples(
     let document = complete_samples_document(&prepared.document);
     let Ok(complete) = invoke(&document).and_then(|response| {
         project_response(
-            &response,
+            response,
             &prepared.request_id,
             "execute",
             Projection::Result,
@@ -462,6 +463,8 @@ fn prepare(
         }
         _ => return Err((404, "Unknown Playground route".into())),
     };
+    let mut payload = payload;
+    raise_library_admission(operation, &mut payload);
     Ok(Prepared {
         document: json!({
             "schema":REQUEST_SCHEMA,
@@ -473,6 +476,32 @@ fn prepare(
         operation,
         projection,
     })
+}
+
+fn raise_library_admission(operation: &str, payload: &mut Value) {
+    let Some(payload) = payload.as_object_mut() else {
+        return;
+    };
+    if let Some(dataset) = payload.get_mut("dataset").and_then(Value::as_object_mut) {
+        dataset
+            .entry("max_input_bytes")
+            .or_insert(json!(LIBRARY_ADMISSION_BOUND));
+    }
+    if operation != "execute" {
+        return;
+    }
+    let limits = payload.entry("limits").or_insert_with(|| json!({}));
+    if let Some(limits) = limits.as_object_mut() {
+        for key in ["max_samples", "max_features", "max_cells"] {
+            limits.entry(key).or_insert(json!(LIBRARY_ADMISSION_BOUND));
+        }
+    }
+    let options = payload.entry("options").or_insert_with(|| json!({}));
+    if let Some(options) = options.as_object_mut() {
+        for key in ["max_response_cells", "max_covariance_cells"] {
+            options.entry(key).or_insert(json!(LIBRARY_ADMISSION_BOUND));
+        }
+    }
 }
 
 fn prepare_inline_execute(mut body: Map<String, Value>) -> Result<Value, (u16, String)> {
@@ -600,15 +629,17 @@ fn copy_optional(source: &Map<String, Value>, target: &mut Value, keys: &[&str])
     }
 }
 
+/// Takes the response by value: a Playground result carries complete spectra,
+/// and is moved into the HTTP body rather than copied.
 fn project_response(
-    response: &Value,
+    response: Value,
     request_id: &str,
     operation: &str,
     projection: Projection,
 ) -> Result<Value, String> {
-    let root = response
-        .as_object()
-        .ok_or("Playground library returned a non-object")?;
+    let Value::Object(mut root) = response else {
+        return Err("Playground library returned a non-object".into());
+    };
     if root.get("schema") != Some(&json!(RESPONSE_SCHEMA))
         || root.get("request_id") != Some(&json!(request_id))
         || root.get("operation") != Some(&json!(operation))
@@ -622,7 +653,7 @@ fn project_response(
     {
         return Err("Playground library returned the wrong response identity".into());
     }
-    let result = root["result"].clone();
+    let result = root.remove("result").unwrap_or_default();
     if let Projection::Chart(field) = projection {
         if result.get("success") == Some(&json!(false)) {
             return Ok(result);
@@ -789,14 +820,19 @@ mod tests {
     #[test]
     fn chart_projection_returns_actual_owner_values_and_errors() {
         let response = json!({"schema":RESPONSE_SCHEMA,"request_id":"chart","operation":"execute","result":{"success":true,"pca":{"coordinates":[[1.0,2.0]]}}});
-        let result =
-            project_response(&response, "chart", "execute", Projection::Chart("pca")).unwrap();
+        let result = project_response(
+            response.clone(),
+            "chart",
+            "execute",
+            Projection::Chart("pca"),
+        )
+        .unwrap();
         assert_eq!(
             result,
             json!({"success":true,"pca":{"coordinates":[[1.0,2.0]]}})
         );
         assert!(project_response(
-            &response,
+            response,
             "chart",
             "execute",
             Projection::Chart("repetitions")
@@ -804,7 +840,7 @@ mod tests {
         .is_err());
         let failed = json!({"schema":RESPONSE_SCHEMA,"request_id":"chart","operation":"execute","result":{"success":false,"error":"invalid source"}});
         assert_eq!(
-            project_response(&failed, "chart", "execute", Projection::Chart("pca")).unwrap()
+            project_response(failed, "chart", "execute", Projection::Chart("pca")).unwrap()
                 ["error"],
             "invalid source"
         );

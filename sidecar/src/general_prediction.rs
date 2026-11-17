@@ -19,8 +19,6 @@ use crate::{
     scientific_request_resolver::ScientificRequestResolver,
 };
 
-const MAX_ENTRIES: usize = 10000;
-const MAX_MULTIMODAL_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 const MULTIMODAL_DATASET_SCHEMA: &str = "nirs4all.studio-multimodal-dataset.v1";
 
 fn validate_multimodal_descriptor(value: &Value) -> Result<(), String> {
@@ -30,12 +28,8 @@ fn validate_multimodal_descriptor(value: &Value) -> Result<(), String> {
     if document.len() != 2
         || document.get("schema").and_then(Value::as_str) != Some(MULTIMODAL_DATASET_SCHEMA)
         || document.get("cohort").and_then(Value::as_object).is_none()
-        || serde_json::to_vec(value)
-            .map_err(|error| error.to_string())?
-            .len()
-            > MAX_MULTIMODAL_DESCRIPTOR_BYTES
     {
-        return Err("Invalid or oversized multimodal dataset descriptor".into());
+        return Err("Invalid multimodal dataset descriptor".into());
     }
     Ok(())
 }
@@ -131,7 +125,6 @@ pub fn catalogue_payload(workspace: &Path) -> Result<Value, String> {
     let mut pending = vec![PathBuf::from("exports"), PathBuf::from("workspace/exports")];
     let mut visited = BTreeSet::new();
     let mut exports = Vec::new();
-    let mut entries = 0_usize;
     while let Some(relative) = pending.pop() {
         if !directory.exists(&relative) {
             continue;
@@ -140,10 +133,6 @@ pub fn catalogue_payload(workspace: &Path) -> Result<Value, String> {
             .open_dir(&relative)
             .map_err(|error| error.to_string())?;
         for entry in child.entries().map_err(|error| error.to_string())? {
-            entries += 1;
-            if entries > MAX_ENTRIES {
-                return Err("Model catalogue exceeds directory-entry budget".into());
-            }
             let entry = entry.map_err(|error| error.to_string())?;
             let path = relative.join(entry.file_name());
             let kind = entry.file_type().map_err(|error| error.to_string())?;
@@ -239,10 +228,6 @@ pub fn prediction_payload(
                 .ok_or("Nonempty spectra matrix required")?;
             let width = rows[0].as_array().map_or(0, Vec::len);
             if width == 0
-                || rows
-                    .len()
-                    .checked_mul(width)
-                    .is_none_or(|cells| cells > crate::matrix_limits::MAX_PREDICTION_CELLS)
                 || rows.iter().any(|row| {
                     row.as_array().is_none_or(|row| {
                         row.len() != width
@@ -252,9 +237,7 @@ pub fn prediction_payload(
                     })
                 })
             {
-                return Err(
-                    "Spectra must be finite rectangular values within the cell budget".into(),
-                );
+                return Err("Spectra must be finite rectangular values".into());
             }
             payload["spectra"] = request["spectra"].clone();
         }
@@ -533,7 +516,6 @@ mod tests {
         for invalid in [
             json!({"schema":MULTIMODAL_DATASET_SCHEMA,"cohort":{},"extra":true}),
             json!({"schema":"wrong","cohort":{}}),
-            json!({"schema":MULTIMODAL_DATASET_SCHEMA,"cohort":{"padding":"x".repeat(MAX_MULTIMODAL_DESCRIPTOR_BYTES)}}),
         ] {
             let mut record = record.clone();
             record["config"]["dataset_document"] = invalid;
