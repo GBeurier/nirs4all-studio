@@ -9,6 +9,7 @@
  * Also includes discriminated union types for chart state management.
  */
 
+import type { TargetValue } from '@/types/spectral';
 import i18n from '@/lib/i18n';
 
 // ============= Discriminated Union Types for Chart State =============
@@ -118,7 +119,7 @@ export function isChartReady<T>(state: ChartState<T>): state is ChartDataState<T
 export interface SpectraChartData {
   spectra: number[][];
   wavelengths: number[];
-  y: number[];
+  y: TargetValue[];
   sampleIds?: string[];
   foldLabels?: number[];
 }
@@ -137,7 +138,7 @@ export interface HistogramChartData {
  */
 export interface ScatterChartData {
   coordinates: number[][];
-  y: number[];
+  y: TargetValue[];
   sampleIds?: string[];
   foldLabels?: number[];
   explainedVariance?: number[];
@@ -155,7 +156,7 @@ export interface FoldDistributionData {
     testIndices: number[];
   }>;
   nFolds: number;
-  y?: number[];
+  y?: TargetValue[];
 }
 
 /**

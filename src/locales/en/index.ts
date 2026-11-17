@@ -2192,6 +2192,7 @@ notFound: {
       },
       stats: {
         missingCells: "{{file}}: {{count}} missing values preserved. X, Y and metadata keep their row alignment.",
+        missingSpectralCells: "{{file}}: {{count}} missing values in the spectra. No row is removed, but with this NA handling the dataset cannot be loaded: choose in Parsing Options whether to remove these samples, remove these features, replace the values or keep them.",
         detectingFiles: "Detecting files...",
         loadingFiles: "Loading files...",
         noXFiles: "No X files mapped - select file roles below",
@@ -6043,6 +6044,7 @@ notFound: {
       outlier: "Outlier",
       normal: "Normal",
       class: "Class",
+      noTargetValue: "No value ({{count}})",
       collapse: "Collapse legend",
       expand: "Expand legend",
     },
@@ -6686,6 +6688,8 @@ notFound: {
         processed: "(processed)",
         classCount_one: "({{count}} class)",
         classCount_other: "({{count}} classes)",
+        missingTargets_one: "{{count}} sample without a value",
+        missingTargets_other: "{{count}} samples without a value",
         binCountLabel: "Number of bins",
         binAuto: "Auto",
         selectedOnly: {
@@ -8135,7 +8139,7 @@ notFound: {
       },
       preflight: {
         checking: "Checking spectral/OOD replay evidence...",
-        summary: "Spectral/OOD replay preflight: {{status}}",
+        summary: "Spectral/OOD replay check: {{status}}",
         storedScenarios: "Stored-prediction scenarios",
         spectralScenarios: "Spectral/OOD scenarios",
         handoffPlan: "Native replay handoff plan",
@@ -9388,7 +9392,15 @@ transferAnalysis: {
         predictHint: "Models are fitted on samples with a target; the others receive a prediction, listed as \"Predicted (no target)\" and never scored.",
         remove: "Remove these samples",
         removeHint: "Samples without a target are dropped when the data is loaded for this run.",
-        removeUnavailable: "Not available for multimodal datasets: their samples without a target are always predicted.",
+        removeUnavailable: "Not available for multimodal datasets, nor when one target column of several is selected: these samples are always predicted.",
+        count: "{{datasetName}} — {{target}}: {{missing}} samples without a value",
+        countOfSamples: "{{datasetName}} — {{target}}: {{missing}} of {{samples}} samples without a value",
+      },
+      targets: {
+        title: "Target to model",
+        description: "These datasets have several target columns. Choose the one this run models; the saved datasets are not changed.",
+        columnWithMissing: "{{column}} — {{missing}} without a value",
+        allColumns: "All {{total}} target columns together (one multi-output model)",
       },
       summary: {
         datasets: "Datasets",

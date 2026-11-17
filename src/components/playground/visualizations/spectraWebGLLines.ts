@@ -1,4 +1,7 @@
+import type { TargetValue } from '@/types/spectral';
 import * as THREE from 'three';
+
+import { isObservedTarget } from '@/lib/playground/targetValues';
 
 import { normalizeSpectraValue, type SpectraDecimationResult } from './spectraWebGLGeometry';
 
@@ -12,7 +15,7 @@ export interface SpectraWebGLLineData {
 
 export interface BuildSpectraWebGLLinesInput {
   decimation: SpectraDecimationResult | null;
-  y?: number[];
+  y?: TargetValue[];
   yTargetMin: number;
   yTargetMax: number;
   baseColor: string;
@@ -37,6 +40,11 @@ export function getSpectraTargetColor(value: number, min: number, max: number): 
   return color;
 }
 
+/** Palette colour of a line from its target value; `null` when the sample has none. */
+function getObservedTargetColor(value: TargetValue | undefined, min: number, max: number): THREE.Color | null {
+  return isObservedTarget(value) ? getSpectraTargetColor(value, min, max) : null;
+}
+
 export function buildSpectraWebGLLines({
   decimation,
   y,
@@ -57,13 +65,11 @@ export function buildSpectraWebGLLines({
 
     if (!isOriginal) {
       if (sampleColors?.[index]) color = parseSpectraWebGLColor(sampleColors[index]);
-      else if (y?.[index] !== undefined) color = getSpectraTargetColor(y[index], yTargetMin, yTargetMax);
-      else color = baseLineColor;
+      else color = getObservedTargetColor(y?.[index], yTargetMin, yTargetMax) ?? baseLineColor;
     } else {
       if (originalLineColor) color = originalLineColor;
       else if (sampleColors?.[index]) color = parseSpectraWebGLColor(sampleColors[index]);
-      else if (y?.[index] !== undefined) color = getSpectraTargetColor(y[index], yTargetMin, yTargetMax);
-      else color = baseLineColor;
+      else color = getObservedTargetColor(y?.[index], yTargetMin, yTargetMax) ?? baseLineColor;
     }
 
     return {

@@ -9,7 +9,7 @@
  */
 
 import type { UnifiedOperator, SamplingOptions, ExecuteOptions } from '@/types/playground';
-import type { SpectralData } from '@/types/spectral';
+import type { SpectralData, TargetValue } from '@/types/spectral';
 
 // React state holds immutable loaded snapshots. Identity covers the entire input
 // (spectra, targets, axis, metadata, partitions), without rescanning it on a click.
@@ -103,7 +103,7 @@ export function hashOptions(options: {
  * @param y - Optional target values
  * @returns A stable hash string
  */
-export function hashData(spectra: number[][], y?: number[]): string {
+export function hashData(spectra: number[][], y?: TargetValue[]): string {
   return stableStringify({ spectra, y });
 }
 
@@ -119,7 +119,7 @@ export function hashData(spectra: number[][], y?: number[]): string {
  */
 export function createPlaygroundQueryKey(
   spectra: number[][] | null,
-  y: number[] | undefined,
+  y: TargetValue[] | undefined,
   operators: UnifiedOperator[],
   sampling?: SamplingOptions,
   executeOptions?: ExecuteOptions,

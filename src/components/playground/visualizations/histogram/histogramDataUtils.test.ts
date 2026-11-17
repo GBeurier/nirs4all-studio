@@ -9,6 +9,7 @@ import {
   getSelectedBins,
   getSelectedClasses,
   mapSamplesToClasses,
+  splitDisplayedTargets,
 } from './histogramDataUtils';
 
 describe('histogram data utilities', () => {
@@ -116,5 +117,29 @@ describe('histogram data utilities', () => {
     expect(getSelectedClasses(new Set([0, 1, 2]), [0, -1, 2])).toEqual(new Set([0, 2]));
     expect(getHoveredClass(2, [0, -1, 2])).toBe(2);
     expect(getHoveredClass(1, [0, -1, 2])).toBeNull();
+  });
+
+  it('bins observed values only and reports the samples without a target value', () => {
+    // The backend sends a missing target value as JSON `null`.
+    const values = [0, null, 2, 4, null, Number.NaN];
+
+    const { histogramData, sampleBins } = computeHistogramBins({ values, binCount: 2 });
+    expect(histogramData.map((bin) => bin.count)).toEqual([1, 2]);
+    expect(histogramData.map((bin) => bin.samples)).toEqual([[0], [2, 3]]);
+    expect(histogramData[0].binStart).toBe(0);
+    expect(histogramData[1].binEnd).toBe(4);
+    expect(sampleBins[1]).toBeUndefined();
+    expect(sampleBins[4]).toBeUndefined();
+
+    expect(splitDisplayedTargets(values)).toEqual({ observed: [0, 2, 4], missingCount: 3 });
+    expect(splitDisplayedTargets(values, new Set([0, 1, 2]))).toEqual({ observed: [0, 2], missingCount: 1 });
+    expect(computeYStats(splitDisplayedTargets(values).observed)).toMatchObject({ n: 3, min: 0, max: 4, mean: 2 });
+    expect(computeSelectedYStats(values, new Set([0, 1, 3]))).toMatchObject({ n: 2, min: 0, max: 4 });
+  });
+
+  it('returns no bins when no displayed sample has a target value', () => {
+    expect(computeHistogramBins({ values: [null, null], binCount: 3 })).toEqual({ histogramData: [], sampleBins: [] });
+    expect(splitDisplayedTargets([null, null])).toEqual({ observed: [], missingCount: 2 });
+    expect(mapSamplesToClasses([1, null], ['1'])).toEqual([0, -1]);
   });
 });

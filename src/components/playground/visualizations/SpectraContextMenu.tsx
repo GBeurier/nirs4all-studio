@@ -11,6 +11,7 @@
  * - Copy sample info
  */
 
+import type { TargetValue } from '@/types/spectral';
 import { useCallback, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -40,6 +41,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useSelection } from '@/context/useSelection';
+import { formatTargetValue } from '@/lib/playground/targetValues';
 
 export interface SpectraContextMenuProps {
   /** The trigger element (chart area) */
@@ -49,7 +51,7 @@ export interface SpectraContextMenuProps {
   /** Sample IDs for labeling */
   sampleIds?: string[];
   /** Y values for display */
-  yValues?: number[];
+  yValues?: TargetValue[];
   /** Fold labels for display */
   folds?: string[];
   /** Callback when samples should be exported */
@@ -147,7 +149,7 @@ export function SpectraContextMenu({
     if (hoveredInfo === null) return;
     const info = [
       `ID: ${hoveredInfo.id}`,
-      hoveredInfo.y !== undefined ? `Y: ${hoveredInfo.y.toFixed(4)}` : null,
+      hoveredInfo.y !== undefined ? `Y: ${formatTargetValue(hoveredInfo.y, 4)}` : null,
       hoveredInfo.fold ? `Fold: ${hoveredInfo.fold}` : null,
     ].filter(Boolean).join('\n');
     navigator.clipboard.writeText(info);
@@ -158,7 +160,7 @@ export function SpectraContextMenu({
     selectedSamples.forEach((idx) => {
       const info = [
         sampleIds?.[idx] ?? `Sample ${idx}`,
-        yValues?.[idx]?.toFixed(4) ?? 'N/A',
+        yValues ? formatTargetValue(yValues[idx], 4) : 'N/A',
         folds?.[idx] ?? 'N/A',
       ].join('\t');
       infos.push(info);
@@ -220,7 +222,7 @@ export function SpectraContextMenu({
               <span className="font-semibold">{hoveredInfo.id}</span>
               {hoveredInfo.y !== undefined && (
                 <span className="text-muted-foreground ml-2">
-                  Y={hoveredInfo.y.toFixed(3)}
+                  Y={formatTargetValue(hoveredInfo.y, 3)}
                 </span>
               )}
               {hoveredInfo.fold && (

@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import {
   useCallback,
   useMemo,
@@ -66,7 +67,7 @@ export interface UseSpectraChartInteractionsInput {
   yAxisDomain: [number, number];
   enableHover: boolean;
   folds?: FoldsInfo | null;
-  y?: number[];
+  y?: TargetValue[];
   onInteractionStart?: () => void;
   onBrushSelect?: (indices: number[]) => void;
 }

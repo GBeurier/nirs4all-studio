@@ -1,4 +1,6 @@
+import type { TargetValue } from '@/types/spectral';
 import { type TargetType } from './targetTypeDetection';
+import { isObservedTarget } from './targetValues';
 import {
   type CategoricalPalette,
   type ContinuousPalette,
@@ -33,7 +35,7 @@ export interface BaseColorConfig {
 }
 
 export interface BaseColorContext {
-  y?: number[];
+  y?: TargetValue[];
   yMin?: number;
   yMax?: number;
   trainIndices?: Set<number>;
@@ -154,12 +156,18 @@ export function getBaseColor(
         return HIGHLIGHT_COLORS.unselected;
       }
 
+      // A sample without a target value keeps its place in every view and is
+      // drawn in the neutral colour instead of a palette colour.
+      const yValue = y[sampleIndex];
+      if (!isObservedTarget(yValue)) {
+        return HIGHLIGHT_COLORS.unselected;
+      }
+
       const { targetType: detectedType, classLabels, classLabelMap } = context;
       const effectiveTargetType = getEffectiveTargetType(detectedType, config.targetTypeOverride);
 
       if (effectiveTargetType === 'classification' || effectiveTargetType === 'ordinal') {
         if (classLabels && classLabels.length > 0) {
-          const yValue = y[sampleIndex];
           const classIdx = classLabelMap
             ? classLabelMap.get(String(yValue)) ?? -1
             : classLabels.indexOf(String(yValue));
@@ -170,7 +178,7 @@ export function getBaseColor(
         return HIGHLIGHT_COLORS.unselected;
       }
 
-      return getContinuousColorForValue(y[sampleIndex], yMin, yMax, config.continuousPalette)
+      return getContinuousColorForValue(yValue, yMin, yMax, config.continuousPalette)
         ?? HIGHLIGHT_COLORS.unselected;
     }
 

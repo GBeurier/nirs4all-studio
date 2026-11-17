@@ -10,6 +10,7 @@
  * Phase 2 Implementation - Selection System Enhancement
  */
 
+import type { TargetValue } from '@/types/spectral';
 import { useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -30,12 +31,13 @@ import {
 import { useSelection } from '@/context/useSelection';
 import { cn } from '@/lib/utils';
 import { formatYValue } from './visualizations/chartConfig';
+import { getObservedTargets } from '@/lib/playground/targetValues';
 
 // ============= Types =============
 
 interface SelectionStatsPanelProps {
   /** Y values for all samples */
-  y: number[];
+  y: TargetValue[];
   /** Sample IDs */
   sampleIds?: string[];
   /** Total number of samples */
@@ -139,24 +141,18 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
   const [isOpen, setIsOpen] = useState(true);
 
   // Compute stats for all samples
-  const allStats = useMemo(() => computeStats(y), [y]);
+  const allStats = useMemo(() => computeStats(getObservedTargets(y)), [y]);
 
   // Compute stats for selected samples
   const selectedStats = useMemo(() => {
     if (selectedSamples.size === 0) return null;
-    const selectedY = Array.from(selectedSamples)
-      .filter(idx => y[idx] !== undefined)
-      .map(idx => y[idx]);
-    return computeStats(selectedY);
+    return computeStats(getObservedTargets(Array.from(selectedSamples, idx => y[idx])));
   }, [selectedSamples, y]);
 
   // Compute stats for pinned samples
   const pinnedStats = useMemo(() => {
     if (pinnedSamples.size === 0) return null;
-    const pinnedY = Array.from(pinnedSamples)
-      .filter(idx => y[idx] !== undefined)
-      .map(idx => y[idx]);
-    return computeStats(pinnedY);
+    return computeStats(getObservedTargets(Array.from(pinnedSamples, idx => y[idx])));
   }, [pinnedSamples, y]);
 
   // Don't render if no selection

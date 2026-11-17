@@ -12,6 +12,7 @@
  * Phase 6: Performance & Polish - Optimized
  */
 
+import type { TargetValue } from '@/types/spectral';
 import { useRef, useMemo, useCallback, useEffect, useState, memo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { cn } from '@/lib/utils';
@@ -50,7 +51,7 @@ export interface SpectraWebGLProps {
   /** Optional second set of spectra (for "both" view - original) */
   originalSpectra?: number[][];
   /** Target values for coloring */
-  y?: number[];
+  y?: TargetValue[];
   /** Sample IDs for display in tooltip */
   sampleIds?: string[];
   /** Fold labels for display in tooltip */

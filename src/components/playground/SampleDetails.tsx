@@ -2,6 +2,7 @@ import { ProcessedData } from '@/types/spectral';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
+import { formatTargetValue } from '@/lib/playground/targetValues';
 
 interface SampleDetailsProps {
   data: ProcessedData;
@@ -31,7 +32,7 @@ export function SampleDetails({ data, sampleIndex, onClose }: SampleDetailsProps
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">{t('playground.sampleDetails.yValue')}</span>
-          <span className="font-mono">{yValue.toFixed(4)}</span>
+          <span className="font-mono">{formatTargetValue(yValue, 4)}</span>
         </div>
 
         {metadata && Object.entries(metadata).length > 0 && (

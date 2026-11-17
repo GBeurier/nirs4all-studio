@@ -15,6 +15,7 @@
  * while maintaining full backward compatibility.
  */
 
+import type { TargetValue } from '@/types/spectral';
 import React, { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -45,7 +46,7 @@ export interface SpectraChartProps {
   /** Processed data section from backend */
   processed: DataSection;
   /** Optional Y values for coloring */
-  y?: number[];
+  y?: TargetValue[];
   /** Sample IDs for labels */
   sampleIds?: string[];
   /** Fold information for fold coloring */

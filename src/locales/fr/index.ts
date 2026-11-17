@@ -2192,6 +2192,7 @@ notFound: {
       },
       stats: {
         missingCells: "{{file}} : {{count}} valeurs manquantes conservées. X, Y et les métadonnées restent alignés.",
+        missingSpectralCells: "{{file}} : {{count}} valeurs manquantes dans les spectres. Aucune ligne n'est supprimée, mais avec ce traitement des NA le jeu de données ne peut pas être chargé : choisissez dans les options d'analyse de supprimer ces échantillons, de supprimer ces variables, de remplacer les valeurs ou de les conserver.",
         detectingFiles: "Détection des fichiers…",
         loadingFiles: "Chargement des fichiers…",
         noXFiles: "Aucun fichier X associé - sélectionnez les rôles des fichiers ci-dessous",
@@ -6043,6 +6044,7 @@ notFound: {
       outlier: "Aberrant",
       normal: "Normal",
       class: "Classe",
+      noTargetValue: "Sans valeur ({{count}})",
       collapse: "Réduire la légende",
       expand: "Développer la légende",
     },
@@ -6686,6 +6688,8 @@ notFound: {
         processed: "(prétraité)",
         classCount_one: "({{count}} classe)",
         classCount_other: "({{count}} classes)",
+        missingTargets_one: "{{count}} échantillon sans valeur",
+        missingTargets_other: "{{count}} échantillons sans valeur",
         binCountLabel: "Nombre d’intervalles",
         binAuto: "Auto",
         selectedOnly: {
@@ -9388,7 +9392,15 @@ transferAnalysis: {
         predictHint: "Les modèles sont entraînés sur les échantillons qui ont une cible ; les autres reçoivent une prédiction, affichée comme « Prédit (sans cible) » et jamais évaluée.",
         remove: "Supprimer ces échantillons",
         removeHint: "Les échantillons sans cible sont écartés au chargement des données pour cette exécution.",
-        removeUnavailable: "Indisponible pour les jeux de données multimodaux : leurs échantillons sans cible sont toujours prédits.",
+        removeUnavailable: "Indisponible pour les jeux de données multimodaux, et lorsqu'une colonne cible parmi plusieurs est sélectionnée : ces échantillons sont toujours prédits.",
+        count: "{{datasetName}} — {{target}} : {{missing}} échantillons sans valeur",
+        countOfSamples: "{{datasetName}} — {{target}} : {{missing}} échantillons sur {{samples}} sans valeur",
+      },
+      targets: {
+        title: "Cible à modéliser",
+        description: "Ces jeux de données ont plusieurs colonnes cibles. Choisissez celle que cette exécution modélise ; les jeux de données enregistrés ne sont pas modifiés.",
+        columnWithMissing: "{{column}} — {{missing}} sans valeur",
+        allColumns: "Les {{total}} colonnes cibles ensemble (un seul modèle multi-sorties)",
       },
       summary: {
         datasets: "Jeux de données",

@@ -1,5 +1,10 @@
+import type { TargetValue } from '@/types/spectral';
 import type { GlobalColorConfig } from '@/lib/playground/colorConfig';
 import type { FoldsInfo, YStats } from '@/types/playground';
+import { countMissingTargets, getObservedTargetRange, getObservedTargets, isObservedTarget } from './targetValues';
+
+/** Segment of a fold bar holding the samples without a target value (target colour mode). */
+export const FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT = 'missing';
 
 export interface FoldDistributionYBin {
   min: number;
@@ -58,7 +63,7 @@ interface FoldLabelOptions {
 
 export interface FoldDistributionSegmentOptions {
   colorMode: GlobalColorConfig['mode'];
-  y?: number[];
+  y?: TargetValue[];
   yBins: FoldDistributionYBin[];
   isClassificationMode: boolean;
   classLabels: string[];
@@ -71,7 +76,7 @@ export interface FoldDistributionSegmentOptions {
 
 export interface BuildFoldDistributionPartitionBarsInput {
   folds: FoldsInfo | null;
-  y?: number[];
+  y?: TargetValue[];
   displayFilteredIndices?: Set<number>;
   segmentOptions: FoldDistributionSegmentOptions;
 }
@@ -111,21 +116,14 @@ export function buildFoldDistributionYStatsData(
     });
 }
 
-export function getFoldDistributionTargetRange(y: number[] | undefined): FoldDistributionTargetRange {
-  if (!y || y.length === 0) return { min: 0, max: 1 };
-
-  return y.reduce<FoldDistributionTargetRange>(
-    (range, value) => ({
-      min: Math.min(range.min, value),
-      max: Math.max(range.max, value),
-    }),
-    { min: y[0], max: y[0] },
-  );
+export function getFoldDistributionTargetRange(y: TargetValue[] | undefined): FoldDistributionTargetRange {
+  return getObservedTargetRange(y) ?? { min: 0, max: 1 };
 }
 
-export function getFoldDistributionTargetMean(y: number[] | undefined): number | null {
-  if (!y || y.length === 0) return null;
-  return y.reduce((sum, value) => sum + value, 0) / y.length;
+export function getFoldDistributionTargetMean(y: TargetValue[] | undefined): number | null {
+  const observed = getObservedTargets(y);
+  if (observed.length === 0) return null;
+  return observed.reduce((sum, value) => sum + value, 0) / observed.length;
 }
 
 export function buildFoldDistributionExportRows(
@@ -195,23 +193,24 @@ export function computeFoldDistributionSegments(
       segmentIndices.total = [...indices];
       break;
 
-    case 'target':
-      if (isClassificationMode && classLabels.length > 0 && y) {
+    case 'target': {
+      const isClassSegmented = isClassificationMode && classLabels.length > 0 && y;
+      if (isClassSegmented) {
         classLabels.forEach((label, index) => {
           const key = `class_${index}`;
           const matching = indices.filter(sampleIndex => {
             const yValue = y[sampleIndex];
-            return yValue !== undefined && String(yValue) === label;
+            return isObservedTarget(yValue) && String(yValue) === label;
           });
           counts[key] = matching.length;
           segmentIndices[key] = matching;
         });
-      } else if (y && yBins.length > 0) {
+      } else if (y) {
         yBins.forEach((_, index) => {
           const key = `bin_${index}`;
           const matching = indices.filter(sampleIndex => {
             const yValue = y[sampleIndex];
-            return yValue !== undefined && getFoldDistributionBinIndex(yValue, yBins) === index;
+            return isObservedTarget(yValue) && getFoldDistributionBinIndex(yValue, yBins) === index;
           });
           counts[key] = matching.length;
           segmentIndices[key] = matching;
@@ -219,8 +218,17 @@ export function computeFoldDistributionSegments(
       } else {
         counts.total = total;
         segmentIndices.total = [...indices];
+        break;
+      }
+
+      // Samples without a target value stay in the bar as their own segment.
+      const missing = indices.filter(sampleIndex => !isObservedTarget(y[sampleIndex]));
+      if (missing.length > 0) {
+        counts[FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT] = missing.length;
+        segmentIndices[FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT] = missing;
       }
       break;
+    }
 
     case 'outlier':
       if (outlierIndices) {
@@ -390,20 +398,23 @@ export function buildFoldDistributionPartitionBars({
 
 export function buildFoldDistributionSegmentKeys({
   colorMode,
+  y,
   yBins,
   isClassificationMode,
   classLabels,
   metadataCategories,
-}: Pick<FoldDistributionSegmentOptions, 'colorMode' | 'yBins' | 'isClassificationMode' | 'classLabels' | 'metadataCategories'>): string[] {
+}: Pick<FoldDistributionSegmentOptions, 'colorMode' | 'y' | 'yBins' | 'isClassificationMode' | 'classLabels' | 'metadataCategories'>): string[] {
   switch (colorMode) {
     case 'partition':
     case 'fold':
       return ['total'];
-    case 'target':
+    case 'target': {
+      const missingKeys = countMissingTargets(y) > 0 ? [FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT] : [];
       if (isClassificationMode && classLabels.length > 0) {
-        return classLabels.map((_, index) => `class_${index}`);
+        return [...classLabels.map((_, index) => `class_${index}`), ...missingKeys];
       }
-      return yBins.map((_, index) => `bin_${index}`);
+      return [...yBins.map((_, index) => `bin_${index}`), ...missingKeys];
+    }
     case 'outlier':
       return ['normal', 'outlier'];
     case 'selection':
@@ -445,7 +456,7 @@ function getFoldDistributionBinIndex(value: number, bins: FoldDistributionYBin[]
   return binIndex;
 }
 
-function getHeldOutFoldTestIndices(folds: FoldsInfo, y?: number[]): number[] {
+function getHeldOutFoldTestIndices(folds: FoldsInfo, y?: TargetValue[]): number[] {
   const heldOutFromLabels: number[] = [];
   if (folds.fold_labels && folds.fold_labels.length > 0) {
     folds.fold_labels.forEach((label, index) => {
@@ -473,10 +484,10 @@ function getHeldOutFoldTestIndices(folds: FoldsInfo, y?: number[]): number[] {
   return heldOutFromLabels.length > 0 ? heldOutFromLabels : heldOutFromIndices;
 }
 
-function computeYStatsForIndices(y: number[] | undefined, indices: number[]): { mean?: number; std?: number } {
+function computeYStatsForIndices(y: TargetValue[] | undefined, indices: number[]): { mean?: number; std?: number } {
   if (!y || y.length === 0) return {};
 
-  const values = indices.map(index => y[index]).filter(value => value !== undefined);
+  const values = getObservedTargets(indices.map(index => y[index]));
   if (values.length === 0) return {};
 
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;

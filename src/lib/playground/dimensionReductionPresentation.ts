@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import type { FoldsInfo } from '@/types/playground';
 import {
   type ColorContext,
@@ -18,7 +19,7 @@ export type DimensionReductionColorMode = 'target' | 'fold' | 'metadata';
 
 export interface BuildDimensionReductionColorContextInput {
   externalColorContext?: ColorContext;
-  y?: number[];
+  y?: TargetValue[];
   yRange: DimensionReductionYRange;
   folds?: Pick<FoldsInfo, 'folds' | 'fold_labels' | 'kind' | 'n_folds'> | null;
   fallbackFoldLabels?: number[];

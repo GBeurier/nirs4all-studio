@@ -13,6 +13,7 @@
  * - Export functionality (PNG, CSV)
  */
 
+import type { TargetValue } from '@/types/spectral';
 import React, { useMemo, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { exportChart } from '@/lib/chartExport';
@@ -81,7 +82,7 @@ interface DimensionReductionChartProps {
     error?: string;
   } | null;
   /** Y values for coloring */
-  y?: number[];
+  y?: TargetValue[];
   /** Fold information for fold coloring */
   folds?: FoldsInfo | null;
   /** Sample IDs for labels */
