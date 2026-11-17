@@ -36,8 +36,8 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 24884,
-      "sha256": "8b0dbbb0bba658476b796efd9a5aba08aa9d422378db221b415c7fdd80a279a7"
+      "size": 24516,
+      "sha256": "a083413d8b465b2ed6b1878c128938fe8c288f60673e2de84ae2b240f1b47ffa"
     },
     {
       "path": "api/library_inspector.py",

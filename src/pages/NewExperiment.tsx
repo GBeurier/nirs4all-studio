@@ -20,7 +20,6 @@ import {
 } from "@/lib/experimentWizardFlow";
 import {
   canRemoveMissingTargetSamples,
-  DEFAULT_MISSING_TARGET_POLICY,
   resolveMissingTargetPolicy,
 } from "@/lib/experimentMissingTargets";
 import { missingSpectraCounts, resolveMissingSpectraChoice } from "@/lib/experimentMissingSpectra";
@@ -91,14 +90,8 @@ export default function NewExperiment() {
   }), [planFlow.datasetById, selectionFlow.selectedDatasetIds]);
   const targetOptions = useMemo(() => resolveExperimentTargets(targetChoices, selectedDatasets), [selectedDatasets, targetChoices]);
   const targetByDataset = useMemo(() => buildTargetByDataset(targetOptions), [targetOptions]);
-  // Removal at load applies to whole rows of the target file: with one column
-  // chosen among several it would also drop the samples that miss another
-  // column. Such a run keeps its samples without a value and predicts them.
-  const oneColumnOfSeveral = Object.keys(targetByDataset).length > 0;
-  const missingTargetRemovalAvailable = !oneColumnOfSeveral && canRemoveMissingTargetSamples(selectedDatasets);
-  const missingTargetPolicy = oneColumnOfSeveral
-    ? DEFAULT_MISSING_TARGET_POLICY
-    : resolveMissingTargetPolicy(missingTargetChoice, selectedDatasets);
+  const missingTargetRemovalAvailable = canRemoveMissingTargetSamples(selectedDatasets);
+  const missingTargetPolicy = resolveMissingTargetPolicy(missingTargetChoice, selectedDatasets);
   const missingTargetCounts = useMemo(() => countMissingTargets(targetOptions, selectedDatasets), [selectedDatasets, targetOptions]);
   const missingSpectraPolicy = resolveMissingSpectraChoice(missingSpectraChoice, selectedDatasets);
   const missingSpectra = useMemo(() => ({

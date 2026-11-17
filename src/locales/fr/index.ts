@@ -9394,7 +9394,7 @@ transferAnalysis: {
         predictHint: "Les modèles sont entraînés sur les échantillons qui ont une cible ; les autres reçoivent une prédiction, affichée comme « Prédit (sans cible) » et jamais évaluée.",
         remove: "Supprimer ces échantillons",
         removeHint: "Les échantillons sans cible sont écartés au chargement des données pour cette exécution.",
-        removeUnavailable: "Indisponible pour les jeux de données multimodaux, et lorsqu'une colonne cible parmi plusieurs est sélectionnée : ces échantillons sont toujours prédits.",
+        removeUnavailable: "Indisponible pour les jeux de données multimodaux : leurs échantillons sans cible sont toujours prédits.",
         count: "{{datasetName}} — {{target}} : {{missing}} échantillons sans valeur",
         countOfSamples: "{{datasetName}} — {{target}} : {{missing}} échantillons sur {{samples}} sans valeur",
       },

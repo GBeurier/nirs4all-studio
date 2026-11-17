@@ -153,10 +153,6 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
                 or not isinstance(target["column"], str) or type(target["index"]) is not int or target["index"] < 0
                 or target.get("task_type") not in (None, "regression", "binary_classification", "multiclass_classification")):
             raise ValueError("target must name a column, its position among the dataset's target columns and optionally its task type")
-        # The library's removal drops every row of the target file that has a
-        # missing cell, in any column: not only the samples missing this target.
-        if missing_target_policy == "remove":
-            raise ValueError("Removing samples without a target is not supported when one target column of several is selected; keep them to have them predicted")
 
     # A run on a dataset whose spectra have missing values states what happens
     # to them: the affected samples are removed, the values are replaced by one

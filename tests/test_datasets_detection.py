@@ -439,13 +439,63 @@ def test_scientific_run_selects_one_target_column_for_this_run_only(tmp_path: Pa
             configure_dataset({"record": record, "scientific_run": True, "target": target})
     with pytest.raises(ValueError, match="only for scientific runs"):
         configure_dataset({"record": record, "target": {"column": "grade", "index": 2}})
-    # Removal at load drops whole rows of the target file, whatever the column.
-    with pytest.raises(ValueError, match="one target column of several is selected"):
-        configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "remove", "target": {"column": "grade", "index": 2}})
+    # Removal applies to the selected column as it does to a single target file.
+    removing = configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "remove", "target": {"column": "grade", "index": 2}})
+    assert removing["train_y_filter"] == [2] and removing["test_y_filter"] == [2]
+    assert removing["train_y_params"]["na"]["policy"] == "remove_sample" and removing["test_y_params"]["na"]["policy"] == "remove_sample"
     descriptor = {"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": {"samples": []}}
     with pytest.raises(ValueError, match="not supported for multimodal datasets"):
         configure_dataset({"record": {"path": str(tmp_path), "config": {"dataset_document": descriptor}}, "scientific_run": True,
                            "target": {"column": "grade", "index": 2}})
+
+
+@pytest.mark.parametrize(("column", "index", "kept"), [
+    ("moisture", 0, [1, 2, 4, 5, 6]),
+    ("protein", 1, [2, 3, 5, 6]),
+    ("fibre", 2, [1, 3, 4, 5]),
+])
+def test_removing_samples_without_the_selected_target_keeps_exactly_those_that_have_it(tmp_path: Path, column, index, kept):
+    import numpy as np
+    from nirs4all.api.dataset_inspection import load_dataset_for_analysis
+
+    from api.library_documents import configure_dataset
+
+    # Sample n has spectrum (n, n + 0.5), identifier Sn and, when present, moisture n, protein 20 + n, fibre 30 + n.
+    samples = range(1, 7)
+    (tmp_path / "Xtrain.csv").write_text("1000;1100\n" + "".join(f"{n};{n + 0.5}\n" for n in samples))
+    (tmp_path / "Ytrain.csv").write_text("moisture;protein;fibre\n1;;31\n2;22;NA\n;23;33\n4;NA;34\n5;25;35\n6;26;\n")
+    (tmp_path / "Mtrain.csv").write_text("sample_id;batch\n" + "".join(f"S{n};B{n % 2}\n" for n in samples))
+    (tmp_path / "Xtest.csv").write_text("1000;1100\n7;7.5\n8;8.5\n")
+    (tmp_path / "Ytest.csv").write_text("moisture;protein;fibre\n7;27;37\n8;28;38\n")
+    (tmp_path / "Mtest.csv").write_text("sample_id;batch\nS7;B1\nS8;B0\n")
+    record = {"path": str(tmp_path), "name": "Several targets", "config": {
+        "files": [{"path": f"{role}{split}.csv", "type": kind, "split": split}
+                  for split in ("train", "test") for role, kind in (("X", "X"), ("Y", "Y"), ("M", "metadata"))],
+        "na_policy": "auto", "delimiter": ";", "task_type": "regression",
+    }}
+    offset = {"moisture": 0, "protein": 20, "fibre": 30}[column]
+
+    def loaded(policy: str, partition: str):
+        config = configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": policy, "target": {"column": column, "index": index}})
+        dataset, _reader = load_dataset_for_analysis(config)
+        selector = {"partition": partition}
+        return (np.asarray(dataset.x(selector, layout="2d"), dtype=float), np.asarray(dataset.y(selector), dtype=float).ravel(),
+                dataset.metadata(selector).to_dict(as_series=False))
+
+    spectra, values, metadata = loaded("remove", "train")
+    # Only the samples missing the selected target are removed: a missing value
+    # in another target column removes nothing, and X, y and metadata stay
+    # aligned sample by sample.
+    assert spectra.tolist() == [[n, n + 0.5] for n in kept]
+    assert values.tolist() == [offset + n for n in kept]
+    assert metadata["sample_id"] == [f"S{n}" for n in kept] and metadata["batch"] == [f"B{n % 2}" for n in kept]
+    spectra, values, metadata = loaded("remove", "test")
+    assert spectra.tolist() == [[7, 7.5], [8, 8.5]] and values.tolist() == [offset + 7, offset + 8] and metadata["sample_id"] == ["S7", "S8"]
+
+    # Keeping them leaves every sample, with no value where the selected target is missing.
+    spectra, values, metadata = loaded("predict", "train")
+    assert spectra.tolist() == [[n, n + 0.5] for n in samples] and metadata["sample_id"] == [f"S{n}" for n in samples]
+    assert [None if np.isnan(value) else value for value in values] == [offset + n if n in kept else None for n in samples]
 
 
 @pytest.mark.parametrize(("policy", "expected_na", "expected_samples", "expected_missing"), [

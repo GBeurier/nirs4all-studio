@@ -97,6 +97,9 @@ describe("experimentLaunchConfig", () => {
     };
     expect(buildExperimentLaunchConfig({ ...base, targetByDataset: { d2: "trait_03" } }))
       .toMatchObject({ target_by_dataset: { d2: "trait_03" } });
+    // Removing the samples without a value applies to the selected column too.
+    expect(buildExperimentLaunchConfig({ ...base, missingTargetPolicy: "remove", targetByDataset: { d2: "trait_03" } }))
+      .toMatchObject({ target_by_dataset: { d2: "trait_03" }, missing_target_policy: "remove" });
     expect(buildExperimentLaunchConfig({ ...base, targetByDataset: {} })).not.toHaveProperty("target_by_dataset");
     expect(buildExperimentLaunchConfig(base)).not.toHaveProperty("target_by_dataset");
   });
