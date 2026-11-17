@@ -36,6 +36,8 @@ export interface UseNewExperimentLaunchFlowInput {
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
   missingTargetPolicy: MissingTargetPolicy;
+  /** The target column of each dataset trained on one of its several target columns. */
+  targetByDataset?: Record<string, string>;
   singlePairSplitSpecResult?: CampaignSinglePairSplitSpecResult;
   hasGroupingBlockingError: boolean;
   executionAdapter?: ExperimentExecutionAdapter;
@@ -64,6 +66,7 @@ export function useNewExperimentLaunchFlow({
   selectedPipelineConfigs,
   selectedGroupingPayload,
   missingTargetPolicy,
+  targetByDataset,
   singlePairSplitSpecResult = { splitSpecs: [], skippedRunIds: [] },
   hasGroupingBlockingError,
   executionAdapter = LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
@@ -92,6 +95,7 @@ export function useNewExperimentLaunchFlow({
       selectedPipelineConfigs,
       selectedGroupingPayload,
       missingTargetPolicy,
+      targetByDataset,
       strictCampaignSpecs: singlePairSplitSpecResult,
       executionAdapter,
       missingIssues,
@@ -105,6 +109,7 @@ export function useNewExperimentLaunchFlow({
     selectedGroupingPayload,
     selectedPipelineConfigs,
     singlePairSplitSpecResult,
+    targetByDataset,
   ]);
   const launchPayloadPlan = useMemo(() => buildLaunchPayloadPlan(), [buildLaunchPayloadPlan]);
 

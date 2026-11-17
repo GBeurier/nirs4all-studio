@@ -87,6 +87,20 @@ describe("experimentLaunchConfig", () => {
     });
   });
 
+  it("names the target column only for the datasets trained on one of several", () => {
+    const base = {
+      name: "Targets",
+      selectedDatasetIds: ["d1", "d2"],
+      selectedPipelineConfigs: [{ id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps }],
+      selectedGroupingPayload: { d1: null, d2: null },
+      missingTargetPolicy: "predict" as const,
+    };
+    expect(buildExperimentLaunchConfig({ ...base, targetByDataset: { d2: "trait_03" } }))
+      .toMatchObject({ target_by_dataset: { d2: "trait_03" } });
+    expect(buildExperimentLaunchConfig({ ...base, targetByDataset: {} })).not.toHaveProperty("target_by_dataset");
+    expect(buildExperimentLaunchConfig(base)).not.toHaveProperty("target_by_dataset");
+  });
+
   it("always includes the strict native runtime contract", () => {
     expect(buildExperimentLaunchConfig({
       name: "Runtime",

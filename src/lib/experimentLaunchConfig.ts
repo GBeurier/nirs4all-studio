@@ -20,6 +20,7 @@ export interface BuildExperimentLaunchConfigInput {
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
   missingTargetPolicy: MissingTargetPolicy;
+  targetByDataset?: Record<string, string>;
   missingIssues?: MissingOperatorIssue[];
   executionBackend?: RunExecutionBackend;
 }
@@ -31,6 +32,7 @@ export function buildExperimentLaunchConfig({
   selectedPipelineConfigs,
   selectedGroupingPayload,
   missingTargetPolicy,
+  targetByDataset = {},
   missingIssues = [],
   executionBackend = "local-python",
 }: BuildExperimentLaunchConfigInput): ExperimentConfig {
@@ -99,6 +101,9 @@ export function buildExperimentLaunchConfig({
     allow_fallback: false,
   };
 
+  if (Object.keys(targetByDataset).length > 0) {
+    config.target_by_dataset = targetByDataset;
+  }
   if (executionBackend !== "local-python") {
     config.execution_backend = executionBackend;
   }

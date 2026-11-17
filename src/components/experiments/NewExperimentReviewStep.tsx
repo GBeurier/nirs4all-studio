@@ -6,12 +6,14 @@ import {
   type SelectedPipelinesRuntimeGrouping,
 } from "@/lib/runtimeSplitGrouping";
 import { experimentReviewCopy } from "@/lib/experimentReviewPresentation";
+import type { ExperimentTargetChoice, ExperimentTargetOption, MissingTargetCount } from "@/lib/experimentTargets";
 import type { MissingTargetPolicy } from "@/types/runs";
 
 import { NewExperimentCampaignPlanPreview } from "./NewExperimentCampaignPlanPreview";
 import { NewExperimentReviewDescriptionField } from "./NewExperimentReviewDescriptionField";
 import { NewExperimentReviewExperimentCard } from "./NewExperimentReviewExperimentCard";
 import { NewExperimentReviewMissingTargetsField } from "./NewExperimentReviewMissingTargetsField";
+import { NewExperimentReviewTargetsField } from "./NewExperimentReviewTargetsField";
 import { NewExperimentReviewRuntimeGroupingSummary } from "./NewExperimentReviewRuntimeGroupingSummary";
 
 export interface NewExperimentReviewStepProps {
@@ -23,12 +25,15 @@ export interface NewExperimentReviewStepProps {
   executionEnvironmentDiagnostics: NewExperimentExecutionEnvironmentDiagnostics;
   experimentDescription: string;
   groupingSelection: SelectedPipelinesRuntimeGrouping;
+  missingTargetCounts: MissingTargetCount[];
   missingTargetPolicy: MissingTargetPolicy;
   missingTargetRemovalAvailable: boolean;
   selectedDatasetIds: string[];
+  targetOptions: ExperimentTargetOption[];
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
   onMissingTargetPolicyChange: (value: MissingTargetPolicy) => void;
+  onTargetChange: (datasetId: string, target: ExperimentTargetChoice) => void;
 }
 
 export function NewExperimentReviewStep({
@@ -40,12 +45,15 @@ export function NewExperimentReviewStep({
   executionEnvironmentDiagnostics,
   experimentDescription,
   groupingSelection,
+  missingTargetCounts,
   missingTargetPolicy,
   missingTargetRemovalAvailable,
   selectedDatasetIds,
+  targetOptions,
   onExperimentDescriptionChange,
   onExperimentNameChange,
   onMissingTargetPolicyChange,
+  onTargetChange,
 }: NewExperimentReviewStepProps) {
   return (
     <div className="space-y-6">
@@ -60,7 +68,9 @@ export function NewExperimentReviewStep({
         campaignPreview={campaignPreview}
         executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
       />
+      <NewExperimentReviewTargetsField targetOptions={targetOptions} onTargetChange={onTargetChange} />
       <NewExperimentReviewMissingTargetsField
+        missingTargetCounts={missingTargetCounts}
         missingTargetPolicy={missingTargetPolicy}
         removalAvailable={missingTargetRemovalAvailable}
         onMissingTargetPolicyChange={onMissingTargetPolicyChange}

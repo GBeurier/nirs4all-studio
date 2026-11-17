@@ -199,6 +199,9 @@ function propsForStep(currentStep: NewExperimentWizardStep) {
     onExperimentDescriptionChange: vi.fn(),
     onExperimentNameChange: vi.fn(),
     onMissingTargetPolicyChange: vi.fn(),
+    missingTargetCounts: [],
+    targetOptions: [],
+    onTargetChange: vi.fn(),
   };
 }
 

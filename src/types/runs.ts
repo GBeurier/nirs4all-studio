@@ -297,6 +297,8 @@ export interface ExperimentConfig {
   split_group_by_by_dataset?: SplitGroupByByDataset;
   /** Run-only handling of samples without a target; saved datasets are unchanged. */
   missing_target_policy?: MissingTargetPolicy;
+  /** The target column a dataset with several of them is trained on; absent: all columns together. */
+  target_by_dataset?: Record<string, string>;
   /** Inline pipeline from editor (for unsaved pipelines) */
   inline_pipeline?: {
     name: string;

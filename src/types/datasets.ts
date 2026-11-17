@@ -134,6 +134,8 @@ export interface TargetConfig {
   label?: string;
   /** Description of what this target represents */
   description?: string;
+  /** Samples without a value for this target, counted when the dataset was last inspected */
+  missing_count?: number;
 }
 
 /**

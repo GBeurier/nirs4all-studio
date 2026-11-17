@@ -96,6 +96,7 @@ export interface BuildExperimentLaunchSelectionPayloadPlanInput {
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
   missingTargetPolicy: MissingTargetPolicy;
+  targetByDataset?: Record<string, string>;
   strictCampaignSpecs: CampaignSinglePairSplitSpecResult;
   executionAdapter: ExperimentExecutionAdapter;
   missingIssues?: MissingOperatorIssue[];
@@ -402,6 +403,7 @@ export function buildExperimentLaunchSelectionPayloadPlan({
   selectedPipelineConfigs,
   selectedGroupingPayload,
   missingTargetPolicy,
+  targetByDataset,
   strictCampaignSpecs,
   executionAdapter,
   missingIssues = [],
@@ -413,6 +415,7 @@ export function buildExperimentLaunchSelectionPayloadPlan({
     selectedPipelineConfigs,
     selectedGroupingPayload,
     missingTargetPolicy,
+    targetByDataset,
     missingIssues,
     executionBackend: executionAdapter.nativeBackends[0],
   });

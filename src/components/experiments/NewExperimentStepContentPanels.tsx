@@ -11,6 +11,7 @@ import type { NewExperimentExecutionEnvironmentDiagnostics } from "@/hooks/useNe
 import type { UseNewExperimentLaunchFlowResult } from "@/hooks/useNewExperimentLaunchFlow";
 import type { UseNewExperimentPlanFlowResult } from "@/hooks/useNewExperimentPlanFlow";
 import type { UseNewExperimentSelectionFlowResult } from "@/hooks/useNewExperimentSelectionFlow";
+import type { ExperimentTargetChoice, ExperimentTargetOption, MissingTargetCount } from "@/lib/experimentTargets";
 import type { MissingTargetPolicy } from "@/types/runs";
 
 export interface NewExperimentPipelineStepPanelProps {
@@ -92,6 +93,7 @@ export interface NewExperimentReviewStepPanelProps {
   customExperimentName: string;
   executionEnvironmentDiagnostics: NewExperimentExecutionEnvironmentDiagnostics;
   experimentDescription: string;
+  missingTargetCounts: MissingTargetCount[];
   missingTargetPolicy: MissingTargetPolicy;
   missingTargetRemovalAvailable: boolean;
   planFlow: UseNewExperimentPlanFlowResult;
@@ -99,12 +101,15 @@ export interface NewExperimentReviewStepPanelProps {
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
   onMissingTargetPolicyChange: (value: MissingTargetPolicy) => void;
+  onTargetChange: (datasetId: string, target: ExperimentTargetChoice) => void;
+  targetOptions: ExperimentTargetOption[];
 }
 
 export function NewExperimentReviewStepPanel({
   customExperimentName,
   executionEnvironmentDiagnostics,
   experimentDescription,
+  missingTargetCounts,
   missingTargetPolicy,
   missingTargetRemovalAvailable,
   planFlow,
@@ -112,6 +117,8 @@ export function NewExperimentReviewStepPanel({
   onExperimentDescriptionChange,
   onExperimentNameChange,
   onMissingTargetPolicyChange,
+  onTargetChange,
+  targetOptions,
 }: NewExperimentReviewStepPanelProps) {
   return (
     <NewExperimentReviewStep
@@ -123,12 +130,15 @@ export function NewExperimentReviewStepPanel({
       executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
       experimentDescription={experimentDescription}
       groupingSelection={planFlow.groupingSelection}
+      missingTargetCounts={missingTargetCounts}
       missingTargetPolicy={missingTargetPolicy}
       missingTargetRemovalAvailable={missingTargetRemovalAvailable}
       selectedDatasetIds={selectionFlow.selectedDatasetIds}
       onExperimentDescriptionChange={onExperimentDescriptionChange}
       onExperimentNameChange={onExperimentNameChange}
       onMissingTargetPolicyChange={onMissingTargetPolicyChange}
+      onTargetChange={onTargetChange}
+      targetOptions={targetOptions}
     />
   );
 }
