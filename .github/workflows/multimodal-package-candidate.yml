@@ -288,6 +288,9 @@ jobs:
       run:
         shell: bash
     steps:
+      # dag-ml fixtures exceed the 260-character path limit below this workspace.
+      - name: Allow long paths in the candidate checkouts
+        run: git config --system core.longpaths true
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
