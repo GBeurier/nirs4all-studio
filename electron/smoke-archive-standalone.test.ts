@@ -41,6 +41,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     help: boolean;
   };
   verifyInstalledProduct(port: number, sessionToken: string): Promise<unknown>;
+  verifyRunLaunch(port: number, sessionToken: string): Promise<void>;
   verifySelectedEnvironment(port: number, sessionToken: string, pythonPath: string): Promise<unknown>;
   waitForReady(
     port: number,
@@ -277,6 +278,38 @@ describe("smoke-archive-standalone", () => {
       await smokeModule.verifyInstalledProduct(43123, "test-session");
       expect(calls).toHaveLength(7);
       expect(fs.existsSync(fixture)).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("launches one experiment on a dataset with a missing target and requires its completion", async () => {
+    const calls: string[] = [];
+    let polls = 0;
+    let refusal: string | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
+      const route = url.replace("http://127.0.0.1:43123/api", "");
+      calls.push(route);
+      const body = typeof options.body === "string" ? JSON.parse(options.body) : {};
+      let value: unknown = { success: true };
+      if (route === "/datasets/link") {
+        expect(fs.readFileSync(path.join(body.path, "Ytrain.csv"), "utf8").split("\n")[6]).toBe("");
+        value = { success: true, dataset: { id: "dataset-a", targets: [{ column: "target", missing_count: 1 }] } };
+      } else if (route === "/pipelines/import") {
+        value = { pipeline: { id: "pipeline-a" } };
+      } else if (route === "/runs/run-groups") {
+        expect(body.legacyConfig).toMatchObject({ dataset_ids: ["dataset-a"], pipeline_ids: ["pipeline-a"], missing_target_policy: "predict" });
+        if (refusal) return { ok: false, status: 503, text: async () => refusal };
+        value = { job_id: "job-a" };
+      } else if (route === "/training/job-a") {
+        polls += 1;
+        value = { status: polls < 2 ? "running" : "completed" };
+      }
+      return { ok: true, json: async () => value };
+    }));
+    try {
+      await smokeModule.verifyRunLaunch(43123, "test-session");
+      expect(calls).toEqual(["/workspace/create", "/workspace/select", "/datasets/link", "/pipelines/import", "/runs/run-groups", "/training/job-a", "/training/job-a"]);
+      refusal = JSON.stringify({ code: "scientific_dataset_invalid", detail: "The run cannot start" });
+      await expect(smokeModule.verifyRunLaunch(43123, "test-session")).rejects.toThrow(/run-groups: HTTP 503.*scientific_dataset_invalid/);
     } finally { vi.unstubAllGlobals(); }
   });
 
