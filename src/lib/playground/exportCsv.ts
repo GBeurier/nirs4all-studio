@@ -57,7 +57,8 @@ export function buildPcaCsv(content: DataExportContent): CsvBuildResult {
     };
   }
 
-  const nComponents = pca[0].length;
+  // A sample the projection left out has an empty row: its cells stay empty.
+  const nComponents = Math.max(...pca.map((coords) => coords.length));
   const hasSampleIds = sampleIds && sampleIds.length === pca.length;
   const hasY = y && y.length === pca.length;
 
@@ -75,7 +76,7 @@ export function buildPcaCsv(content: DataExportContent): CsvBuildResult {
   const rows = pca.map((coords, idx) => {
     const row: (string | number)[] = [];
     if (hasSampleIds) row.push(sampleIds[idx]);
-    row.push(...coords.map((value) => value.toFixed(6)));
+    row.push(...Array.from({ length: nComponents }, (_, component) => coords[component]?.toFixed(6) ?? ''));
     if (hasY) row.push(y[idx] ?? '');
     return row.join(',');
   });

@@ -215,8 +215,150 @@ fn dispatch(
         prepared.operation,
         prepared.projection,
     ) {
-        Ok(value) => HttpResponse::json(200, value.to_string()),
+        Ok(mut value) => {
+            if prepared.operation == "execute" && matches!(prepared.projection, Projection::Result)
+            {
+                project_complete_samples(&mut value, &prepared, invoke);
+            }
+            HttpResponse::json(200, value.to_string())
+        }
         Err(detail) => error(500, &detail),
+    }
+}
+
+const PROJECTIONS: [&str; 2] = ["pca", "umap"];
+
+/// The library's own filter for the samples whose processed spectrum holds a
+/// missing or infinite value. Its other criteria are switched off.
+fn complete_samples_step() -> Value {
+    json!({
+        "id":"studio-complete-samples", "type":"filter", "name":"SpectralQualityFilter",
+        "params":{"filter_mode":"remove"}, "enabled":true,
+        "operator":{"class":"nirs4all.operators.filters.SpectralQualityFilter",
+            "params":{"max_nan_ratio":0,"max_zero_ratio":1,"min_variance":0,"check_inf":true}},
+    })
+}
+
+/// The same request, followed by the filter of incomplete spectra, asking
+/// only for the projections.
+fn complete_samples_document(document: &Value) -> Value {
+    let mut document = document.clone();
+    let payload = &mut document["payload"];
+    if !payload["steps"].is_array() {
+        payload["steps"] = json!([]);
+    }
+    payload["steps"]
+        .as_array_mut()
+        .unwrap()
+        .push(complete_samples_step());
+    if !payload["options"].is_object() {
+        payload["options"] = json!({});
+    }
+    for (option, value) in [
+        ("compute_statistics", json!(false)),
+        ("compute_metrics", json!(false)),
+        ("compute_repetitions", json!(false)),
+        ("max_wavelengths_returned", json!(8)),
+    ] {
+        payload["options"][option] = value;
+    }
+    document
+}
+
+/// A projection needs complete spectra. When the library could not project
+/// the processed matrix, ask it for the projection of the complete samples
+/// only: the same steps, then its filter of incomplete spectra. Nothing else
+/// of the answer changes; the samples left out keep their row, with an empty
+/// coordinate list, and the projection states how many they are.
+fn project_complete_samples(
+    result: &mut Value,
+    prepared: &Prepared,
+    invoke: &impl Fn(&Value) -> Result<Value, LibraryFacadeError>,
+) {
+    let failed = PROJECTIONS
+        .into_iter()
+        .filter(|field| result[*field]["error"].is_string())
+        .collect::<Vec<_>>();
+    let Some(rows) = result["processed"]["sample_ids"]
+        .as_array()
+        .filter(|_| !failed.is_empty())
+        .cloned()
+    else {
+        return;
+    };
+    let document = complete_samples_document(&prepared.document);
+    let Ok(complete) = invoke(&document).and_then(|response| {
+        project_response(
+            &response,
+            &prepared.request_id,
+            "execute",
+            Projection::Result,
+        )
+        .map_err(|message| LibraryFacadeError {
+            code: "invalid_playground_response".into(),
+            message,
+        })
+    }) else {
+        return;
+    };
+    let Some(kept) = complete["processed"]["sample_ids"].as_array() else {
+        return;
+    };
+    // Rows are matched by sample identity, never by position.
+    let key = |id: &Value| id.to_string();
+    let positions = kept
+        .iter()
+        .enumerate()
+        .map(|(position, id)| (key(id), position))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let unique = rows
+        .iter()
+        .map(key)
+        .collect::<std::collections::BTreeSet<_>>();
+    if kept.len() >= rows.len()
+        || positions.len() != kept.len()
+        || unique.len() != rows.len()
+        || !positions.keys().all(|id| unique.contains(id))
+    {
+        return;
+    }
+    let left_out = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, id)| !positions.contains_key(&key(id)))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    for field in failed {
+        let mut projection = complete[field].clone();
+        if projection["coordinates"]
+            .as_array()
+            .is_none_or(|coordinates| coordinates.len() != kept.len())
+        {
+            continue;
+        }
+        // The other per-sample arrays of a projection only repeat the
+        // processed rows' own values: keep the complete ones of that section.
+        let coordinates = projection["coordinates"].as_array().cloned().unwrap();
+        projection["coordinates"] = rows
+            .iter()
+            .map(|id| {
+                positions
+                    .get(&key(id))
+                    .map_or_else(|| json!([]), |position| coordinates[*position].clone())
+            })
+            .collect();
+        let object = projection.as_object_mut().unwrap();
+        object.remove("fold_labels");
+        object.remove("y");
+        if result["processed"]["y"]
+            .as_array()
+            .is_some_and(|y| y.len() == rows.len())
+        {
+            projection["y"] = result["processed"]["y"].clone();
+        }
+        projection["left_out"] =
+            json!({"reason":"missing_values","count":left_out.len(),"sample_indices":left_out});
+        result[field] = projection;
     }
 }
 
@@ -704,6 +846,77 @@ mod tests {
             serde_json::from_str::<Value>(&response.body).unwrap()["success"],
             true
         );
+    }
+
+    #[test]
+    fn a_projection_refused_for_missing_values_is_computed_on_the_complete_samples() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("settings"));
+        let calls = Cell::new(0);
+        let run = |second: Value| {
+            calls.set(0);
+            let response = dispatch(
+                &settings,
+                &request(
+                    "/api/playground/execute",
+                    "POST",
+                    &json!({"data":{"x":[[1.0,2.0],[1.0,null],[3.0,4.0]]},"steps":[],"options":{"compute_pca":true}}),
+                ),
+                &|document| {
+                    calls.set(calls.get() + 1);
+                    let steps = document["payload"]["steps"].as_array().unwrap();
+                    let result = if steps.is_empty() {
+                        // The library keeps every row and reports why it cannot project them.
+                        json!({"success":true,"processed":{"sample_ids":["a","b","c"],"y":[1.0,null,3.0]},
+                            "pca":{"error":"Input X contains NaN."},"umap":null})
+                    } else {
+                        assert_eq!(steps.len(), 1);
+                        assert_eq!(
+                            steps[0]["operator"]["class"],
+                            "nirs4all.operators.filters.SpectralQualityFilter"
+                        );
+                        assert_eq!(steps[0]["operator"]["params"]["max_nan_ratio"], 0);
+                        assert_eq!(document["payload"]["options"]["compute_pca"], true);
+                        assert_eq!(document["payload"]["options"]["compute_statistics"], false);
+                        second.clone()
+                    };
+                    Ok(
+                        json!({"schema":RESPONSE_SCHEMA,"request_id":document["request_id"],"operation":"execute","result":result}),
+                    )
+                },
+                &|_, _| unreachable!("inline requests must not translate datasets"),
+            );
+            assert_eq!(response.status, 200, "{}", response.body);
+            serde_json::from_str::<Value>(&response.body).unwrap()
+        };
+        // Complete samples are returned out of order on purpose: rows are matched by identity.
+        let result = run(json!({"success":true,"processed":{"sample_ids":["c","a"]},
+            "pca":{"coordinates":[[3.0,4.0],[1.0,2.0]],"explained_variance_ratio":[1.0,0.0],"y":[3.0,1.0],"fold_labels":[0,1]}}));
+        assert_eq!(calls.get(), 2);
+        assert_eq!(
+            result["pca"]["coordinates"],
+            json!([[1.0, 2.0], [], [3.0, 4.0]])
+        );
+        assert_eq!(
+            result["pca"]["left_out"],
+            json!({"reason":"missing_values","count":1,"sample_indices":[1]})
+        );
+        assert_eq!(result["pca"]["y"], json!([1.0, null, 3.0]));
+        assert!(result["pca"].get("fold_labels").is_none());
+        assert_eq!(result["pca"]["explained_variance_ratio"], json!([1.0, 0.0]));
+        // The rest of the first answer is untouched: no sample left the dataset.
+        assert_eq!(result["processed"]["sample_ids"], json!(["a", "b", "c"]));
+        // Nothing was left out: missing values were not the reason, the library's error stays.
+        for unchanged in [
+            json!({"success":true,"processed":{"sample_ids":["a","b","c"]},"pca":{"coordinates":[[1.0],[2.0],[3.0]]}}),
+            json!({"success":true,"processed":{"sample_ids":["a","z"]},"pca":{"coordinates":[[1.0],[2.0]]}}),
+            json!({"success":true,"processed":{"sample_ids":["a","c"]},"pca":{"error":"still failing"}}),
+        ] {
+            assert_eq!(
+                run(unchanged)["pca"],
+                json!({"error":"Input X contains NaN."})
+            );
+        }
     }
 
     #[test]

@@ -56,6 +56,13 @@ describe('playground export CSV builders', () => {
     });
   });
 
+  it('keeps the row of a sample the projection left out, with empty components', () => {
+    expect(buildPcaCsv({ pca: [[], [0.3, 0.4]], y: [null, 2], sampleIds: ['a', 'b'] })).toEqual({
+      success: true,
+      csv: ['sample_id,PC1,PC2,target', 'a,,,', 'b,0.300000,0.400000,2'].join('\n'),
+    });
+  });
+
   it('builds target CSV with metadata columns and blank missing metadata values', () => {
     expect(buildTargetsCsv({
       y: [10, 20],

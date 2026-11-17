@@ -164,7 +164,9 @@ export function EmbeddingSelector({
       targetMax = targetRange.max;
     }
 
-    return embedding.map((coords, idx) => {
+    return embedding.flatMap((coords, idx) => {
+      // A sample the projection left out (missing values) has no coordinates.
+      if (coords.length === 0) return [];
       const isSelected = selectedSamples.has(idx);
       const target = targets?.[idx];
       let color = '#a0aec0';
@@ -181,7 +183,7 @@ export function EmbeddingSelector({
         color = isSelected ? '#48bb78' : '#a0aec0';
       }
 
-      return {
+      return [{
         idx,
         x: coords[0],
         y: coords.length > 1 ? coords[1] : 0,
@@ -190,7 +192,7 @@ export function EmbeddingSelector({
         partition: partitions?.[idx],
         target: isObservedTarget(target) ? target : undefined,
         sampleId: sampleIds?.[idx],
-      };
+      }];
     });
   }, [embedding, partitions, targets, sampleIds, partitionColors, selectedSamples, colorBy]);
 

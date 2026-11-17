@@ -79,8 +79,15 @@ export const FoldsInfoSchema = z.object({
 /**
  * PCA projection results
  */
+const ProjectionLeftOutSchema = z.object({
+  reason: z.literal('missing_values'),
+  count: z.number(),
+  sample_indices: z.array(z.number()),
+});
+
 export const PCAResultSchema = z.object({
   coordinates: z.array(z.array(z.number())),
+  left_out: ProjectionLeftOutSchema.optional(),
   explained_variance_ratio: z.array(z.number()),
   explained_variance: z.array(z.number()),
   n_components: z.number(),
@@ -94,6 +101,7 @@ export const PCAResultSchema = z.object({
  */
 export const UMAPResultSchema = z.object({
   coordinates: z.array(z.array(z.number())),
+  left_out: ProjectionLeftOutSchema.optional(),
   n_components: z.number(),
   params: z.object({
     n_neighbors: z.number(),

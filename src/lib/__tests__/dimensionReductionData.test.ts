@@ -112,6 +112,16 @@ describe('dimensionReductionData', () => {
     expect(filterDimensionReductionPoints(points, undefined)).toBe(points);
   });
 
+  it('keeps sample indices when the projection left samples out for missing values', () => {
+    const points = buildDimensionReductionPoints({
+      result: { coordinates: [[1, 2], [], [5, 6]], y: [10, 20, 30] },
+      axes,
+      sampleIds: ['A', 'B', 'C'],
+    });
+
+    expect(points.map(point => [point.index, point.name, point.x, point.yValue])).toEqual([[0, 'A', 1, 10], [2, 'C', 5, 30]]);
+  });
+
   it('derives fold, target range, and renderer payloads', () => {
     const points = buildDimensionReductionPoints({ result: pca, axes });
     const getColor = (point: { index: number }) => point.index === 0 ? 'red' : 'blue';
