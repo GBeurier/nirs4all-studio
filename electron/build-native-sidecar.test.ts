@@ -85,7 +85,7 @@ describe("build-native-sidecar", () => {
   it("refuses a product build without an exact native Methods identity", () => {
     expect(() =>
       buildNativeSidecar.assertMethodsBuildIdentityConfigured(null, null),
-    ).toThrow(/Native Methods ABI 2\.22 is required/);
+    ).toThrow(/Native Methods ABI 2\.23 is required/);
     expect(() =>
       buildNativeSidecar.assertMethodsBuildIdentityConfigured(
         "/build/libn4m.so",
@@ -210,7 +210,7 @@ describe("build-native-sidecar", () => {
     }
   });
 
-  it("attests an explicitly staged ABI 2.22 native Methods closure", () => {
+  it("attests an explicitly staged ABI 2.23 native Methods closure", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-contract-"));
     try {
       const backendRoot = path.join(root, "backend-dist");
@@ -218,7 +218,7 @@ describe("build-native-sidecar", () => {
       const methodsPath = path.join(backendRoot, "native", "libn4m.so");
       fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
       fs.writeFileSync(sidecarPath, "rust-sidecar");
-      fs.writeFileSync(methodsPath, "libn4m-abi-2.22");
+      fs.writeFileSync(methodsPath, "libn4m-abi-2.23");
 
       const written = runtimeContract.writeRuntimeContract({
         backendRoot,
@@ -229,11 +229,11 @@ describe("build-native-sidecar", () => {
       });
       expect(written.contract.methods_library).toMatchObject({
         mode: "bundled-required",
-        abi: { major: 2, minor: 22 },
+        abi: { major: 2, minor: 23 },
         source: {
-          commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
-          tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
-          project_version: "1.3.15",
+          commit: "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
+          tree: "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
+          project_version: "1.3.18",
         },
       });
       expect(written.contract.native_runtime_linkage).toBeUndefined();
@@ -320,7 +320,7 @@ describe("build-native-sidecar", () => {
     try {
       const backendRoot = path.join(root, "backend-dist");
       const sourcePath = path.join(root, "libn4m-source.so");
-      const bytes = Buffer.from("libn4m-abi-2.22");
+      const bytes = Buffer.from("libn4m-abi-2.23");
       fs.writeFileSync(sourcePath, bytes);
       const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
 
@@ -355,7 +355,7 @@ describe("build-native-sidecar", () => {
       const sourcePath = path.join(root, "libn4m-source.so");
       const outsidePath = path.join(root, "outside.so");
       const stagedPath = path.join(backendRoot, "native", "libn4m.so");
-      const bytes = Buffer.from("libn4m-abi-2.22");
+      const bytes = Buffer.from("libn4m-abi-2.23");
       fs.writeFileSync(sourcePath, bytes);
       fs.writeFileSync(outsidePath, "must-not-change");
       fs.mkdirSync(path.dirname(stagedPath), { recursive: true });

@@ -75,7 +75,7 @@ WORKDIR /product
 RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
-COPY --from=methods-runtime /libn4m.so.2.22.0 backend/native/libn4m.so
+COPY --from=methods-runtime /libn4m.so.2.23.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
 COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/methods-public-wheel-profile.json /contract-scripts/
 COPY recommended-config.json /recommended-config.json

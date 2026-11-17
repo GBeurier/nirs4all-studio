@@ -58,14 +58,14 @@ env:
   # selected immutable releases and update them with the ecosystem release board.
   # SDK publication source and public wheel bytes are exact.
   NIRS4ALL_PUBLICATION_STATUS: published-registry
-  NIRS4ALL_LIBRARY_REF: 28c51162fc4d31d674c6606d608367a5f4b32b0e
-  DAG_ML_REF: beaba0b62f9a65bca86c2f521fc482bd80092ba3
-  DAG_ML_DATA_REF: eb2ad7835ca85feebf6f626d9f43f61575a1c9a9
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/28c51162fc4d31d674c6606d608367a5f4b32b0e.tar.gz
-  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl
-  NIRS4ALL_WHEEL_SHA256: 17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/beaba0b62f9a65bca86c2f521fc482bd80092ba3.tar.gz
-  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/eb2ad7835ca85feebf6f626d9f43f61575a1c9a9.tar.gz
+  NIRS4ALL_LIBRARY_REF: 615875790460cd4133f345d9fee7b38c9064fff4
+  DAG_ML_REF: cacd24f4d5025664ca404b47ecff45ca0491d3b3
+  DAG_ML_DATA_REF: 854d5bebd88e1de761283139189735c349a6226c
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/615875790460cd4133f345d9fee7b38c9064fff4.tar.gz
+  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/24/7d/e6688e020274acc54143ec04141db576291a2dda103bd99df40e504ad267/nirs4all-1.4.18-py3-none-any.whl
+  NIRS4ALL_WHEEL_SHA256: 200d89f95ce0a77a73c20f65b3d2c714908e6568bbb29052bf75ca72fe880ea1
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/cacd24f4d5025664ca404b47ecff45ca0491d3b3.tar.gz
+  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/854d5bebd88e1de761283139189735c349a6226c.tar.gz
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -171,7 +171,7 @@ jobs:
             fi
           done
           if [[ "$NIRS4ALL_SOURCE_URL" != "https://github.com/GBeurier/nirs4all/archive/$NIRS4ALL_LIBRARY_REF.tar.gz" ||
-                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl" ]]; then
+                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/24/7d/e6688e020274acc54143ec04141db576291a2dda103bd99df40e504ad267/nirs4all-1.4.18-py3-none-any.whl" ]]; then
             echo "::error::SDK publication source and wheel URL must match the selected public artifact"
             exit 1
           fi
@@ -226,9 +226,9 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 28c51162fc4d31d674c6606d608367a5f4b32b0e
-      dag_ml_ref: beaba0b62f9a65bca86c2f521fc482bd80092ba3
-      dag_ml_data_ref: eb2ad7835ca85feebf6f626d9f43f61575a1c9a9
+      nirs4all_library_ref: 615875790460cd4133f345d9fee7b38c9064fff4
+      dag_ml_ref: cacd24f4d5025664ca404b47ecff45ca0491d3b3
+      dag_ml_data_ref: 854d5bebd88e1de761283139189735c349a6226c
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: Linux x64 (Electron + Rust sidecar + uv + required wheels)

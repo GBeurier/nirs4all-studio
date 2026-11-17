@@ -10,10 +10,10 @@ const { MANIFEST, PACKAGE, verifyAdapterPackage } = require("./studio-document-a
 const CONTRACT_FILE = "STUDIO_RUNTIME_CONTRACT.json";
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
 const METHODS_ABI_MAJOR = 2;
-const METHODS_ABI_MINOR = 22;
-const METHODS_SOURCE_COMMIT = "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed";
-const METHODS_SOURCE_TREE = "61406cd2cf11204273a9972e4f268acfde7eb424";
-const METHODS_PROJECT_VERSION = "1.3.15";
+const METHODS_ABI_MINOR = 23;
+const METHODS_SOURCE_COMMIT = "50b307dd2fc76c0a04ff06e83c316d408c19fc68";
+const METHODS_SOURCE_TREE = "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5";
+const METHODS_PROJECT_VERSION = "1.3.18";
 const WINDOWS_NATIVE_RUNTIME_LINKAGE = Object.freeze({
   profile: "studio-msvc-static-crt-v1",
   methods_cmake_runtime: "MultiThreaded",

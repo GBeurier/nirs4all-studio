@@ -28,6 +28,8 @@ import { createStudioEnvironment } from "./env/provisioning";
 import { installRecommendedPackages, installRequiredPackages, resolveUvPayload } from "./env/uv";
 
 const COHORT = Object.fromEntries(REQUIRED_PACKAGES.map((spec) => [spec.name, spec.install]));
+// An accepted nirs4all version that is not the one the catalogue installs.
+const OTHER_ACCEPTED_NIRS4ALL = "1.4.99";
 let root: string;
 let userDataDir: string;
 let settingsPath: string;
@@ -252,7 +254,7 @@ describe("startup check", () => {
     expect(await env.startupCheck()).toMatchObject({
       phase: "needs_attention",
       selected: { usable: false, writable: false },
-      problem: { code: "required_not_installable", message: expect.stringContaining("nirs4all 1.4.10 (required >=1.4.16,<1.5)") },
+      problem: { code: "required_not_installable", message: expect.stringContaining(`nirs4all 1.4.10 (required ${REQUIRED_PACKAGES[0].range})`) },
     });
     expect(installRequiredPackages).not.toHaveBeenCalled();
     expect(env.getHost()).toBeNull();
@@ -276,7 +278,7 @@ describe("startup check", () => {
   it("installs nothing when a required package is missing next to an editable one, even in range", async () => {
     // Installing nirs4all-core could replace the editable nirs4all as its dependency.
     const { "nirs4all-core": _missing, ...withoutCore } = COHORT;
-    const pythonPath = environment("dev", { distributions: { ...withoutCore, nirs4all: "1.4.17", "dag-ml": "0.4.1" }, editable: ["nirs4all", "dag-ml", "requests"] });
+    const pythonPath = environment("dev", { distributions: { ...withoutCore, nirs4all: OTHER_ACCEPTED_NIRS4ALL, "dag-ml": "0.4.1" }, editable: ["nirs4all", "dag-ml", "requests"] });
     select(pythonPath);
     const env = manager();
 
@@ -294,7 +296,7 @@ describe("startup check", () => {
   });
 
   it("uses editable installs that are all within range", async () => {
-    const pythonPath = environment("dev", { distributions: { ...COHORT, nirs4all: "1.4.17" }, editable: ["nirs4all"] });
+    const pythonPath = environment("dev", { distributions: { ...COHORT, nirs4all: OTHER_ACCEPTED_NIRS4ALL }, editable: ["nirs4all"] });
     select(pythonPath);
 
     expect((await manager().startupCheck()).phase).toBe("ready");
@@ -358,7 +360,7 @@ describe("switching environment", () => {
   });
 
   it("does not reinstall required packages that are already within range", async () => {
-    const target = environment("target", { distributions: { ...COHORT, nirs4all: "1.4.18" } });
+    const target = environment("target", { distributions: { ...COHORT, nirs4all: OTHER_ACCEPTED_NIRS4ALL } });
     const env = await startedOn(environment("previous"));
 
     expect((await env.apply({ pythonPath: target, packages: [] })).success).toBe(true);
@@ -526,12 +528,13 @@ describe("installing recommended packages", () => {
     const pythonPath = environment("work");
     const env = await startedOn(pythonPath);
     // Changed outside Studio since the last check.
-    inventories.set(pythonPath, { ...inventories.get(pythonPath)!, distributions: { ...COHORT, nirs4all: "1.4.18" }, editable: ["dag-ml"] });
+    inventories.set(pythonPath, { ...inventories.get(pythonPath)!, distributions: { ...COHORT, nirs4all: OTHER_ACCEPTED_NIRS4ALL }, editable: ["dag-ml"] });
 
     await env.installPackages(["xgboost"]);
 
     expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["xgboost"], [
-      "nirs4all==1.4.18", "nirs4all-core==0.5.0", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15",
+      `nirs4all==${OTHER_ACCEPTED_NIRS4ALL}`,
+      ...REQUIRED_PACKAGES.filter((spec) => !["nirs4all", "dag-ml"].includes(spec.name)).map((spec) => `${spec.name}==${spec.install}`),
     ]);
   });
 
@@ -559,7 +562,7 @@ describe("installing recommended packages", () => {
     // The installation replaced nirs4all with another in-range version, then failed.
     vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
       calls.push("install recommended");
-      setDistributions(pythonPath, { ...COHORT, nirs4all: "1.4.18" });
+      setDistributions(pythonPath, { ...COHORT, nirs4all: OTHER_ACCEPTED_NIRS4ALL });
       throw new Error("No space left on device");
     });
 
@@ -567,7 +570,7 @@ describe("installing recommended packages", () => {
 
     expect(calls).toEqual(["stop", "install recommended", "restart"]);
     expect(result).toMatchObject({ success: false, message: "No space left on device", hostRestarted: true, state: { phase: "ready" } });
-    expect(result.state.selected?.required[0].installedVersion).toBe("1.4.18");
+    expect(result.state.selected?.required[0].installedVersion).toBe(OTHER_ACCEPTED_NIRS4ALL);
   });
 
   it("repairs required packages when a failed installation left them out of range", async () => {
@@ -589,17 +592,17 @@ describe("installing recommended packages", () => {
 
   it("stops the sidecar before installing into the selected environment through a switch, and has nothing to roll back to", async () => {
     const { "dag-ml": _removed, ...withoutDagMl } = COHORT;
-    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.18" } });
+    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: OTHER_ACCEPTED_NIRS4ALL } });
     const env = await startedOn(pythonPath);
-    // A required package was removed outside Studio; repairing it installs the exact cohort (nirs4all 1.4.16).
-    setDistributions(pythonPath, { ...withoutDagMl, nirs4all: "1.4.18" });
+    // A required package was removed outside Studio; repairing it installs the exact cohort.
+    setDistributions(pythonPath, { ...withoutDagMl, nirs4all: OTHER_ACCEPTED_NIRS4ALL });
     vi.mocked(installRecommendedPackages).mockRejectedValueOnce(new Error("No matching distribution"));
 
     const failed = await env.apply({ pythonPath, packages: ["catboost"] });
 
     expect(calls).toEqual(["stop", "install required", "restart"]);
     expect(failed).toMatchObject({ success: false, message: "No matching distribution", hostRestarted: true, state: { phase: "ready", selectedPythonPath: pythonPath } });
-    expect(failed.state.selected?.required[0].installedVersion).toBe("1.4.16");
+    expect(failed.state.selected?.required[0].installedVersion).toBe(COHORT.nirs4all);
 
     restartHost.mockRejectedValueOnce(new Error("The analysis backend could not be started."));
     const hostFailure = await env.apply({ pythonPath, packages: ["xgboost"] });
