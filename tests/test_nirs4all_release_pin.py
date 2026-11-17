@@ -23,8 +23,9 @@ def _wheel_lock(target: str) -> dict:
 def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
-    assert dependencies["nirs4all"] == "=0.5.0"
-    assert dependencies["nirs4all-io"] == "=0.3.1"
+    # Cross-repository owners are minor-level ranges; Cargo.lock holds the cohort.
+    assert dependencies["nirs4all"] == "0.5"
+    assert dependencies["nirs4all-io"] == "0.3"
     # Core and Studio resolve one public Rust IO cohort without overrides.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
