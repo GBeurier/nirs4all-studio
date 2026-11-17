@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -73,7 +74,7 @@ export interface UseSpectraChartDerivedDataInput {
   selectedSamples: ReadonlySet<number>;
   isWebGLMode: boolean;
   brushDomain: [number, number] | null;
-  y?: number[];
+  y?: TargetValue[];
   folds?: FoldsInfo | null;
   metadata?: Record<string, unknown[]>;
   colorContext?: ColorContext;

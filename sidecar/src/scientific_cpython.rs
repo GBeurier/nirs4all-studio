@@ -619,7 +619,7 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         if !self.is_selected() {
             return Err(JobExecutorError::PreflightRefused {
                 code: self.unavailable_reason(),
-                detail: "the scientific Python host is not available",
+                detail: "the scientific Python host is not available".into(),
             });
         }
         // The host was admitted at acquisition: do not run a second cold import
@@ -640,7 +640,8 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         validate_scientific_request(&payload, &request.job_id).map_err(|error| {
             JobExecutorError::PreflightRefused {
                 code: error.reason(),
-                detail: "the resolved scientific request does not satisfy the executor contract",
+                detail: "the resolved scientific request does not satisfy the executor contract"
+                    .into(),
             }
         })?;
         Ok(ScientificExecutorSelection {

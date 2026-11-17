@@ -1,108 +1,94 @@
-"""Installer metadata must not make a verified external SDK look corrupted."""
+"""Installer metadata must not make a usable selected SDK look unusable.
 
-import base64
-import csv
-import hashlib
-import io
+The sidecar admits the selected environment by the nirs4all version its
+distribution metadata declares, once the package and its Studio callables
+import; it does not hash the installed members.
+"""
+
 import json
 import os
 import re
 import subprocess
 import sys
+import venv
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "sidecar/src/scientific_cpython.rs").read_text(encoding="utf-8")
-PROBE = re.search(r'const PREFLIGHT_SCRIPT: &str = r#"(.*?)"#;', SOURCE, re.DOTALL)[1]
-METADATA = "nirs4all-1.4.13.dist-info"
+# The admission probe is the shared host bootstrap followed by its own body.
+BOOTSTRAP = re.search(r'macro_rules! host_bootstrap \{.*?r#"(.*?)"#', SOURCE, re.DOTALL)[1]
+PROBE = BOOTSTRAP + re.search(r'const PREFLIGHT_SCRIPT: &str = concat!\(\s*host_bootstrap!\(\),\s*r#"(.*?)"#', SOURCE, re.DOTALL)[1]
+PACKAGE = "def studio_scientific_job_v1(request): return None\ndef studio_scientific_job_v2(request): return None\n"
 
 
-def _installation(root: Path, extra: str | None = None) -> None:
-    payloads = {
-        "nirs4all/__init__.py": b"def studio_scientific_job_v1(request): return None\n",
-        f"{METADATA}/METADATA": b"Name: nirs4all\nVersion: 1.4.13\n",
-    }
+def _installation(root: Path, version: str = "1.4.16", extra: str | None = None) -> None:
+    metadata = root / f"nirs4all-{version}.dist-info"
+    (root / "nirs4all").mkdir(parents=True, exist_ok=True)
+    (root / "nirs4all/__init__.py").write_text(PACKAGE, encoding="utf-8")
+    metadata.mkdir(parents=True, exist_ok=True)
+    (metadata / "METADATA").write_text(f"Metadata-Version: 2.1\nName: nirs4all\nVersion: {version}\n", encoding="utf-8")
+    # RECORD hashes are deliberately wrong: admission never reads them.
+    (metadata / "RECORD").write_text("nirs4all/__init__.py,sha256=AAAA,1\n", encoding="utf-8")
     if extra:
-        payloads[extra] = b"{}\n"
-    rows = []
-    for name, payload in payloads.items():
-        target = root / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
-        digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode().rstrip("=")
-        rows.append([name, "sha256=" + digest, str(len(payload))])
-    stream = io.StringIO()
-    csv.writer(stream, lineterminator="\n").writerows(rows + [[f"{METADATA}/RECORD", "", ""]])
-    (root / METADATA / "RECORD").write_text(stream.getvalue(), encoding="utf-8")
+        (metadata / extra).write_text("{}\n", encoding="utf-8")
 
 
-def _probe(root: Path, verified_stat: str | None = None) -> dict:
-    env = dict(os.environ)
-    env.pop("NIRS4ALL_SELECTED_SITE_PACKAGES", None)
-    env.pop("NIRS4ALL_VERIFIED_DISTRIBUTION_STAT", None)
-    if verified_stat:
-        env["NIRS4ALL_VERIFIED_DISTRIBUTION_STAT"] = verified_stat
-    completed = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", PROBE, str(root)],
-                               env=env, text=True, capture_output=True, check=True, timeout=30)
+@pytest.fixture(scope="module")
+def interpreter(tmp_path_factory) -> str:
+    """An interpreter whose own environment holds no nirs4all, like a fresh selected one."""
+    root = tmp_path_factory.mktemp("selected-environment")
+    venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(root)
+    return str(root / ("Scripts/python.exe" if os.name == "nt" else "bin/python"))
+
+
+def _probe(interpreter: str, site_packages: Path, adapters: Path) -> dict:
+    adapters.mkdir(exist_ok=True)
+    completed = subprocess.run([interpreter, "-I", "-S", "-B", "-c", PROBE, str(site_packages), str(adapters)],
+                               env=dict(os.environ), text=True, capture_output=True, check=True, timeout=30)
     return json.loads(completed.stdout)
 
 
-def test_uv_installation_keeps_the_exact_scientific_package_identity(tmp_path):
-    _installation(tmp_path)
-    before = _probe(tmp_path)
-    _installation(tmp_path, f"{METADATA}/uv_cache.json")
-    after = _probe(tmp_path)
+def test_uv_installation_metadata_does_not_change_the_admitted_identity(tmp_path, interpreter):
+    site_packages = tmp_path / "site-packages"
+    _installation(site_packages)
+    before = _probe(interpreter, site_packages, tmp_path / "adapters")
+    for name in ("uv_cache.json", "INSTALLER", "REQUESTED"):
+        _installation(site_packages, extra=name)
+    after = _probe(interpreter, site_packages, tmp_path / "adapters")
     assert before["ready"] and after["ready"]
-    assert after["distribution_files_verified"]
-    assert before["distribution_manifest_sha256"] == after["distribution_manifest_sha256"]
+    assert before == after
+    assert after["distribution_version"] == "1.4.16"
+    assert after["distribution_inconsistency"] is None and after["import_error"] is None
 
 
-@pytest.mark.parametrize("name", ["uv_cache.json", "INSTALLER"])
-def test_installer_named_files_inside_sdk_code_remain_attested(tmp_path, name):
-    _installation(tmp_path)
-    before = _probe(tmp_path)
-    _installation(tmp_path, "nirs4all/" + name)
-    after = _probe(tmp_path)
-    assert after["distribution_files_verified"]
-    assert before["distribution_manifest_sha256"] != after["distribution_manifest_sha256"]
-
-
-def test_uv_metadata_does_not_hide_tampered_sdk_code(tmp_path):
-    _installation(tmp_path, f"{METADATA}/uv_cache.json")
-    (tmp_path / "nirs4all/__init__.py").write_text("def studio_scientific_job_v1(request): return 123\n", encoding="utf-8")
-    assert not _probe(tmp_path)["distribution_files_verified"]
-
-
-def test_selected_environment_is_admitted_by_version_not_member_hashes(tmp_path):
-    # Custom and managed environments (no packaged site-packages argument) are
-    # checked by version range and ABI; only the packaged runtime is attested.
-    _installation(tmp_path)
-    (tmp_path / "nirs4all/__init__.py").write_text("def studio_scientific_job_v1(request): return 123\n", encoding="utf-8")
-    env = dict(os.environ) | {"NIRS4ALL_SELECTED_SITE_PACKAGES": str(tmp_path)}
-    completed = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", PROBE, ""],
-                               env=env, text=True, capture_output=True, check=True, timeout=30)
-    result = json.loads(completed.stdout)
+def test_selected_environment_is_admitted_by_version_not_member_hashes(tmp_path, interpreter):
+    site_packages = tmp_path / "site-packages"
+    _installation(site_packages)
+    # A member that no longer matches RECORD (a patched or rebuilt SDK) is still admitted.
+    (site_packages / "nirs4all/__init__.py").write_text(PACKAGE + "PATCHED = True\n", encoding="utf-8")
+    result = _probe(interpreter, site_packages, tmp_path / "adapters")
     assert result["ready"]
-    assert result["distribution_version"] == "1.4.13"
-    assert not result["distribution_files_verified"]
+    assert result["distribution_version"] == "1.4.16"
 
 
-def test_recorded_stat_identity_skips_member_hashes_until_a_member_changes(tmp_path):
-    _installation(tmp_path)
-    member = tmp_path / "nirs4all/__init__.py"
-    # A member that no longer matches RECORD: hashing it fails verification.
-    member.write_text("def studio_scientific_job_v1(request): return 123\n", encoding="utf-8")
-    first = _probe(tmp_path)
-    assert not first["distribution_files_verified"]
-    digest = first["distribution_stat_sha256"]
-    assert re.fullmatch(r"[0-9a-f]{64}", digest)
-    # Rust passes the stat identity it recorded after a full verification;
-    # with unchanged stats the member hashes are skipped (proved by the mismatch above).
-    assert _probe(tmp_path, digest)["distribution_files_verified"]
-    # Any later write changes the stat identity, so the members are hashed again.
-    member.write_text("def studio_scientific_job_v1(request): return 456\n", encoding="utf-8")
-    changed = _probe(tmp_path, digest)
-    assert changed["distribution_stat_sha256"] != digest
-    assert not changed["distribution_files_verified"]
+def test_metadata_must_describe_the_code_that_runs(tmp_path, interpreter):
+    site_packages = tmp_path / "site-packages"
+    _installation(site_packages)
+    # A second distribution left by another installer makes the version ambiguous.
+    _installation(site_packages, version="1.4.13")
+    result = _probe(interpreter, site_packages, tmp_path / "adapters")
+    assert not result["ready"]
+    assert "2 nirs4all distributions are installed" in result["distribution_inconsistency"]
+
+
+def test_missing_studio_callables_or_import_failure_are_not_ready(tmp_path, interpreter):
+    site_packages = tmp_path / "site-packages"
+    _installation(site_packages)
+    (site_packages / "nirs4all/__init__.py").write_text("def studio_scientific_job_v1(request): return None\n", encoding="utf-8")
+    assert not _probe(interpreter, site_packages, tmp_path / "adapters")["ready"]
+    (site_packages / "nirs4all/__init__.py").write_text("raise RuntimeError('broken install')\n", encoding="utf-8")
+    broken = _probe(interpreter, site_packages, tmp_path / "adapters")
+    assert not broken["ready"]
+    assert broken["import_error"] == "RuntimeError: broken install"

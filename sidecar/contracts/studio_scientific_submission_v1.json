@@ -114,7 +114,7 @@
       "status": 503,
       "body": {
         "code": "typed_stable_refusal_code",
-        "detail": "Scientific job executor preflight failed: {refusal_explanation} ({code})"
+        "detail": "The run cannot start: {refusal_explanation} ({code})"
       }
     },
     "executor_submission": {

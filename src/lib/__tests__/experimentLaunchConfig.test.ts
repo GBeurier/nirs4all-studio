@@ -87,6 +87,36 @@ describe("experimentLaunchConfig", () => {
     });
   });
 
+  it("names the target column only for the datasets trained on one of several", () => {
+    const base = {
+      name: "Targets",
+      selectedDatasetIds: ["d1", "d2"],
+      selectedPipelineConfigs: [{ id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps }],
+      selectedGroupingPayload: { d1: null, d2: null },
+      missingTargetPolicy: "predict" as const,
+    };
+    expect(buildExperimentLaunchConfig({ ...base, targetByDataset: { d2: "trait_03" } }))
+      .toMatchObject({ target_by_dataset: { d2: "trait_03" } });
+    expect(buildExperimentLaunchConfig({ ...base, targetByDataset: {} })).not.toHaveProperty("target_by_dataset");
+    expect(buildExperimentLaunchConfig(base)).not.toHaveProperty("target_by_dataset");
+  });
+
+  it("carries the answer about missing spectral values only when one was given", () => {
+    const base = {
+      name: "Spectra",
+      selectedDatasetIds: ["d1"],
+      selectedPipelineConfigs: [{ id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps }],
+      selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict" as const,
+    };
+    const replace = { policy: "replace" as const, fill: { method: "value" as const, fill_value: 0 } };
+    expect(buildExperimentLaunchConfig({ ...base, missingSpectraPolicy: replace })).toMatchObject({ missing_spectra_policy: replace });
+    expect(buildExperimentLaunchConfig({ ...base, missingSpectraPolicy: { policy: "remove" } }))
+      .toMatchObject({ missing_spectra_policy: { policy: "remove" }, missing_target_policy: "predict" });
+    expect(buildExperimentLaunchConfig({ ...base, missingSpectraPolicy: null })).not.toHaveProperty("missing_spectra_policy");
+    expect(buildExperimentLaunchConfig(base)).not.toHaveProperty("missing_spectra_policy");
+  });
+
   it("always includes the strict native runtime contract", () => {
     expect(buildExperimentLaunchConfig({
       name: "Runtime",

@@ -12,6 +12,7 @@
  * - Export functionality
  */
 
+import type { TargetValue } from '@/types/spectral';
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { exportDataAsCSV } from '@/lib/chartExport';
@@ -27,6 +28,7 @@ import {
   PARTITION_COLORS,
 } from '@/lib/playground/colorConfig';
 import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
+import { getObservedTargets } from '@/lib/playground/targetValues';
 import { useSelection } from '@/context/useSelection';
 import type { FoldsInfo } from '@/types/playground';
 import {
@@ -64,7 +66,7 @@ interface FoldDistributionChartProps {
   /** Fold information from backend */
   folds: FoldsInfo | null;
   /** Y values for coloring and statistics */
-  y?: number[];
+  y?: TargetValue[];
   /** Metadata for metadata-based coloring */
   metadata?: Record<string, unknown[]>;
   /** Currently selected fold (null = all folds) */
@@ -141,20 +143,23 @@ export function FoldDistributionChart({
   // Get class labels for classification mode
   const classLabels = useMemo(() => colorContext?.classLabels ?? [], [colorContext?.classLabels]);
 
+  // Bins are computed from observed target values only (same as YHistogram)
+  const observedY = useMemo(() => getObservedTargets(y), [y]);
+
   // Calculate optimal bin count using Freedman-Diaconis rule (same as YHistogram)
   // Use shared utility to ensure consistency with Y Histogram
   const optimalBinCount = useMemo(() => {
-    if (!y || y.length < 4) return 5;
+    if (observedY.length < 4) return 5;
     // Use same bin count range as Y Histogram for consistency
-    return calculateOptimalBinCount(y, 5, 50);
-  }, [y]);
+    return calculateOptimalBinCount(observedY, 5, 50);
+  }, [observedY]);
 
   // Compute Y bins for target mode (regression) using UNIFORM binning
   // This ensures bins match exactly with Y Histogram ranges
   const yBins = useMemo(() => {
-    if (!y || y.length === 0 || isClassificationMode) return [];
-    return computeUniformBins(y, optimalBinCount);
-  }, [y, isClassificationMode, optimalBinCount]);
+    if (observedY.length === 0 || isClassificationMode) return [];
+    return computeUniformBins(observedY, optimalBinCount);
+  }, [observedY, isClassificationMode, optimalBinCount]);
 
   // Get unique metadata values for metadata mode
   const metadataCategories = useMemo(() => {
@@ -205,11 +210,12 @@ export function FoldDistributionChart({
    */
   const partitionSegmentKeys = useMemo(() => buildFoldDistributionSegmentKeys({
     colorMode: effectiveColorMode,
+    y,
     yBins,
     isClassificationMode: Boolean(isClassificationMode),
     classLabels,
     metadataCategories,
-  }), [effectiveColorMode, yBins, metadataCategories, isClassificationMode, classLabels]);
+  }), [effectiveColorMode, y, yBins, metadataCategories, isClassificationMode, classLabels]);
 
   // Transform fold data for Y distribution visualization
   const yData = useMemo(() => buildFoldDistributionYStatsData(folds, {

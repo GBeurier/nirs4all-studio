@@ -1,11 +1,14 @@
 //! General-library request construction. No matrix loading or numerical DSL.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
+};
 
 use super::{
-    canonical_directory, json, object_at, read_pipeline_with_limit, valid_identifier, Map, Path,
-    PathBuf, ScientificRequestResolver, ScientificResolveError, ScientificSubmissionPreflight,
-    Value,
+    canonical_directory, dataset_invalid, json, object_at, read_pipeline_with_limit,
+    unusable_folder, valid_identifier, Map, Path, PathBuf, ScientificRequestResolver,
+    ScientificResolveError, ScientificSubmissionPreflight, Value,
 };
 
 const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
@@ -51,18 +54,23 @@ pub(super) fn resolve(
             )
         })?;
         if fingerprints.len() != selection.datasets.len() {
-            return Err(ScientificResolveError::DatasetInvalid);
+            return Err(dataset_invalid(format!(
+                "the scientific runtime returned {} content fingerprints for {} datasets",
+                fingerprints.len(),
+                selection.datasets.len()
+            )));
         }
         let mut provenance = serde_json::Map::new();
-        for (fingerprint, id) in fingerprints.iter().zip(&selection.datasets) {
-            let hash = fingerprint["content_hash"]
-                .as_str()
-                .filter(|hash| {
-                    hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
-                })
-                .ok_or(ScientificResolveError::DatasetInvalid)?;
-            if provenance.insert(hash.into(), json!(id)).is_some() {
-                return Err(ScientificResolveError::DatasetInvalid);
+        for ((fingerprint, id), config) in
+            fingerprints.iter().zip(&selection.datasets).zip(&datasets)
+        {
+            let label = dataset_label(id, config.get("name"));
+            let hash = content_fingerprint(&fingerprint["content_hash"])
+                .map_err(|reason| dataset_invalid(format!("{label}: {reason}")))?;
+            if let Some(other) = provenance.insert(hash.into(), json!(id)) {
+                return Err(dataset_invalid(format!(
+                    "{label} has exactly the same spectra as dataset {other}; select only one of them"
+                )));
             }
         }
         options["studio_provenance"] =
@@ -86,6 +94,88 @@ pub(super) fn resolve(
     Ok(request)
 }
 
+/// What the library's answer for one dataset is checked against.
+struct DatasetCheck {
+    root: PathBuf,
+    descriptor: Option<Value>,
+    /// How the dataset is named in a refusal.
+    label: String,
+}
+
+/// The `dataset.configure` payload of one selected dataset, and what its
+/// answer is checked against: the dataset folder, its multimodal document and
+/// the name used in refusals.
+fn dataset_request(
+    resolver: &ScientificRequestResolver,
+    id: &str,
+    target: Option<&str>,
+    missing_target_policy: Option<&Value>,
+    missing_spectra_policy: Option<&Value>,
+) -> Result<(Value, DatasetCheck), ScientificResolveError> {
+    let mut record = resolver.read_dataset(id)?;
+    let label = dataset_label(id, record.get("name"));
+    let in_dataset = |error| match error {
+        ScientificResolveError::DatasetInvalid(reason) => {
+            dataset_invalid(format!("{label}: {reason}"))
+        }
+        other => other,
+    };
+    let folder = record
+        .get("path")
+        .and_then(Value::as_str)
+        .map(Path::new)
+        .ok_or_else(|| dataset_invalid(format!("{label}: its record has no folder")))?;
+    let root = canonical_directory(folder).map_err(|()| in_dataset(unusable_folder(folder)))?;
+    let target = target
+        .map(|column| target_selection(&record, column))
+        .transpose()
+        .map_err(in_dataset)?
+        .flatten();
+    // An inline cohort contains data, not file references. Keep it out of
+    // the flat-file path walker, then require the adapter to echo exactly
+    // the authorized document before it reaches the scientific host.
+    let descriptor = record
+        .get_mut("config")
+        .and_then(Value::as_object_mut)
+        .and_then(|config| config.remove("dataset_document"));
+    if let Some(ref descriptor) = descriptor {
+        validate_multimodal_descriptor(descriptor).map_err(in_dataset)?;
+        if record["config"]
+            .as_object()
+            .is_none_or(|config| !config.is_empty())
+        {
+            return Err(dataset_invalid(format!(
+                "{label}: its configuration mixes a multimodal dataset document with file settings"
+            )));
+        }
+    }
+    // Inspect supplied references before a document adapter can read a
+    // legacy configuration file. Recheck its returned canonical config.
+    ScientificRequestResolver::confine_dataset_config(&mut record, &root).map_err(in_dataset)?;
+    if let Some(ref descriptor) = descriptor {
+        record["config"]["dataset_document"] = descriptor.clone();
+    }
+    bounded(&record, MAX_DOCUMENT_BYTES)?;
+    let mut payload = json!({"record":record,"scientific_run":true});
+    if let Some(policy) = missing_target_policy {
+        payload["missing_target_policy"] = policy.clone();
+    }
+    if let Some(policy) = missing_spectra_policy {
+        payload["missing_spectra_policy"] = policy.clone();
+    }
+    if let Some(target) = target {
+        payload["target"] = target;
+    }
+    Ok((
+        payload,
+        DatasetCheck {
+            root,
+            descriptor,
+            label,
+        },
+    ))
+}
+
 fn normalize_documents(
     resolver: &ScientificRequestResolver,
     preflight: &ScientificSubmissionPreflight,
@@ -100,41 +190,22 @@ fn normalize_documents(
         .payload
         .pointer("/legacyConfig/missing_target_policy")
         .cloned();
+    let missing_spectra_policy = preflight
+        .payload
+        .pointer("/legacyConfig/missing_spectra_policy");
+    let targets = preflight.payload.pointer("/legacyConfig/target_by_dataset");
     for id in &selection.datasets {
-        let mut record = resolver.read_dataset(id)?;
-        let root = record
-            .get("path")
-            .and_then(Value::as_str)
-            .and_then(|path| canonical_directory(Path::new(path)).ok())
-            .ok_or(ScientificResolveError::DatasetInvalid)?;
-        // An inline cohort contains data, not file references. Keep it out of
-        // the flat-file path walker, then require the adapter to echo exactly
-        // the authorized document before it reaches the scientific host.
-        let descriptor = record
-            .get_mut("config")
-            .and_then(Value::as_object_mut)
-            .and_then(|config| config.remove("dataset_document"));
-        if let Some(ref descriptor) = descriptor {
-            validate_multimodal_descriptor(descriptor)?;
-            if record["config"]
-                .as_object()
-                .is_none_or(|config| !config.is_empty())
-            {
-                return Err(ScientificResolveError::DatasetInvalid);
-            }
-        }
-        // Inspect supplied references before a document adapter can read a
-        // legacy configuration file. Recheck its returned canonical config.
-        ScientificRequestResolver::confine_dataset_config(&mut record, &root)?;
-        if let Some(ref descriptor) = descriptor {
-            record["config"]["dataset_document"] = descriptor.clone();
-        }
-        bounded(&record, MAX_DOCUMENT_BYTES)?;
-        dataset_checks.push((root, descriptor));
-        let mut payload = json!({"record":record,"scientific_run":true});
-        if let Some(policy) = &missing_target_policy {
-            payload["missing_target_policy"] = policy.clone();
-        }
+        let target = targets
+            .and_then(|targets| targets.get(id))
+            .and_then(Value::as_str);
+        let (payload, check) = dataset_request(
+            resolver,
+            id,
+            target,
+            missing_target_policy.as_ref(),
+            missing_spectra_policy,
+        )?;
+        dataset_checks.push(check);
         requests.push(json!({"operation":"dataset.configure", "payload":payload}));
     }
     for (id, inline) in &selection.pipelines {
@@ -165,21 +236,36 @@ fn normalize_documents(
     bounded(&json!(normalized), MAX_GENERAL_BYTES)?;
     let mut normalized = normalized.into_iter();
     let mut datasets = Vec::new();
-    for (root, descriptor) in dataset_checks {
-        let mut dataset = normalized
-            .next()
-            .ok_or(ScientificResolveError::DatasetInvalid)?;
-        if !dataset.is_object() {
-            return Err(ScientificResolveError::DatasetInvalid);
-        }
+    for DatasetCheck {
+        root,
+        descriptor,
+        label,
+    } in dataset_checks
+    {
+        // Every reason below concerns the configuration the library prepared
+        // for this run, not the saved record checked above.
+        let prepared = |error| match error {
+            ScientificResolveError::DatasetInvalid(reason) => dataset_invalid(format!(
+                "{label}: in the configuration prepared for the run, {reason}"
+            )),
+            other => other,
+        };
+        let mut dataset = normalized.next().filter(Value::is_object).ok_or_else(|| {
+            dataset_invalid(format!(
+                "{label}: the scientific runtime did not return a configuration object"
+            ))
+        })?;
         if let Some(descriptor) = descriptor {
-            validate_multimodal_descriptor(&dataset)?;
+            validate_multimodal_descriptor(&dataset).map_err(prepared)?;
             if dataset != descriptor {
-                return Err(ScientificResolveError::DatasetInvalid);
+                return Err(dataset_invalid(format!(
+                    "{label}: the scientific runtime changed the multimodal dataset document"
+                )));
             }
         } else {
-            reject_implicit_folders(&dataset)?;
-            ScientificRequestResolver::confine_dataset_config(&mut dataset, &root)?;
+            reject_implicit_folders(&dataset).map_err(prepared)?;
+            ScientificRequestResolver::confine_dataset_config(&mut dataset, &root)
+                .map_err(prepared)?;
         }
         datasets.push(dataset);
     }
@@ -240,20 +326,89 @@ fn runtime_pipelines(
 }
 
 fn validate_multimodal_descriptor(value: &Value) -> Result<(), ScientificResolveError> {
-    let document = value
-        .as_object()
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
-    if document.len() != 2
-        || document.get("schema").and_then(Value::as_str) != Some(MULTIMODAL_DATASET_SCHEMA)
-        || document.get("cohort").and_then(Value::as_object).is_none()
-        || serde_json::to_vec(value)
-            .map_err(|_| ScientificResolveError::DatasetInvalid)?
-            .len()
-            > MAX_MULTIMODAL_DESCRIPTOR_BYTES
-    {
-        return Err(ScientificResolveError::DatasetInvalid);
+    let valid = value.as_object().is_some_and(|document| {
+        document.len() == 2
+            && document.get("schema").and_then(Value::as_str) == Some(MULTIMODAL_DATASET_SCHEMA)
+            && document.get("cohort").and_then(Value::as_object).is_some()
+    }) && serde_json::to_vec(value)
+        .is_ok_and(|bytes| bytes.len() <= MAX_MULTIMODAL_DESCRIPTOR_BYTES);
+    if !valid {
+        return Err(dataset_invalid(format!(
+            "its multimodal dataset document is not a {MULTIMODAL_DATASET_SCHEMA} descriptor of at most 1 MiB"
+        )));
     }
     Ok(())
+}
+
+/// How a dataset is named in a refusal: its catalogue name, else its identifier.
+fn dataset_label(id: &str, name: Option<&Value>) -> String {
+    name.and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map_or_else(
+            || format!("dataset {id}"),
+            |name| format!("dataset \"{name}\""),
+        )
+}
+
+/// The run's provenance contract of the library identifies dataset content by
+/// SHA-256. Its `content_hash()` emits a shorter xxHash digest when the
+/// optional `xxhash` package is importable in the selected environment.
+fn content_fingerprint(value: &Value) -> Result<&str, String> {
+    let hash = value
+        .as_str()
+        .filter(|hash| !hash.is_empty() && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or("the scientific runtime returned no content fingerprint")?;
+    match hash.len() {
+        64 => Ok(hash),
+        32 => Err(
+            "the scientific runtime returned a 128-bit xxHash content fingerprint where \
+             the nirs4all run provenance requires SHA-256; this happens when the Python package \
+             \"xxhash\" is installed in the selected Python environment (it comes with AutoGluon, \
+             for example). Remove \"xxhash\" from that environment and restart Studio"
+                .into(),
+        ),
+        length => Err(format!(
+            "the scientific runtime returned a {length}-character content fingerprint where \
+             the nirs4all run provenance requires a SHA-256 hash"
+        )),
+    }
+}
+
+/// The chosen target column for the library's column selection: its position
+/// among the dataset's target columns and its own task type. `None` when the
+/// dataset has a single target column: there is nothing to select.
+fn target_selection(record: &Value, column: &str) -> Result<Option<Value>, ScientificResolveError> {
+    let targets = record["targets"].as_array().map_or(&[][..], Vec::as_slice);
+    let index = targets
+        .iter()
+        .position(|target| target["column"] == column)
+        .ok_or_else(|| {
+            let names = targets
+                .iter()
+                .filter_map(|target| target["column"].as_str())
+                .collect::<Vec<_>>();
+            dataset_invalid(format!(
+                "it has no target column \"{column}\" (its target columns are: {})",
+                if names.is_empty() {
+                    "none".into()
+                } else {
+                    names.join(", ")
+                }
+            ))
+        })?;
+    if targets.len() == 1 {
+        return Ok(None);
+    }
+    let mut target = json!({"column": column, "index": index});
+    if let Some(task) = targets[index]["type"].as_str().filter(|task| {
+        matches!(
+            *task,
+            "regression" | "binary_classification" | "multiclass_classification"
+        )
+    }) {
+        target["task_type"] = json!(task);
+    }
+    Ok(Some(target))
 }
 
 struct Selection {
@@ -487,15 +642,20 @@ fn single_or_batch(mut values: Vec<Value>) -> Value {
 // library's dataset source resolver treats as a glob. Keep canonical paths for
 // authorization, but send equivalent ordinary drive/UNC paths to that owner.
 pub fn library_dataset_path(path: &Path) -> Result<String, ScientificResolveError> {
-    let original = path
-        .to_str()
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
+    let original = path.to_str().ok_or_else(|| {
+        dataset_invalid(format!(
+            "the path \"{}\" is not valid Unicode",
+            path.display()
+        ))
+    })?;
     let normalized = without_windows_verbatim_prefix(original);
     if normalized != original && Path::new(&normalized).canonicalize().ok().as_deref() != Some(path)
     {
         // Stripping the prefix must not change Windows filename semantics
         // (for example a trailing dot/space) or select another resource.
-        return Err(ScientificResolveError::DatasetInvalid);
+        return Err(dataset_invalid(format!(
+            "the path \"{original}\" cannot be written as an ordinary Windows path (a trailing dot or space in a name, for example)"
+        )));
     }
     Ok(normalized)
 }
@@ -520,29 +680,49 @@ fn without_windows_verbatim_prefix(path: &str) -> String {
 /// Normalize explicit file references, including metadata/folds and nested
 /// multi-source configs. Other string parameters (column names, units, etc.)
 /// are not interpreted as paths.
+///
+/// `location` is the setting being visited (`config.files[1].path`), for the
+/// refusal; `is_path` tells whether its string values are file references.
 pub(super) fn confine_config(
     value: &mut Value,
     root: &Path,
-    path_value: bool,
+    is_path: bool,
+    location: &mut String,
 ) -> Result<(), ScientificResolveError> {
     match value {
-        Value::String(path) if path_value => {
+        Value::String(path) if is_path => {
+            let setting = if location.is_empty() {
+                "path"
+            } else {
+                location.as_str()
+            };
             let candidate = if Path::new(path).is_absolute() {
                 PathBuf::from(&*path)
             } else {
                 root.join(&*path)
             };
-            let resolved = candidate
-                .canonicalize()
-                .map_err(|_| ScientificResolveError::DatasetInvalid)?;
+            let resolved = candidate.canonicalize().map_err(|error| {
+                dataset_invalid(format!(
+                    "the file \"{}\" named by its \"{setting}\" setting cannot be opened ({})",
+                    candidate.display(),
+                    error.kind()
+                ))
+            })?;
             if !resolved.starts_with(root) {
-                return Err(ScientificResolveError::DatasetInvalid);
+                return Err(dataset_invalid(format!(
+                    "the file \"{}\" named by its \"{setting}\" setting is outside the dataset folder \"{}\"",
+                    resolved.display(),
+                    root.display()
+                )));
             }
             *path = library_dataset_path(&resolved)?;
         }
         Value::Array(values) => {
-            for value in values {
-                confine_config(value, root, path_value)?;
+            for (index, value) in values.iter_mut().enumerate() {
+                let length = location.len();
+                let _ = write!(location, "[{index}]");
+                confine_config(value, root, is_path, location)?;
+                location.truncate(length);
             }
         }
         Value::Object(values) => {
@@ -569,7 +749,13 @@ pub(super) fn confine_config(
                         })
                     },
                 );
-                confine_config(value, root, is_path)?;
+                let length = location.len();
+                if length > 0 {
+                    location.push('.');
+                }
+                location.push_str(key);
+                confine_config(value, root, is_path, location)?;
+                location.truncate(length);
             }
         }
         _ => {}
@@ -582,7 +768,9 @@ fn reject_implicit_folders(value: &Value) -> Result<(), ScientificResolveError> 
         Value::Object(values) => {
             for (key, value) in values {
                 if matches!(key.as_str(), "folder" | "config_file") && !value.is_null() {
-                    return Err(ScientificResolveError::DatasetInvalid);
+                    return Err(dataset_invalid(format!(
+                        "the \"{key}\" setting refers to files implicitly; a run needs every data file named explicitly"
+                    )));
                 }
                 reject_implicit_folders(value)?;
             }
@@ -796,7 +984,9 @@ mod tests {
                     adapter(operation, payload)
                 }
             }),
-            Err(ScientificResolveError::DatasetInvalid)
+            Err(dataset_invalid(
+                "dataset \"Dataset A\": the scientific runtime changed the multimodal dataset document"
+            ))
         );
         links["datasets"][0]["config"]["train_x"] = json!("x.csv");
         fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
@@ -804,7 +994,9 @@ mod tests {
             resolver.resolve_general(&input, |_, _| panic!(
                 "mixed config must fail before adapter"
             )),
-            Err(ScientificResolveError::DatasetInvalid)
+            Err(dataset_invalid(
+                "dataset \"Dataset A\": its configuration mixes a multimodal dataset document with file settings"
+            ))
         );
         links["datasets"][0]["config"] = json!({"dataset_document": {
             "schema": MULTIMODAL_DATASET_SCHEMA, "cohort": {}, "extra": true
@@ -814,7 +1006,9 @@ mod tests {
             resolver.resolve_general(&input, |_, _| panic!(
                 "open descriptor must fail before adapter"
             )),
-            Err(ScientificResolveError::DatasetInvalid)
+            Err(dataset_invalid(format!(
+                "dataset \"Dataset A\": its multimodal dataset document is not a {MULTIMODAL_DATASET_SCHEMA} descriptor of at most 1 MiB"
+            )))
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -877,6 +1071,157 @@ mod tests {
                 assert_eq!(carried, expected, "{operation}");
             }
         }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_missing_spectra_choice_reaches_only_the_dataset_configuration() {
+        use std::cell::RefCell;
+        let (root, config, workspace) = fixture("general-missing-spectra-policy");
+        let resolver = ScientificRequestResolver::new(config);
+        for policy in [
+            None,
+            Some(json!({"policy":"remove"})),
+            Some(json!({"policy":"replace","fill":{"method":"forward_fill"}})),
+        ] {
+            let mut input = submission(&workspace, "local-python");
+            if let Some(policy) = &policy {
+                input.payload["legacyConfig"]["missing_spectra_policy"] = policy.clone();
+            }
+            let seen = RefCell::new(Vec::new());
+            resolver
+                .resolve_general(&input, |operation, payload| {
+                    seen.borrow_mut().push((
+                        operation.to_owned(),
+                        payload.get("missing_spectra_policy").cloned(),
+                    ));
+                    adapter(operation, payload)
+                })
+                .unwrap();
+            for (operation, carried) in seen.into_inner() {
+                let expected = if operation == "dataset.configure" {
+                    policy.clone()
+                } else {
+                    None
+                };
+                assert_eq!(carried, expected, "{operation}");
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_target_choice_reaches_the_dataset_configuration_by_position_and_task() {
+        use std::cell::RefCell;
+        let (root, config, workspace) = fixture("general-target-choice");
+        let links_path = config.join(DATASET_LINKS_FILE);
+        let mut links: Value = serde_json::from_slice(&fs::read(&links_path).unwrap()).unwrap();
+        let resolver = ScientificRequestResolver::new(&config);
+        let mut input = submission(&workspace, "local-python");
+        input.payload["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "grade"});
+        // The catalogue lists the target columns in file order.
+        links["datasets"][0]["targets"] = json!([
+            {"column": "protein", "type": "regression", "is_default": true},
+            {"column": "moisture", "type": "auto"},
+            {"column": "grade", "type": "multiclass_classification"}
+        ]);
+        fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
+        let seen = RefCell::new(Vec::new());
+        let configure = |operation: &str, payload: &Value| {
+            if operation == "dataset.configure" {
+                seen.borrow_mut().push(payload.get("target").cloned());
+            }
+            adapter(operation, payload)
+        };
+        resolver.resolve_general(&input, configure).unwrap();
+        input.payload["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "moisture"});
+        resolver.resolve_general(&input, configure).unwrap();
+        // No choice: the run trains on all target columns, as saved.
+        input.payload["legacyConfig"]
+            .as_object_mut()
+            .unwrap()
+            .remove("target_by_dataset");
+        resolver.resolve_general(&input, configure).unwrap();
+        // A single target column needs no selection.
+        input.payload["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "protein"});
+        links["datasets"][0]["targets"] =
+            json!([{"column": "protein", "type": "regression", "is_default": true}]);
+        fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
+        resolver.resolve_general(&input, configure).unwrap();
+        assert_eq!(
+            seen.into_inner(),
+            [
+                Some(
+                    json!({"column": "grade", "index": 2, "task_type": "multiclass_classification"})
+                ),
+                Some(json!({"column": "moisture", "index": 1})),
+                None,
+                None,
+            ]
+        );
+        input.payload["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "starch"});
+        assert_eq!(
+            resolver.resolve_general(&input, |_, _| panic!("must refuse before the adapter")),
+            Err(dataset_invalid(
+                "dataset \"Dataset A\": it has no target column \"starch\" (its target columns are: protein)"
+            ))
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refusals_name_the_dataset_the_setting_and_the_file() {
+        let (root, config, workspace) = fixture("general-specific-refusals");
+        let input = submission(&workspace, "local-python");
+        let resolver = ScientificRequestResolver::new(&config);
+        let canonical_dataset = root.join("dataset").canonicalize().unwrap();
+        // The library hashes with xxHash when that optional package is
+        // installed; its own run provenance only admits SHA-256.
+        let refusal = resolver
+            .resolve_general(&input, |operation, payload| {
+                if operation == "dataset.fingerprint" {
+                    Ok(json!({"content_hash": "c".repeat(32)}))
+                } else {
+                    adapter(operation, payload)
+                }
+            })
+            .unwrap_err();
+        let (code, detail) = refusal.refusal();
+        assert_eq!(code, "scientific_dataset_invalid");
+        assert!(
+            detail.starts_with(
+                "the selected dataset cannot be used: dataset \"Dataset A\": the scientific runtime returned a 128-bit xxHash content fingerprint"
+            ) && detail.contains("Remove \"xxhash\" from that environment"),
+            "{detail}"
+        );
+        assert_eq!(
+            resolver.resolve_general(&input, |operation, payload| {
+                if operation == "dataset.fingerprint" {
+                    Ok(json!({"content_hash": "not a digest"}))
+                } else {
+                    adapter(operation, payload)
+                }
+            }),
+            Err(dataset_invalid(
+                "dataset \"Dataset A\": the scientific runtime returned no content fingerprint"
+            ))
+        );
+        fs::remove_file(root.join("dataset/y.csv")).unwrap();
+        assert_eq!(
+            resolver.resolve_general(&input, |_, _| panic!("must refuse before the adapter")),
+            Err(dataset_invalid(format!(
+                "dataset \"Dataset A\": the file \"{}\" named by its \"config.files[1].path\" setting cannot be opened (entity not found)",
+                canonical_dataset.join("y.csv").display()
+            )))
+        );
+        fs::remove_dir_all(root.join("dataset")).unwrap();
+        assert_eq!(
+            resolver.resolve_general(&input, |_, _| panic!("must refuse before the adapter")),
+            Err(dataset_invalid(format!(
+                "dataset \"Dataset A\": its folder \"{}\" does not exist, is not a directory or is a symbolic link",
+                root.join("dataset").display()
+            )))
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1033,6 +1378,7 @@ mod tests {
         let resolver = ScientificRequestResolver::new(&config);
         let outside = root.join("outside.csv");
         fs::write(&outside, "secret").unwrap();
+        let canonical_root = root.canonicalize().unwrap();
         assert_eq!(
             resolver.resolve_general(&input, |operation, document| {
                 if operation == "dataset.configure" {
@@ -1041,7 +1387,11 @@ mod tests {
                     adapter(operation, document)
                 }
             }),
-            Err(ScientificResolveError::DatasetInvalid)
+            Err(dataset_invalid(format!(
+                "dataset \"Dataset A\": in the configuration prepared for the run, the file \"{}\" named by its \"train_x\" setting is outside the dataset folder \"{}\"",
+                canonical_root.join("outside.csv").display(),
+                canonical_root.join("dataset").display()
+            )))
         );
         let links_path = config.join(DATASET_LINKS_FILE);
         let mut links: Value = serde_json::from_slice(&fs::read(&links_path).unwrap()).unwrap();
@@ -1050,7 +1400,11 @@ mod tests {
         fs::write(links_path, serde_json::to_vec(&links).unwrap()).unwrap();
         assert_eq!(
             resolver.resolve_general(&input, |_, _| panic!("must reject before adapter")),
-            Err(ScientificResolveError::DatasetInvalid)
+            Err(dataset_invalid(format!(
+                "dataset \"Dataset A\": the file \"{}\" named by its \"config.folds.file\" setting is outside the dataset folder \"{}\"",
+                canonical_root.join("outside.csv").display(),
+                canonical_root.join("dataset").display()
+            )))
         );
         fs::remove_dir_all(root).unwrap();
     }

@@ -1,4 +1,6 @@
+import type { TargetValue } from '@/types/spectral';
 import type { FoldsInfo, PCAResult, UMAPResult } from '@/types/playground';
+import { isObservedTarget } from './targetValues';
 
 export type DimensionReductionMethod = 'pca' | 'umap';
 
@@ -55,8 +57,8 @@ export interface BuildDimensionReductionPointsInput {
   result: Pick<PCAResult | UMAPResult, 'coordinates' | 'y' | 'fold_labels'> | null | undefined;
   axes: DimensionReductionAxes;
   sampleIds?: string[];
-  y?: number[];
-  fallbackY?: number[];
+  y?: TargetValue[];
+  fallbackY?: TargetValue[];
   folds?: FoldsInfo | null;
   fallbackFoldLabels?: number[];
   metadata?: Record<string, unknown[]>;
@@ -150,7 +152,7 @@ export function buildDimensionReductionPoints({
       z: safeDimensionReductionCoord(coords[zIndex]),
       index: sampleIndex,
       name: nameForIndex?.(sampleIndex) ?? sampleIds?.[sampleIndex] ?? `Sample ${sampleIndex + 1}`,
-      yValue: y?.[sampleIndex] ?? fallbackY?.[sampleIndex] ?? result.y?.[sampleIndex],
+      yValue: y?.[sampleIndex] ?? fallbackY?.[sampleIndex] ?? result.y?.[sampleIndex] ?? undefined,
       foldLabel: folds?.fold_labels?.[sampleIndex] ?? fallbackFoldLabels?.[sampleIndex] ?? result.fold_labels?.[sampleIndex],
     };
 
@@ -182,8 +184,8 @@ export function computeDimensionReductionYRange(points: DimensionReductionDataPo
   if (points.length === 0) return { min: 0, max: 1 };
 
   const yValues = points
-    .map(point => point.yValue ?? 0)
-    .filter(Number.isFinite);
+    .map(point => point.yValue)
+    .filter(isObservedTarget);
 
   if (yValues.length === 0) return { min: 0, max: 1 };
 
@@ -201,7 +203,7 @@ export function buildDimensionReductionWebgl2DProps(
     points: points.map((point): [number, number] => [point.x, point.y]),
     indices: points.map(point => point.index),
     colors: points.map(getPointColor),
-    values: points.map(point => point.yValue ?? 0),
+    values: points.map(getWebglPointValue),
   };
 }
 
@@ -213,7 +215,7 @@ export function buildDimensionReductionWebgl3DProps(
     points: points.map((point): [number, number, number] => [point.x, point.y, point.z ?? 0]),
     indices: points.map(point => point.index),
     colors: points.map(getPointColor),
-    values: points.map(point => point.yValue ?? 0),
+    values: points.map(getWebglPointValue),
   };
 }
 
@@ -305,6 +307,11 @@ export function formatDimensionReductionAxisLabel(
   }
 
   return `${prefix}${axisNumber}`;
+}
+
+/** WebGL value buffers are numeric: a point without a target value is NaN, never 0. */
+function getWebglPointValue(point: DimensionReductionDataPoint): number {
+  return point.yValue ?? Number.NaN;
 }
 
 function getAxisIndex(axis: string): number {

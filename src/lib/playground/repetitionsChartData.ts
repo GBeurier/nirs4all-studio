@@ -1,4 +1,6 @@
+import type { TargetValue } from '@/types/spectral';
 import type { RepetitionResult } from '@/types/playground';
+import { getObservedTargetRange, getObservedTargets } from '@/lib/playground/targetValues';
 import type {
   ComputedRepetitionDistances,
   RepetitionsPlotStatistics,
@@ -97,7 +99,7 @@ export interface RepetitionsWebglData {
 export interface BuildRepetitionsPlotModelInput {
   repetitionData: RepetitionResult | null | undefined;
   spectraData?: number[][];
-  y?: number[];
+  y?: TargetValue[];
   computedDistances?: ComputedRepetitionDistances | null;
   scaleType: 'linear' | 'log';
   displayFilteredIndices?: Set<number>;
@@ -273,7 +275,7 @@ function buildConfiguredRepetitionsPlotModel({
     const variance = distances.length > 1
       ? distances.reduce((sum, distance) => sum + Math.pow(distance - meanDist, 2), 0) / (distances.length - 1)
       : 0;
-    const yValues = groupData.filter(point => point.y !== undefined).map(point => point.y!);
+    const yValues = getObservedTargets(groupData.map(point => point.y));
     const meanY = yValues.length > 0 ? yValues.reduce((sum, value) => sum + value, 0) / yValues.length : 0;
     const firstIndex = groupData[0]?.sample_index ?? 0;
     const firstMeta = effectiveSortColumn ? getRepetitionMetadataValue(metadata, firstIndex, effectiveSortColumn) : null;
@@ -286,9 +288,7 @@ function buildConfiguredRepetitionsPlotModel({
   const bioSampleIndex = new Map<string, number>();
   bioSampleList.forEach((bioSample, index) => bioSampleIndex.set(bioSample, index));
 
-  const allY = data.filter(point => point.y !== undefined).map(point => point.y!);
-  const yMin = allY.length > 0 ? Math.min(...allY) : 0;
-  const yMax = allY.length > 0 ? Math.max(...allY) : 1;
+  const targetRange = getObservedTargetRange(data.map(point => point.y)) ?? { min: 0, max: 1 };
   const maxDistance = computedDistances?.max ?? repetitionData.statistics?.max_distance ?? 1;
   const p95 = computedDistances?.quantiles?.[95] ?? repetitionData.statistics?.p95_distance ?? maxDistance;
 
@@ -307,8 +307,8 @@ function buildConfiguredRepetitionsPlotModel({
       repIndex: point.rep_index,
       sampleIndex: point.sample_index,
       sampleId: point.sample_id,
-      targetY: point.y,
-      yMean: point.y_mean,
+      targetY: point.y ?? undefined,
+      yMean: point.y_mean ?? undefined,
       isOutlier: distance > p95,
       isSelected: selectedSamples.has(point.sample_index),
     };
@@ -317,7 +317,7 @@ function buildConfiguredRepetitionsPlotModel({
   return {
     plotData,
     bioSampleOrder: bioSampleList,
-    yRange: { min: yMin, max: yMax },
+    yRange: targetRange,
     statistics: computedDistances
       ? {
           mean_distance: computedDistances.mean,
@@ -340,7 +340,7 @@ function buildSyntheticRepetitionsPlotModel({
   selectedSamples,
 }: {
   spectraData?: number[][];
-  y?: number[];
+  y?: TargetValue[];
   displayFilteredIndices?: Set<number>;
   sortBy: RepetitionsSortOption;
   effectiveSortColumn: string | null;
@@ -381,7 +381,7 @@ function buildSyntheticRepetitionsPlotModel({
   const groupList = Array.from(groupMembers.keys());
   const statsForGroup = (key: string) => {
     const members = groupMembers.get(key) ?? [];
-    const yValues = y ? members.map(index => y[index]).filter((value): value is number => value !== undefined && Number.isFinite(value)) : [];
+    const yValues = y ? getObservedTargets(members.map(index => y[index])) : [];
     const meanY = yValues.length > 0 ? yValues.reduce((sum, value) => sum + value, 0) / yValues.length : 0;
     const firstIndex = members[0] ?? 0;
     return { meanY, firstIndex, groupSize: members.length };
@@ -404,9 +404,7 @@ function buildSyntheticRepetitionsPlotModel({
   const groupIndex = new Map<string, number>();
   groupList.forEach((key, index) => groupIndex.set(key, index));
 
-  const yValues = y ? allIndices.map(index => y[index]).filter((value): value is number => value !== undefined && Number.isFinite(value)) : [];
-  const yMin = yValues.length > 0 ? Math.min(...yValues) : 0;
-  const yMax = yValues.length > 0 ? Math.max(...yValues) : 1;
+  const targetRange = (y ? getObservedTargetRange(allIndices.map(index => y[index])) : null) ?? { min: 0, max: 1 };
 
   const plotData: RepetitionsPlotDataPoint[] = allIndices.map(index => {
     const key = groupKeyFor(index);
@@ -422,8 +420,8 @@ function buildSyntheticRepetitionsPlotModel({
       repIndex: 0,
       sampleIndex: index,
       sampleId: sampleIds?.[index] ?? `Sample_${index}`,
-      targetY: y?.[index],
-      yMean: y?.[index],
+      targetY: y?.[index] ?? undefined,
+      yMean: y?.[index] ?? undefined,
       isOutlier: false,
       isSelected: selectedSamples.has(index),
     };
@@ -432,7 +430,7 @@ function buildSyntheticRepetitionsPlotModel({
   return {
     plotData,
     bioSampleOrder: groupList,
-    yRange: { min: yMin, max: yMax },
+    yRange: targetRange,
     statistics: null,
     shouldWarnCollapsedBioSamples: false,
   };

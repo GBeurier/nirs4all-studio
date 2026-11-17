@@ -5,6 +5,7 @@
 //! record reads remain a `WorkspaceStore` concern and are deliberately excluded.
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::Debug,
     path::{Path, PathBuf},
@@ -247,7 +248,7 @@ pub enum JobExecutorError {
     /// Preflight refused for a concrete, stable reason shown to the user.
     PreflightRefused {
         code: &'static str,
-        detail: &'static str,
+        detail: Cow<'static, str>,
     },
     PreflightBlocked {
         code: String,

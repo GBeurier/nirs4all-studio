@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import type {
   FilterContextValue,
   FilterDataContext,
@@ -90,7 +91,7 @@ export function buildCanvasColorContext({
   classLabels,
   classLabelMap,
 }: {
-  yValues: number[];
+  yValues: TargetValue[];
   yMin: number;
   yMax: number;
   trainIndices?: Set<number>;

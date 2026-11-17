@@ -13,7 +13,7 @@
  */
 
 import type { PlaygroundResult, FoldsInfo } from '@/types/playground';
-import type { SpectralData } from '@/types/spectral';
+import type { SpectralData, TargetValue } from '@/types/spectral';
 import { buildPcaCsv, buildSpectraCsv, buildTargetsCsv } from '@/lib/playground/exportCsv';
 import {
   buildPlaygroundJsonExportPayload,
@@ -82,7 +82,7 @@ export interface DataExportContent {
   /** Wavelength values */
   wavelengths?: number[];
   /** Target values */
-  y?: number[];
+  y?: TargetValue[];
   /** Sample IDs */
   sampleIds?: string[];
   /** Metadata columns */

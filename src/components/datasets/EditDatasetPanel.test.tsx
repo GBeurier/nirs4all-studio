@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInitialState } from "./editDatasetPanelState";
+import { buildDatasetUpdate, buildInitialState } from "./editDatasetPanelState";
 import type { Dataset, DatasetConfig } from "@/types/datasets";
 
 function createDataset(overrides: Partial<Dataset> = {}): Dataset {
@@ -13,6 +13,28 @@ function createDataset(overrides: Partial<Dataset> = {}): Dataset {
     ...overrides,
   };
 }
+
+describe("buildDatasetUpdate", () => {
+  it("saves the name, default target and task type chosen in the edit dialog", () => {
+    const dataset = createDataset({ default_target: "protein", task_type: "regression" });
+    const config = { name: "  Corn 2026 ", default_target: "moisture", task_type: "regression", signal_type: "absorbance" } as Partial<DatasetConfig>;
+    expect(buildDatasetUpdate(dataset, config)).toEqual({
+      name: "Corn 2026",
+      config,
+      default_target: "moisture",
+      task_type: "regression",
+      signal_types: ["absorbance"],
+    });
+  });
+
+  it("keeps the saved name and default target when the dialog leaves them empty", () => {
+    const dataset = createDataset({ default_target: "protein" });
+    const update = buildDatasetUpdate(dataset, { name: "  ", signal_type: "auto" } as Partial<DatasetConfig>);
+    expect(update).not.toHaveProperty("name");
+    expect(update.default_target).toBe("protein");
+    expect(update.signal_types).toEqual([]);
+  });
+});
 
 describe("buildInitialState", () => {
   it("restores global parsing while retaining distinct per-file NA policies", () => {

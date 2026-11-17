@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { formatTargetValue } from '@/lib/playground/targetValues';
+import type { TargetValue } from '@/types/spectral';
 
 export interface SpectraTooltipPayloadEntry {
   payload?: Record<string, number | undefined>;
@@ -10,7 +12,7 @@ export interface SpectraSampleTooltipProps {
   payload?: SpectraTooltipPayloadEntry[];
   hoveredSample: number | null;
   sampleIds?: string[];
-  targetValues?: number[];
+  targetValues?: TargetValue[];
   foldLabels?: number[];
   displayIndices: number[];
   wavelengthAxisName: string;
@@ -48,7 +50,7 @@ export function SpectraSampleTooltip({
     <div className="bg-popover border border-border rounded-md px-2 py-1.5 shadow-md text-[10px]">
       <div className="font-medium text-foreground mb-0.5">{sampleId}</div>
       {yValue !== undefined && (
-        <div className="text-muted-foreground">Y: <span className="font-mono">{yValue.toFixed(3)}</span></div>
+        <div className="text-muted-foreground">Y: <span className="font-mono">{formatTargetValue(yValue, 3)}</span></div>
       )}
       {foldLabel !== undefined && foldLabel >= 0 && (
         <div className="text-muted-foreground">{t('playground.charts.common.foldLabel', { n: foldLabel + 1 })}</div>

@@ -407,6 +407,119 @@ def test_missing_target_choice_is_validated_and_limited_to_scientific_runs(tmp_p
         configure_dataset({"record": record, "missing_target_policy": "remove"})
 
 
+def test_scientific_run_selects_one_target_column_for_this_run_only(tmp_path: Path):
+    from api.library_documents import configure_dataset
+
+    for name in ("Xtrain.csv", "Ytrain.csv", "Xtest.csv", "Ytest.csv"):
+        (tmp_path / name).write_text("placeholder\n")
+    record = {"path": str(tmp_path), "name": "Several targets", "config": {
+        "files": [
+            {"path": "Xtrain.csv", "type": "X", "split": "train"},
+            {"path": "Ytrain.csv", "type": "Y", "split": "train"},
+            {"path": "Xtest.csv", "type": "X", "split": "test"},
+            {"path": "Ytest.csv", "type": "Y", "split": "test"},
+        ],
+        "task_type": "regression", "delimiter": ";",
+    }}
+    saved = configure_dataset({"record": record, "scientific_run": True})
+    assert "train_y_filter" not in saved and "test_y_filter" not in saved
+    selected = configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "predict",
+                                  "target": {"column": "grade", "index": 2, "task_type": "multiclass_classification"}})
+    # The library's column filter of every target file, and the column's own task type.
+    assert selected["train_y_filter"] == [2] and selected["test_y_filter"] == [2]
+    assert selected["task_type"] == "multiclass"
+    assert selected["train_y_params"]["na"]["policy"] == "ignore"
+    assert {key: value for key, value in selected.items() if key not in ("train_y_filter", "test_y_filter", "task_type")} == \
+        {key: value for key, value in configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "predict"}).items() if key != "task_type"}
+    assert "target" not in record["config"] and "train_y_filter" not in record["config"]
+
+    for target in ({"column": "grade"}, {"column": "grade", "index": -1}, {"column": "grade", "index": True},
+                   {"column": 2, "index": 2}, {"column": "grade", "index": 2, "task_type": "ranking"}, {"column": "grade", "index": 2, "extra": 1}, "grade"):
+        with pytest.raises(ValueError, match="target must name a column"):
+            configure_dataset({"record": record, "scientific_run": True, "target": target})
+    with pytest.raises(ValueError, match="only for scientific runs"):
+        configure_dataset({"record": record, "target": {"column": "grade", "index": 2}})
+    # Removal at load drops whole rows of the target file, whatever the column.
+    with pytest.raises(ValueError, match="one target column of several is selected"):
+        configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "remove", "target": {"column": "grade", "index": 2}})
+    descriptor = {"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": {"samples": []}}
+    with pytest.raises(ValueError, match="not supported for multimodal datasets"):
+        configure_dataset({"record": {"path": str(tmp_path), "config": {"dataset_document": descriptor}}, "scientific_run": True,
+                           "target": {"column": "grade", "index": 2}})
+
+
+@pytest.mark.parametrize(("policy", "expected_na", "expected_samples", "expected_missing"), [
+    (None, {"policy": "ignore"}, 4, 2),
+    ({"policy": "keep"}, {"policy": "ignore"}, 4, 2),
+    ({"policy": "remove"}, {"policy": "remove_sample"}, 2, 0),
+    ({"policy": "replace", "fill": {"method": "value", "fill_value": 0}}, {"policy": "replace", "fill": {"method": "value", "fill_value": 0}}, 4, 0),
+    ({"policy": "replace", "fill": {"method": "backward_fill"}}, {"policy": "replace", "fill": {"method": "backward_fill"}}, 4, 0),
+])
+def test_scientific_run_applies_the_missing_spectra_choice_to_spectra_files_only(tmp_path: Path, policy, expected_na, expected_samples, expected_missing):
+    import numpy as np
+    from nirs4all.api.dataset_inspection import load_dataset_for_analysis
+
+    from api.library_documents import configure_dataset
+
+    (tmp_path / "Xtrain.csv").write_text("1000;1100;1200\n1;2;3\n;5;6\n7;;9\n10;11;12\n")
+    (tmp_path / "Ytrain.csv").write_text("target\n1.5\n2.5\n\n4.5\n")
+    record = {"path": str(tmp_path), "name": "Missing spectra", "config": {
+        "files": [{"path": "Xtrain.csv", "type": "X", "split": "train"}, {"path": "Ytrain.csv", "type": "Y", "split": "train"}],
+        "na_policy": "auto", "delimiter": ";", "task_type": "regression",
+    }}
+    document = {"record": record, "scientific_run": True, "missing_target_policy": "predict"}
+    if policy is not None:
+        document["missing_spectra_policy"] = policy
+    config = configure_dataset(document)
+    # "Auto" keeps missing values; the run's answer replaces the spectra files' settings only.
+    assert config["train_x_params"]["na"] == expected_na
+    assert config["train_y_params"]["na"] == {"policy": "ignore"}
+    dataset, _reader = load_dataset_for_analysis(config)
+    x = np.asarray(dataset.x({"partition": "train"}), dtype=float)
+    assert len(x) == expected_samples == dataset.num_samples
+    assert int(np.isnan(x).sum()) == expected_missing
+    # Removal keeps X and Y aligned: the remaining targets are those of the complete spectra.
+    if policy == {"policy": "remove"}:
+        assert np.asarray(dataset.y({"partition": "train"}), dtype=float).ravel().tolist() == [1.5, 4.5]
+    assert "missing_spectra_policy" not in record["config"] and record["config"]["na_policy"] == "auto"
+
+
+def test_missing_spectra_choice_is_validated_and_limited_to_scientific_runs(tmp_path: Path):
+    from api.library_documents import configure_dataset
+
+    record = {"path": str(tmp_path), "config": {"train_x": str(tmp_path / "X.csv"), "train_y": str(tmp_path / "Y.csv")}}
+    for policy in ("remove", {"policy": "remove_sample"}, {"policy": "replace"}, {"policy": "replace", "fill": {"method": "mean"}},
+                   {"policy": "replace", "fill": {"method": "value"}}, {"policy": "replace", "fill": {"method": "value", "fill_value": float("nan")}},
+                   {"policy": "keep", "fill": {"method": "forward_fill"}}):
+        with pytest.raises(ValueError, match="missing_spectra_policy must be"):
+            configure_dataset({"record": record, "scientific_run": True, "missing_spectra_policy": policy})
+    with pytest.raises(ValueError, match="only to scientific runs"):
+        configure_dataset({"record": record, "missing_spectra_policy": {"policy": "remove"}})
+    descriptor = {"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": {"samples": []}}
+    multimodal = {"path": str(tmp_path), "config": {"dataset_document": descriptor}}
+    assert configure_dataset({"record": multimodal, "scientific_run": True, "missing_spectra_policy": {"policy": "keep"}}) == descriptor
+    with pytest.raises(ValueError, match="not supported for multimodal datasets"):
+        configure_dataset({"record": multimodal, "scientific_run": True, "missing_spectra_policy": {"policy": "remove"}})
+
+
+def test_catalogue_preview_counts_the_missing_spectral_values_it_keeps(tmp_path: Path):
+    from api.library_dataset_inspection import inspect_dataset_document
+    from api.library_documents import configure_dataset
+
+    (tmp_path / "Xtrain.csv").write_text("1000;1100;1200\n1;2;3\n;;6\n7;;9\n10;11;12\n")
+    (tmp_path / "Ytrain.csv").write_text("target\n1.5\n2.5\n3.5\n4.5\n")
+    record = {"path": str(tmp_path), "name": "Missing spectra", "config": {
+        "files": [{"path": "Xtrain.csv", "type": "X", "split": "train"}, {"path": "Ytrain.csv", "type": "Y", "split": "train"}],
+        "na_policy": "auto", "delimiter": ";", "task_type": "regression",
+    }}
+    config = configure_dataset({"record": record})
+    preview = inspect_dataset_document("dataset.preview", {"config": config, "max_samples": 5, "count_missing_spectra": True})
+    # Nothing is dropped at load, and the gaps are counted.
+    assert preview["summary"]["num_samples"] == 4
+    assert preview["summary"]["missing_spectra"] == {"values": 3, "samples": 2}
+    assert "missing_spectra" not in inspect_dataset_document("dataset.preview", {"config": config, "max_samples": 5})["summary"]
+
+
 def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Path):
     from api.library_documents import configure_dataset
 

@@ -6,7 +6,11 @@ import {
   type ContinuousPalette,
   type GlobalColorMode,
 } from '@/lib/playground/colorConfig';
-import type { FoldDistributionYBin, PartitionBarData } from '@/lib/playground/foldDistributionData';
+import {
+  FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT,
+  type FoldDistributionYBin,
+  type PartitionBarData,
+} from '@/lib/playground/foldDistributionData';
 
 export interface FoldDistributionPartitionPalette {
   train: string;
@@ -79,6 +83,9 @@ export function getFoldDistributionSegmentColor(
       );
 
     case 'target': {
+      if (segmentKey === FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT) {
+        return 'hsl(var(--muted-foreground) / 0.5)';
+      }
       if (segmentKey.startsWith('class_')) {
         const classIdx = parseInt(segmentKey.replace('class_', ''), 10);
         return getCategoricalColor(classIdx, categoricalPalette);
@@ -128,6 +135,7 @@ export function getFoldDistributionSegmentLabel(
       return segmentKey === 'train' ? 'Train' : 'Test';
 
     case 'target': {
+      if (segmentKey === FOLD_DISTRIBUTION_MISSING_TARGET_SEGMENT) return 'No target value';
       if (segmentKey.startsWith('class_')) {
         const classIdx = parseInt(segmentKey.replace('class_', ''), 10);
         return classLabels[classIdx] ?? `Class ${classIdx + 1}`;

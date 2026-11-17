@@ -1,4 +1,6 @@
+import type { TargetValue } from '@/types/spectral';
 import { useTranslation } from 'react-i18next';
+import { formatTargetValue } from '@/lib/playground/targetValues';
 
 export interface SpectraWebGLHoverTooltipProps {
   showHoverTooltip: boolean;
@@ -7,7 +9,7 @@ export interface SpectraWebGLHoverTooltipProps {
   mousePosition: { x: number; y: number } | null;
   containerWidth: number;
   sampleIds?: string[];
-  y?: number[];
+  y?: TargetValue[];
   foldLabels?: number[];
 }
 
@@ -43,7 +45,7 @@ export function SpectraWebGLHoverTooltip({
       </div>
       {yValue !== undefined && (
         <div className="text-muted-foreground">
-          Y: <span className="font-mono">{yValue.toFixed(3)}</span>
+          Y: <span className="font-mono">{formatTargetValue(yValue, 3)}</span>
         </div>
       )}
       {foldLabel !== undefined && foldLabel >= 0 && (

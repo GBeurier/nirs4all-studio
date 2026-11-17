@@ -14,6 +14,27 @@ from typing import Any, Literal
 MissingTargetPolicy = Literal["predict", "remove"]
 MISSING_TARGET_NA_POLICIES: dict[str, str] = {"predict": "ignore", "remove": "remove_sample"}
 
+# The library's fill methods that need no statistic across samples.
+_FEATURE_FILL_METHODS = ("value", "forward_fill", "backward_fill")
+
+
+def feature_na_params(policy: Any) -> dict[str, Any]:
+    """A run's answer for missing spectral values, as the NA settings of every spectra file."""
+    choice = policy.get("policy") if isinstance(policy, dict) else None
+    if choice in ("remove", "keep") and set(policy) == {"policy"}:
+        return {"na_policy": "remove_sample" if choice == "remove" else "ignore"}
+    fill = policy.get("fill") if choice == "replace" and set(policy) == {"policy", "fill"} else None
+    if isinstance(fill, dict) and fill.get("method") in _FEATURE_FILL_METHODS:
+        if fill["method"] != "value" and set(fill) == {"method"}:
+            return {"na_policy": "replace", "na_fill_config": {"method": fill["method"]}}
+        value = fill.get("fill_value")
+        if fill["method"] == "value" and set(fill) == {"method", "fill_value"} and type(value) in (int, float) and value == value and abs(value) != float("inf"):
+            return {"na_policy": "replace", "na_fill_config": {"method": "value", "fill_value": value}}
+    raise ValueError("missing_spectra_policy must be {policy: remove | keep} or {policy: replace, fill: {method: value, fill_value} | {method: forward_fill | backward_fill}}")
+
+
+_LIBRARY_TASK_TYPES = {"binary_classification": "binary", "multiclass_classification": "multiclass"}
+
 _FILE_TYPE_ALIASES = {
     "x": "X",
     "y": "Y",
@@ -68,7 +89,8 @@ def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | No
     return policy
 
 
-def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False, target_na_policy: str | None = None) -> dict[str, Any]:
+def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False, target_na_policy: str | None = None,
+                        feature_na: dict[str, Any] | None = None, target_index: int | None = None, target_task_type: str | None = None) -> dict[str, Any]:
     """Adapt native IO parameters to the library's DatasetConfigs/run loader.
 
     Native IO consumes nested ``na`` settings. DatasetConfigs consumes their
@@ -78,24 +100,41 @@ def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False, targ
     settings; the historical DatasetConfigs loader still needs flat options.
     ``target_na_policy`` replaces the NA policy of every target file for this
     load only (a run's explicit missing-target choice); the saved dataset is
-    not modified.
+    not modified. ``feature_na`` replaces, likewise, the NA settings of every
+    spectra file (a run's explicit choice for missing spectral values); the
+    library keeps X, Y and metadata aligned when it removes samples.
+    ``target_index`` selects, for this load only, the one target
+    column a run trains on, by its position in every target file: the other
+    target columns are not loaded, so only the samples missing that target are
+    target-missing for the run. ``target_task_type`` is that column's own task
+    type; it replaces the dataset-level one.
     """
     if target_na_policy is not None:
         config = {**config, **{f"{split}_y_params": config.get(f"{split}_y_params") or {} for split in ("train", "test") if config.get(f"{split}_y")}}
 
+    if feature_na is not None:
+        config = {**config, **{f"{split}_x_params": config.get(f"{split}_x_params") or {} for split in ("train", "test") if config.get(f"{split}_x")}}
+
     def loading_params(params: dict[str, Any], key: str) -> dict[str, Any]:
         if target_na_policy is not None and key in ("train_y_params", "test_y_params"):
             params = {**{name: value for name, value in params.items() if name not in ("na", "na_fill_config")}, "na_policy": target_na_policy}
+        if feature_na is not None and key in ("train_x_params", "test_x_params"):
+            params = {**{name: value for name, value in params.items() if name not in ("na", "na_policy", "na_fill_config")}, **feature_na}
         bridged = _with_library_na_params(params)
         return {name: value for name, value in bridged.items()
                 if (name != "na" or native_io) and (name != "signal_type" or key.endswith("_x_params"))}
 
-    return {
+    adapted = {
         key: loading_params(value, key)
         if (key == "global_params" or key.endswith("_params")) and isinstance(value, dict)
         else value
         for key, value in config.items()
     }
+    if target_index is not None:
+        adapted.update({f"{split}_y_filter": [target_index] for split in ("train", "test") if adapted.get(f"{split}_y")})
+        if target_task_type is not None:
+            adapted["task_type"] = _LIBRARY_TASK_TYPES.get(target_task_type, target_task_type)
+    return adapted
 
 
 def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
@@ -107,7 +146,7 @@ def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
         if key.endswith("_params") and isinstance(value, dict):
             result[key] = _with_library_na_params(value)
     for split in ("train", "test"):
-        for role in ("y", "group"):
+        for role in ("x", "y", "group"):
             if not result.get(f"{split}_{role}"):
                 continue
             effective_policy = "auto"
@@ -224,18 +263,12 @@ def build_nirs4all_config(
 
         # Per-file params
         params_key = f"{file_key}_params"
-        if norm_type == "X" and x_specific_params:
-            if overrides:
-                config[params_key] = {**x_specific_params, **overrides}
-            else:
-                config[params_key] = x_specific_params.copy()
-        elif norm_type in ("metadata", "Y"):
-            params = dict(overrides or {})
-            if _na_policy(params, _na_policy(parsing)) in (None, "auto"):
-                params["na_policy"] = "ignore"
-            config[params_key] = params
-        elif overrides:
-            config[params_key] = overrides
+        # Studio's "auto" keeps missing values in every role: nothing is
+        # dropped or filled at load unless the user chose it.
+        params = {**x_specific_params, **(overrides or {})} if norm_type == "X" else dict(overrides or {})
+        if _na_policy(params, _na_policy(parsing)) in (None, "auto"):
+            params["na_policy"] = "ignore"
+        config[params_key] = params
         if params_key in config:
             config[params_key] = _with_library_na_params(config[params_key])
 
@@ -260,10 +293,7 @@ def build_nirs4all_config(
 
     # Task type
     if task_type and task_type != "auto":
-        config["task_type"] = {
-            "binary_classification": "binary",
-            "multiclass_classification": "multiclass",
-        }.get(task_type, task_type)
+        config["task_type"] = _LIBRARY_TASK_TYPES.get(task_type, task_type)
 
     # Dataset name
     if dataset_name:
@@ -312,7 +342,7 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
         )
 
     task_type = stored_config.get("task_type")
-    normalized_task = {"binary_classification": "binary", "multiclass_classification": "multiclass"}.get(task_type, task_type)
+    normalized_task = _LIBRARY_TASK_TYPES.get(task_type, task_type)
 
     # Existing library configs remain complete: source parameters, selections,
     # repetitions, folds and future library-owned fields must survive reloads.

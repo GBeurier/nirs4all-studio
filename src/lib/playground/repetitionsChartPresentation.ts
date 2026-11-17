@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import {
   getWebGLSampleColor,
   type ColorContext,
@@ -10,7 +11,7 @@ import {
 
 export interface BuildRepetitionsColorContextInput {
   colorContext?: ColorContext;
-  y?: number[];
+  y?: TargetValue[];
   plotDataLength: number;
   selectedSamples: Set<number>;
 }

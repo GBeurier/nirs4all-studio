@@ -297,10 +297,10 @@ pub fn prediction_payload(
                     &mut record["config"],
                     &directory,
                 )
-                .map_err(|error| format!("{error:?}"))?;
+                .map_err(|error| error.to_string())?;
                 let mut configured = adapt("dataset.configure", &json!({"record":record}))?;
                 ScientificRequestResolver::confine_dataset_config(&mut configured, &directory)
-                    .map_err(|error| format!("{error:?}"))?;
+                    .map_err(|error| error.to_string())?;
                 configured
             };
             let partition = request

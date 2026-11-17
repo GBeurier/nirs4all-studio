@@ -4,6 +4,7 @@
  */
 
 import type { PipelineExecutionMetricObservation } from "@/lib/pipelineExecutionContract";
+import type { TargetValue } from "./spectral";
 
 // ============= Unified Operator Format =============
 
@@ -68,7 +69,7 @@ export interface SamplingOptions {
  */
 export interface PlaygroundData {
   x: number[][];
-  y?: number[];
+  y?: TargetValue[];
   wavelengths?: number[];
   sample_ids?: string[];
   metadata?: Record<string, unknown[]>;
@@ -238,14 +239,27 @@ export interface SourcePartitions {
 }
 
 /**
+ * Samples a projection could not place: their spectrum, as the projection
+ * uses it, has missing values. They stay in the dataset and in every other
+ * view; their row of `coordinates` is empty.
+ */
+export interface ProjectionLeftOut {
+  reason: 'missing_values';
+  count: number;
+  sample_indices: number[];
+}
+
+/**
  * PCA projection results
  */
 export interface PCAResult {
+  /** One row per sample; empty for a sample listed in `left_out`. */
   coordinates: number[][];
+  left_out?: ProjectionLeftOut;
   explained_variance_ratio: number[];
   explained_variance: number[];
   n_components: number;
-  y?: number[];
+  y?: TargetValue[];
   fold_labels?: number[];
   error?: string;
 }
@@ -259,7 +273,7 @@ export interface DataSection {
   sample_indices?: number[];
   sample_ids?: string[];
   metadata?: Record<string, unknown[]>;
-  y?: number[];
+  y?: TargetValue[];
   shape: number[];
   statistics?: SpectrumStats;
   /**
@@ -307,8 +321,9 @@ export interface FilterInfo {
  * UMAP projection results
  */
 export interface UMAPResult {
-  /** UMAP coordinates [n_samples, n_components] */
+  /** UMAP coordinates [n_samples, n_components]; empty for a sample listed in `left_out`. */
   coordinates: number[][];
+  left_out?: ProjectionLeftOut;
   /** Number of UMAP components computed */
   n_components: number;
   /** UMAP parameters used */
@@ -317,7 +332,7 @@ export interface UMAPResult {
     min_dist: number;
   };
   /** Y values for coloring */
-  y?: number[];
+  y?: TargetValue[];
   /** Fold labels for coloring */
   fold_labels?: number[];
   /** Error message if computation failed */
@@ -340,10 +355,10 @@ export interface RepetitionDataPoint {
   sample_id: string;
   /** Distance from reference (mean or first rep) */
   distance: number;
-  /** Y value for this sample */
-  y?: number;
-  /** Mean Y value for all reps of this bio sample */
-  y_mean?: number;
+  /** Y value for this sample (`null` when the sample has no target value) */
+  y?: TargetValue;
+  /** Mean Y value for all reps of this bio sample (`null` when none has a target value) */
+  y_mean?: TargetValue;
 }
 
 /**

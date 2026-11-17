@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import type { GlobalColorConfig } from '@/lib/playground/colorConfig';
 import type { SpectraChartConfig } from '@/lib/playground/spectraConfig';
 import type { FoldsInfo } from '@/types/playground';
@@ -21,7 +22,7 @@ export interface BuildSpectraWebGLBranchPropsInput {
   originalSpectra: number[][];
   focusedSpectra: number[][];
   focusedWavelengths: number[];
-  y?: number[];
+  y?: TargetValue[];
   sampleIds?: string[];
   folds?: FoldsInfo | null;
   displayIndices: number[];

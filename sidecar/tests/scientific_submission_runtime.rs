@@ -594,7 +594,7 @@ fn resolver_id_mismatch_is_refused_before_registry_events_or_durable_mutation() 
         body(&response),
         json!({
             "code": "scientific_submission_invalid",
-            "detail": "Scientific job executor preflight failed: the submission does not match its manifest and campaign specification (scientific_submission_invalid)",
+            "detail": "The run cannot start: the submission does not match its manifest and campaign specification (scientific_submission_invalid)",
         })
     );
     assert_eq!(runtime.published_event_count(), 0);

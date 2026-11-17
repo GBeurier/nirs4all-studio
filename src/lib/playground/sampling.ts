@@ -7,7 +7,9 @@
  * backend-based sampling strategies.
  */
 
+import type { TargetValue } from '@/types/spectral';
 import type { SamplingStrategy, SamplingConfig } from './spectraConfig';
+import { getObservedTargets, isObservedTarget } from './targetValues';
 
 // ============= Types =============
 
@@ -68,10 +70,12 @@ export function randomSample(
 
 /**
  * Stratified sampling - preserve target value distribution
- * Groups samples by Y quantiles and samples from each group
+ * Groups samples by Y quantiles and samples from each group.
+ * Samples without a target value form their own stratum, sampled in
+ * proportion to its size, so they stay represented in the subsample.
  */
 export function stratifiedSample(
-  yValues: number[],
+  yValues: TargetValue[],
   targetCount: number,
   seed: number = 42,
   numBins: number = 5
@@ -84,8 +88,8 @@ export function stratifiedSample(
 
   const random = createSeededRandom(seed);
 
-  // Compute quantile boundaries
-  const sortedY = [...yValues].sort((a, b) => a - b);
+  // Compute quantile boundaries from the observed target values
+  const sortedY = getObservedTargets(yValues).sort((a, b) => a - b);
   const boundaries: number[] = [];
   for (let i = 1; i < numBins; i++) {
     const idx = Math.floor((i * sortedY.length) / numBins);
@@ -94,19 +98,26 @@ export function stratifiedSample(
 
   // Assign samples to bins
   const bins: number[][] = Array.from({ length: numBins }, () => []);
+  const missingBin: number[] = [];
   yValues.forEach((y, idx) => {
+    if (!isObservedTarget(y)) {
+      missingBin.push(idx);
+      return;
+    }
     let binIdx = boundaries.findIndex(b => y < b);
     if (binIdx === -1) binIdx = numBins - 1;
     bins[binIdx].push(idx);
   });
 
   // Sample proportionally from each bin
-  const samplesPerBin = Math.floor(targetCount / numBins);
-  const remainder = targetCount % numBins;
+  const missingTarget = Math.round((targetCount * missingBin.length) / totalSamples);
+  const observedTarget = targetCount - missingTarget;
+  const samplesPerBin = Math.floor(observedTarget / numBins);
+  const remainder = observedTarget % numBins;
   const result: number[] = [];
 
-  bins.forEach((bin, binIdx) => {
-    const binTarget = samplesPerBin + (binIdx < remainder ? 1 : 0);
+  [...bins, missingBin].forEach((bin, binIdx) => {
+    const binTarget = binIdx === numBins ? missingTarget : samplesPerBin + (binIdx < remainder ? 1 : 0);
     const actualTarget = Math.min(binTarget, bin.length);
 
     // Shuffle bin and take first actualTarget
@@ -228,7 +239,7 @@ export function applySampling(
   totalSamples: number,
   config: SamplingConfig,
   data?: {
-    yValues?: number[];
+    yValues?: TargetValue[];
     spectra?: number[][];
     progressiveLevel?: number;
   }

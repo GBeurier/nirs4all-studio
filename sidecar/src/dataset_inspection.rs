@@ -399,10 +399,10 @@ impl DatasetInspection {
     ) -> Result<Value, String> {
         let mut record = json!({"path":self.root,"config":value});
         ScientificRequestResolver::confine_dataset_config(&mut record, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         let mut config = adapt("dataset.configure", &json!({"record":record}))?;
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         if !config.is_object() {
             return Err("Dataset adapter returned no explicit config".into());
         }
@@ -424,6 +424,27 @@ impl DatasetInspection {
         self.preview_configured(&config, max_samples, adapt)
     }
 
+    /// The preview recorded in the dataset catalogue: it also counts the
+    /// missing spectral values the dataset keeps.
+    /// # Errors
+    /// Propagates confinement, reader and projection errors without fallback.
+    pub fn catalogue_preview(
+        &self,
+        config: &Value,
+        max_samples: usize,
+        adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, String> {
+        if max_samples == 0 {
+            return Err("max_samples must be positive".into());
+        }
+        let config = self.config(config, adapt)?;
+        adapt(
+            "dataset.preview",
+            &json!({"config":config,"max_samples":max_samples,
+            "max_input_bytes":self.limits.max_total_bytes,"count_missing_spectra":true}),
+        )
+    }
+
     /// Preview an already normalized config without invoking the normalizer again.
     /// # Errors
     /// Rejects non-object configs, escaping paths and invalid sample limits.
@@ -441,7 +462,7 @@ impl DatasetInspection {
         }
         let mut config = config.clone();
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         adapt(
             "dataset.preview",
             &json!({"config":config,"max_samples":max_samples,

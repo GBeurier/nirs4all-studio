@@ -19,7 +19,7 @@ import {
   type MissingOperatorIssue,
 } from "./pipelineOperatorAvailability";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
-import type { ExperimentConfig, MissingTargetPolicy } from "@/types/runs";
+import type { ExperimentConfig, MissingSpectraPolicy, MissingTargetPolicy } from "@/types/runs";
 
 export type ExperimentLaunchCurrentSubmissionKind = "legacy_config" | "native_payload";
 
@@ -96,6 +96,8 @@ export interface BuildExperimentLaunchSelectionPayloadPlanInput {
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
   missingTargetPolicy: MissingTargetPolicy;
+  targetByDataset?: Record<string, string>;
+  missingSpectraPolicy?: MissingSpectraPolicy | null;
   strictCampaignSpecs: CampaignSinglePairSplitSpecResult;
   executionAdapter: ExperimentExecutionAdapter;
   missingIssues?: MissingOperatorIssue[];
@@ -402,6 +404,8 @@ export function buildExperimentLaunchSelectionPayloadPlan({
   selectedPipelineConfigs,
   selectedGroupingPayload,
   missingTargetPolicy,
+  targetByDataset,
+  missingSpectraPolicy,
   strictCampaignSpecs,
   executionAdapter,
   missingIssues = [],
@@ -413,6 +417,8 @@ export function buildExperimentLaunchSelectionPayloadPlan({
     selectedPipelineConfigs,
     selectedGroupingPayload,
     missingTargetPolicy,
+    targetByDataset,
+    missingSpectraPolicy,
     missingIssues,
     executionBackend: executionAdapter.nativeBackends[0],
   });

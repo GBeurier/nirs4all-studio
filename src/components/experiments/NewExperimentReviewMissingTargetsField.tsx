@@ -2,16 +2,20 @@ import { useTranslation } from "react-i18next";
 
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import type { MissingTargetCount } from "@/lib/experimentTargets";
 import type { MissingTargetPolicy } from "@/types/runs";
 
 export interface NewExperimentReviewMissingTargetsFieldProps {
   missingTargetPolicy: MissingTargetPolicy;
+  /** Samples without a value for the trained target, for the datasets where it is known. */
+  missingTargetCounts?: MissingTargetCount[];
   removalAvailable: boolean;
   onMissingTargetPolicyChange: (value: MissingTargetPolicy) => void;
 }
 
 export function NewExperimentReviewMissingTargetsField({
   missingTargetPolicy,
+  missingTargetCounts = [],
   removalAvailable,
   onMissingTargetPolicyChange,
 }: NewExperimentReviewMissingTargetsFieldProps) {
@@ -41,6 +45,17 @@ export function NewExperimentReviewMissingTargetsField({
       <p className="text-sm text-muted-foreground">
         {t("newExperiment.review.missingTargets.description")}
       </p>
+      {missingTargetCounts.length > 0 && (
+        <ul className="text-sm text-amber-700 dark:text-amber-400">
+          {missingTargetCounts.map((count) => (
+            <li key={count.datasetId}>
+              {count.samples === null
+                ? t("newExperiment.review.missingTargets.count", { ...count })
+                : t("newExperiment.review.missingTargets.countOfSamples", { ...count })}
+            </li>
+          ))}
+        </ul>
+      )}
       <RadioGroup
         value={missingTargetPolicy}
         onValueChange={(value) => onMissingTargetPolicyChange(value as MissingTargetPolicy)}

@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import {
   ComposedChart,
   XAxis,
@@ -57,7 +58,7 @@ export interface SpectraRechartsPlotProps {
   referenceLineCount: number;
   enableHover: boolean;
   sampleIds?: string[];
-  targetValues?: number[];
+  targetValues?: TargetValue[];
   foldLabels?: number[];
   wavelengthAxisName: string;
   wavelengthUnitSuffix: string;

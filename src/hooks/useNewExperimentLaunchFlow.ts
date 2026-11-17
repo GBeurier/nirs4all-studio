@@ -26,7 +26,7 @@ import { resolveExperimentLaunchPreflightDecision } from "@/lib/experimentLaunch
 import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
 import { stepsNeedPyTorch, type PyTorchNeed } from "@/lib/pytorchRequirement";
 import { usePyTorchGate } from "@/context/usePyTorchInstallPrompt";
-import type { MissingTargetPolicy } from "@/types/runs";
+import type { MissingSpectraPolicy, MissingTargetPolicy } from "@/types/runs";
 import { useNewExperimentLaunchSubmissionMutation } from "./useNewExperimentLaunchSubmissionMutation";
 
 export interface UseNewExperimentLaunchFlowInput {
@@ -36,6 +36,9 @@ export interface UseNewExperimentLaunchFlowInput {
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
   missingTargetPolicy: MissingTargetPolicy;
+  /** The target column of each dataset trained on one of its several target columns. */
+  targetByDataset?: Record<string, string>;
+  missingSpectraPolicy?: MissingSpectraPolicy | null;
   singlePairSplitSpecResult?: CampaignSinglePairSplitSpecResult;
   hasGroupingBlockingError: boolean;
   executionAdapter?: ExperimentExecutionAdapter;
@@ -64,6 +67,8 @@ export function useNewExperimentLaunchFlow({
   selectedPipelineConfigs,
   selectedGroupingPayload,
   missingTargetPolicy,
+  targetByDataset,
+  missingSpectraPolicy,
   singlePairSplitSpecResult = { splitSpecs: [], skippedRunIds: [] },
   hasGroupingBlockingError,
   executionAdapter = LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
@@ -92,6 +97,8 @@ export function useNewExperimentLaunchFlow({
       selectedPipelineConfigs,
       selectedGroupingPayload,
       missingTargetPolicy,
+      targetByDataset,
+      missingSpectraPolicy,
       strictCampaignSpecs: singlePairSplitSpecResult,
       executionAdapter,
       missingIssues,
@@ -100,11 +107,13 @@ export function useNewExperimentLaunchFlow({
     executionAdapter,
     experimentDescription,
     experimentName,
+    missingSpectraPolicy,
     missingTargetPolicy,
     selectedDatasetIds,
     selectedGroupingPayload,
     selectedPipelineConfigs,
     singlePairSplitSpecResult,
+    targetByDataset,
   ]);
   const launchPayloadPlan = useMemo(() => buildLaunchPayloadPlan(), [buildLaunchPayloadPlan]);
 

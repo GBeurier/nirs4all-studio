@@ -36,7 +36,7 @@ export function buildSpectraCsv(content: DataExportContent): CsvBuildResult {
     const row: (string | number)[] = [];
     if (hasSampleIds) row.push(sampleIds[idx]);
     row.push(...spectrum.map((value) => value.toFixed(6)));
-    if (hasY) row.push(y[idx]);
+    if (hasY) row.push(y[idx] ?? '');
     if (hasOutliers) row.push(outlierSet!.has(idx) ? 1 : 0);
     return row.join(',');
   });
@@ -57,7 +57,8 @@ export function buildPcaCsv(content: DataExportContent): CsvBuildResult {
     };
   }
 
-  const nComponents = pca[0].length;
+  // A sample the projection left out has an empty row: its cells stay empty.
+  const nComponents = Math.max(...pca.map((coords) => coords.length));
   const hasSampleIds = sampleIds && sampleIds.length === pca.length;
   const hasY = y && y.length === pca.length;
 
@@ -75,8 +76,8 @@ export function buildPcaCsv(content: DataExportContent): CsvBuildResult {
   const rows = pca.map((coords, idx) => {
     const row: (string | number)[] = [];
     if (hasSampleIds) row.push(sampleIds[idx]);
-    row.push(...coords.map((value) => value.toFixed(6)));
-    if (hasY) row.push(y[idx]);
+    row.push(...Array.from({ length: nComponents }, (_, component) => coords[component]?.toFixed(6) ?? ''));
+    if (hasY) row.push(y[idx] ?? '');
     return row.join(',');
   });
 
@@ -106,7 +107,7 @@ export function buildTargetsCsv(content: DataExportContent): CsvBuildResult {
   const rows = y.map((targetValue, idx) => {
     const row: (string | number)[] = [];
     if (hasSampleIds) row.push(sampleIds[idx]);
-    row.push(targetValue);
+    row.push(targetValue ?? '');
     for (const key of metadataKeys) {
       const value = metadata![key][idx];
       row.push(value !== undefined && value !== null ? String(value) : '');

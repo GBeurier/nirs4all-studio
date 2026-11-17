@@ -27,6 +27,7 @@ import {
   getMetadataUniqueCategories,
 } from '@/lib/playground/colorConfig';
 import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
+import { countMissingTargets } from '@/lib/playground/targetValues';
 
 export interface ColorLegendProps {
   config: GlobalColorConfig;
@@ -57,10 +58,18 @@ function getCategoricalLegendItems(
       // Phase 5: Classification mode - show class swatches
       if (effectiveTargetType && isCategoricalTarget(effectiveTargetType)) {
         const classLabels = context.classLabels ?? [];
-        return classLabels.slice(0, 10).map((label, idx) => ({
+        const items = classLabels.slice(0, 10).map((label, idx) => ({
           color: getCategoricalColor(idx, config.categoricalPalette),
           label: label,
         }));
+        const missingTargets = countMissingTargets(context.y);
+        if (missingTargets > 0) {
+          items.push({
+            color: HIGHLIGHT_COLORS_CONCRETE.unselected,
+            label: t('playground.colorLegend.noTargetValue', { count: missingTargets }),
+          });
+        }
+        return items;
       }
       return [];
     }
@@ -167,8 +176,14 @@ const GradientLegend = memo(function GradientLegend({
   config: GlobalColorConfig;
   context: ColorContext;
 }) {
+  const { t } = useTranslation();
   const range = getContinuousRange(config, context);
   const gradient = getContinuousPaletteGradient(config.continuousPalette);
+  // Samples without a target value are drawn in the neutral colour, outside the gradient.
+  const missingTargets = useMemo(
+    () => (config.mode === 'target' ? countMissingTargets(context.y) : 0),
+    [config.mode, context.y]
+  );
 
   return (
     <div className="flex flex-col gap-1">
@@ -180,6 +195,17 @@ const GradientLegend = memo(function GradientLegend({
         <div className="flex justify-between text-[9px] text-muted-foreground">
           <span>{range.min}</span>
           <span>{range.max}</span>
+        </div>
+      )}
+      {missingTargets > 0 && (
+        <div className="flex items-center gap-1.5">
+          <div
+            className="w-3 h-3 rounded-sm shrink-0"
+            style={{ backgroundColor: HIGHLIGHT_COLORS_CONCRETE.unselected }}
+          />
+          <span className="text-[9px] text-muted-foreground">
+            {t('playground.colorLegend.noTargetValue', { count: missingTargets })}
+          </span>
         </div>
       )}
     </div>

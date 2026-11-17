@@ -278,6 +278,14 @@ export interface RunRobustnessLaunchPayload {
  */
 export type MissingTargetPolicy = "predict" | "remove";
 
+/** The library's fill methods that need no statistic across samples. */
+export type MissingSpectraFillMethod = "value" | "forward_fill" | "backward_fill";
+
+/** What a run does with missing spectral values: remove the samples, replace the values, or keep them. */
+export type MissingSpectraPolicy =
+  | { policy: "remove" | "keep" }
+  | { policy: "replace"; fill: { method: "value"; fill_value: number } | { method: "forward_fill" | "backward_fill" } };
+
 // Experiment configuration for creating new runs
 export interface ExperimentConfig {
   name: string;
@@ -297,6 +305,10 @@ export interface ExperimentConfig {
   split_group_by_by_dataset?: SplitGroupByByDataset;
   /** Run-only handling of samples without a target; saved datasets are unchanged. */
   missing_target_policy?: MissingTargetPolicy;
+  /** Run-only handling of missing spectral values; absent when no selected dataset keeps any. */
+  missing_spectra_policy?: MissingSpectraPolicy;
+  /** The target column a dataset with several of them is trained on; absent: all columns together. */
+  target_by_dataset?: Record<string, string>;
   /** Inline pipeline from editor (for unsaved pipelines) */
   inline_pipeline?: {
     name: string;

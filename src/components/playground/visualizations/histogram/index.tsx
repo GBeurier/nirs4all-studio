@@ -68,6 +68,7 @@ export function YHistogram(props: YHistogramProps) {
     isClassificationMode,
     classBarData,
     isProcessed,
+    missingTargetCount,
     displayStats,
     selectedSamples,
     selectedClasses,
@@ -197,6 +198,7 @@ export function YHistogram(props: YHistogramProps) {
       isClassificationMode={isClassificationMode}
       classBarData={classBarData}
       isProcessed={isProcessed}
+      missingTargetCount={missingTargetCount}
       displayStats={displayStats}
       selectedSamples={selectedSamples}
       selectedClasses={selectedClasses}

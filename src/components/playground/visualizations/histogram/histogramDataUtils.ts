@@ -1,19 +1,34 @@
+import { getObservedTargetRange, getObservedTargets, isObservedTarget } from '@/lib/playground/targetValues';
+import type { TargetValue } from '@/types/spectral';
 import { formatYValue } from '../chartConfig';
 import type { BinData, ClassBarData, YStats } from './types';
 
 interface ComputeHistogramBinsInput {
-  values: readonly number[];
+  values: readonly TargetValue[];
   binCount: number;
   displayFilter?: ReadonlySet<number>;
   foldLabels?: readonly number[];
 }
 
 interface ComputeClassBarDataInput {
-  values: readonly number[];
+  values: readonly TargetValue[];
   classLabels?: readonly string[];
   classLabelMap?: ReadonlyMap<string, number>;
   displayFilter?: ReadonlySet<number>;
   foldLabels?: readonly number[];
+}
+
+/**
+ * Observed target values of the displayed samples, and how many displayed
+ * samples have no target value (they are not binned and not in the statistics).
+ */
+export function splitDisplayedTargets(
+  values: readonly TargetValue[],
+  displayFilter?: ReadonlySet<number>
+): { observed: number[]; missingCount: number } {
+  const displayed = displayFilter ? values.filter((_, idx) => displayFilter.has(idx)) : values;
+  const observed = getObservedTargets(displayed);
+  return { observed, missingCount: displayed.length - observed.length };
 }
 
 export function computeHistogramBins({
@@ -26,16 +41,17 @@ export function computeHistogramBins({
     return { histogramData: [], sampleBins: [] };
   }
 
-  const visibleValues = displayFilter
-    ? values.filter((_, idx) => displayFilter.has(idx))
-    : values;
+  // Bins span the observed values only. A sample without a target value is
+  // not binned: it has no entry in `sampleBins` and is reported by the caller.
+  const visibleRange = getObservedTargetRange(
+    displayFilter ? values.filter((_, idx) => displayFilter.has(idx)) : values
+  );
 
-  if (visibleValues.length === 0) {
+  if (!visibleRange) {
     return { histogramData: [], sampleBins: [] };
   }
 
-  const min = Math.min(...visibleValues);
-  const max = Math.max(...visibleValues);
+  const { min, max } = visibleRange;
   const range = max - min;
   const binWidth = range / binCount || 1;
 
@@ -53,7 +69,7 @@ export function computeHistogramBins({
   const sampleBins: number[] = [];
 
   values.forEach((value, idx) => {
-    if (displayFilter && !displayFilter.has(idx)) {
+    if (!isObservedTarget(value) || (displayFilter && !displayFilter.has(idx))) {
       return;
     }
 
@@ -124,7 +140,7 @@ export function computeClassBarData({
 }
 
 export function mapSamplesToClasses(
-  values: readonly number[],
+  values: readonly TargetValue[],
   classLabels: readonly string[],
   classLabelMap?: ReadonlyMap<string, number>
 ): number[] {
@@ -154,15 +170,15 @@ export function computeYStats(values: readonly number[]): YStats | null {
 }
 
 export function computeSelectedYStats(
-  values: readonly number[],
+  values: readonly TargetValue[],
   selectedSamples: ReadonlySet<number>,
   displayFilter?: ReadonlySet<number>
 ): YStats | null {
   if (selectedSamples.size === 0) return null;
 
-  return computeYStats(values.filter((_, idx) =>
+  return computeYStats(getObservedTargets(values.filter((_, idx) =>
     selectedSamples.has(idx) && (!displayFilter || displayFilter.has(idx))
-  ));
+  )));
 }
 
 export function getSelectedBins(

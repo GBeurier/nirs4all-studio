@@ -127,6 +127,8 @@ fn validate_legacy_config(
             "project_id",
             "split_group_by_by_dataset",
             "missing_target_policy",
+            "missing_spectra_policy",
+            "target_by_dataset",
         ],
         "legacyConfig",
     )?;
@@ -176,6 +178,7 @@ fn validate_legacy_config(
             "legacyConfig must select at least one pipeline",
         ));
     }
+    validate_target_map(object.get("target_by_dataset"), &dataset_ids)?;
     Ok((
         name,
         requested_backend.to_owned(),
@@ -220,7 +223,75 @@ fn validate_legacy_runtime_options(
             "legacyConfig.missing_target_policy must be predict or remove",
         ));
     }
+    validate_missing_spectra_policy(object.get("missing_spectra_policy"))?;
     validate_grouping_map(object.get("split_group_by_by_dataset"))
+}
+
+/// The run's answer for missing spectral values: remove the affected samples,
+/// replace the values with one of the library's fill methods, or keep them.
+fn validate_missing_spectra_policy(
+    value: Option<&Value>,
+) -> Result<(), ScientificSubmissionValidationError> {
+    let Some(value) = value else { return Ok(()) };
+    let refused = ScientificSubmissionValidationError::Unsupported(
+        "legacyConfig.missing_spectra_policy must be {policy: remove | keep} or {policy: replace, fill: {method: value, fill_value} | {method: forward_fill | backward_fill}}",
+    );
+    let Some(object) = value.as_object() else {
+        return Err(refused);
+    };
+    let fill = object.get("fill");
+    let valid = match object.get("policy").and_then(Value::as_str) {
+        Some("remove" | "keep") => object.len() == 1,
+        Some("replace") => {
+            object.len() == 2
+                && fill.and_then(Value::as_object).is_some_and(|fill| {
+                    match fill.get("method").and_then(Value::as_str) {
+                        Some("value") => {
+                            fill.len() == 2
+                                && fill
+                                    .get("fill_value")
+                                    .and_then(Value::as_f64)
+                                    .is_some_and(f64::is_finite)
+                        }
+                        Some("forward_fill" | "backward_fill") => fill.len() == 1,
+                        _ => false,
+                    }
+                })
+        }
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(refused)
+    }
+}
+
+/// The target column each selected dataset is trained on. A dataset absent
+/// from the map is trained on all its target columns together.
+fn validate_target_map(
+    value: Option<&Value>,
+    dataset_ids: &[&str],
+) -> Result<(), ScientificSubmissionValidationError> {
+    let Some(value) = value else { return Ok(()) };
+    let object = value
+        .as_object()
+        .ok_or(ScientificSubmissionValidationError::InvalidShape(
+            "legacyConfig.target_by_dataset must be an object",
+        ))?;
+    for (dataset, column) in object {
+        if !dataset_ids.contains(&dataset.as_str()) {
+            return Err(ScientificSubmissionValidationError::InvalidShape(
+                "legacyConfig.target_by_dataset names a dataset that is not selected",
+            ));
+        }
+        if text(column, "target column")?.len() > 256 {
+            return Err(ScientificSubmissionValidationError::InvalidShape(
+                "target column",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_legacy_inline_pipelines(
@@ -1062,6 +1133,41 @@ mod tests {
     }
 
     #[test]
+    fn accepts_only_the_closed_missing_spectra_choices() {
+        for policy in [
+            json!({"policy":"remove"}),
+            json!({"policy":"keep"}),
+            json!({"policy":"replace","fill":{"method":"value","fill_value":0}}),
+            json!({"policy":"replace","fill":{"method":"forward_fill"}}),
+            json!({"policy":"replace","fill":{"method":"backward_fill"}}),
+        ] {
+            let mut accepted = payload();
+            accepted["legacyConfig"]["missing_spectra_policy"] = policy;
+            assert!(
+                validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok()
+            );
+        }
+        for policy in [
+            json!("remove"),
+            json!({"policy":"remove_sample"}),
+            json!({"policy":"remove","fill":{"method":"forward_fill"}}),
+            json!({"policy":"replace"}),
+            json!({"policy":"replace","fill":{"method":"mean"}}),
+            json!({"policy":"replace","fill":{"method":"value"}}),
+            json!({"policy":"replace","fill":{"method":"value","fill_value":"0"}}),
+            json!({"policy":"replace","fill":{"method":"forward_fill","fill_value":0}}),
+            json!(null),
+        ] {
+            let mut refused = payload();
+            refused["legacyConfig"]["missing_spectra_policy"] = policy;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
+    }
+
+    #[test]
     fn accepts_only_the_closed_missing_target_choices() {
         for policy in ["predict", "remove"] {
             let mut accepted = payload();
@@ -1076,6 +1182,27 @@ mod tests {
             assert!(matches!(
                 validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
                 Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn accepts_a_target_column_only_for_a_selected_dataset() {
+        let mut accepted = payload();
+        accepted["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "protein"});
+        assert!(validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok());
+        for targets in [
+            json!({"dataset-b": "protein"}),
+            json!({"dataset-a": ""}),
+            json!({"dataset-a": null}),
+            json!({"dataset-a": 2}),
+            json!(["protein"]),
+        ] {
+            let mut refused = payload();
+            refused["legacyConfig"]["target_by_dataset"] = targets;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::InvalidShape(_))
             ));
         }
     }

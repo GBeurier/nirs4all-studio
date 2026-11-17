@@ -1,3 +1,4 @@
+import type { TargetValue } from '@/types/spectral';
 import { useMemo } from 'react';
 
 import {
@@ -38,7 +39,7 @@ interface UseDimensionReductionChartDataInput {
   config: DimensionReductionChartDataConfig;
   pca: PCAResult | null;
   umap?: UMAPResult | null;
-  y?: number[];
+  y?: TargetValue[];
   folds?: FoldsInfo | null;
   sampleIds?: string[];
   metadata?: Record<string, unknown[]>;

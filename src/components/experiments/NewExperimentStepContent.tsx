@@ -1,3 +1,4 @@
+import type { MissingSpectraReview } from "@/lib/experimentMissingSpectra";
 import type {
   NewExperimentInputData,
   UseNewExperimentFilteredInputsResult,
@@ -6,6 +7,7 @@ import type { NewExperimentExecutionEnvironmentDiagnostics } from "@/hooks/useNe
 import type { UseNewExperimentLaunchFlowResult } from "@/hooks/useNewExperimentLaunchFlow";
 import type { UseNewExperimentPlanFlowResult } from "@/hooks/useNewExperimentPlanFlow";
 import type { UseNewExperimentSelectionFlowResult } from "@/hooks/useNewExperimentSelectionFlow";
+import type { ExperimentTargetChoice, ExperimentTargetOption, MissingTargetCount } from "@/lib/experimentTargets";
 import type { MissingTargetPolicy } from "@/types/runs";
 import {
   NEW_EXPERIMENT_DATASETS_STEP,
@@ -31,13 +33,17 @@ export interface NewExperimentStepContentProps {
   filteredInputs: UseNewExperimentFilteredInputsResult;
   inputData: NewExperimentInputData;
   launchFlow: UseNewExperimentLaunchFlowResult;
+  missingTargetCounts: MissingTargetCount[];
   missingTargetPolicy: MissingTargetPolicy;
   missingTargetRemovalAvailable: boolean;
+  missingSpectra: MissingSpectraReview;
   planFlow: UseNewExperimentPlanFlowResult;
   selectionFlow: UseNewExperimentSelectionFlowResult;
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
   onMissingTargetPolicyChange: (value: MissingTargetPolicy) => void;
+  onTargetChange: (datasetId: string, target: ExperimentTargetChoice) => void;
+  targetOptions: ExperimentTargetOption[];
 }
 
 export function NewExperimentStepContent({
@@ -48,13 +54,17 @@ export function NewExperimentStepContent({
   filteredInputs,
   inputData,
   launchFlow,
+  missingTargetCounts,
   missingTargetPolicy,
   missingTargetRemovalAvailable,
+  missingSpectra,
   planFlow,
   selectionFlow,
   onExperimentDescriptionChange,
   onExperimentNameChange,
   onMissingTargetPolicyChange,
+  onTargetChange,
+  targetOptions,
 }: NewExperimentStepContentProps) {
   if (currentStep === NEW_EXPERIMENT_PIPELINES_STEP) {
     return (
@@ -91,13 +101,17 @@ export function NewExperimentStepContent({
         customExperimentName={customExperimentName}
         executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
         experimentDescription={experimentDescription}
+        missingTargetCounts={missingTargetCounts}
         missingTargetPolicy={missingTargetPolicy}
         missingTargetRemovalAvailable={missingTargetRemovalAvailable}
+        missingSpectra={missingSpectra}
         planFlow={planFlow}
         selectionFlow={selectionFlow}
         onExperimentDescriptionChange={onExperimentDescriptionChange}
         onExperimentNameChange={onExperimentNameChange}
         onMissingTargetPolicyChange={onMissingTargetPolicyChange}
+        onTargetChange={onTargetChange}
+        targetOptions={targetOptions}
       />
     );
   }

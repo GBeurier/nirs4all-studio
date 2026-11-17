@@ -11,6 +11,7 @@
  * - Selection preview and count
  */
 
+import type { TargetValue } from '@/types/spectral';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -49,6 +50,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useSelection } from '@/context/useSelection';
+import { getObservedTargetRange, isObservedTarget } from '@/lib/playground/targetValues';
 import type { ExecuteResponse } from '@/types/playground';
 
 // ============= Types =============
@@ -62,7 +64,7 @@ export interface EmbeddingSelectorProps {
   /** Partition labels */
   partitions?: string[];
   /** Target values */
-  targets?: number[];
+  targets?: TargetValue[];
   /** Sample IDs */
   sampleIds?: string[];
   /** Current embedding method */
@@ -156,20 +158,24 @@ export function EmbeddingSelector({
     // Calculate target color scale if needed
     let targetMin = 0,
       targetMax = 1;
-    if (targets && targets.length > 0) {
-      targetMin = Math.min(...targets);
-      targetMax = Math.max(...targets);
+    const targetRange = getObservedTargetRange(targets);
+    if (targetRange) {
+      targetMin = targetRange.min;
+      targetMax = targetRange.max;
     }
 
-    return embedding.map((coords, idx) => {
+    return embedding.flatMap((coords, idx) => {
+      // A sample the projection left out (missing values) has no coordinates.
+      if (coords.length === 0) return [];
       const isSelected = selectedSamples.has(idx);
+      const target = targets?.[idx];
       let color = '#a0aec0';
 
       if (colorBy === 'partition' && partitions && partitions[idx]) {
         color = partitionColorMap[partitions[idx]] ?? '#a0aec0';
-      } else if (colorBy === 'target' && targets && targets[idx] !== undefined) {
+      } else if (colorBy === 'target' && isObservedTarget(target)) {
         // Blue to red gradient based on target value
-        const normalized = (targets[idx] - targetMin) / (targetMax - targetMin || 1);
+        const normalized = (target - targetMin) / (targetMax - targetMin || 1);
         const r = Math.round(255 * normalized);
         const b = Math.round(255 * (1 - normalized));
         color = `rgb(${r}, 100, ${b})`;
@@ -177,16 +183,16 @@ export function EmbeddingSelector({
         color = isSelected ? '#48bb78' : '#a0aec0';
       }
 
-      return {
+      return [{
         idx,
         x: coords[0],
         y: coords.length > 1 ? coords[1] : 0,
         color,
         isSelected,
         partition: partitions?.[idx],
-        target: targets?.[idx],
+        target: isObservedTarget(target) ? target : undefined,
         sampleId: sampleIds?.[idx],
-      };
+      }];
     });
   }, [embedding, partitions, targets, sampleIds, partitionColors, selectedSamples, colorBy]);
 

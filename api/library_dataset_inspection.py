@@ -25,6 +25,28 @@ def _inspect_multimodal_document(document: Any) -> dict[str, Any]:
     }}
 
 
+def _missing_spectra(payload: dict[str, Any]) -> dict[str, int]:
+    """Count the missing spectral values of the dataset as loaded, and the samples that hold them."""
+    import numpy as np
+    from nirs4all.analysis.playground_dataset import extract_playground_dataset
+    from nirs4all.analysis.playground_types import PreviewLimits
+    from nirs4all.api.dataset_inspection import load_dataset_for_analysis
+
+    dataset, _reader = load_dataset_for_analysis(payload["config"], load_limits=payload.get("load_limits"),
+                                                 **({"max_input_bytes": payload["max_input_bytes"]} if "max_input_bytes" in payload else {}))
+    values = 0
+    affected: set[Any] = set()
+    for source in range(dataset.n_sources):
+        batch = extract_playground_dataset(dataset, partition="all", source_index=source,
+                                           limits=PreviewLimits(max_samples=1_000_000, max_features=100_000, max_cells=64_000_000)).batch
+        missing = ~np.isfinite(np.asarray(batch.x, dtype=float))
+        values += int(missing.sum())
+        rows = np.flatnonzero(missing.any(axis=1))
+        # Sources are counted on the dataset's own sample identities.
+        affected.update(rows.tolist() if batch.sample_ids is None else np.asarray(batch.sample_ids)[rows].tolist())
+    return {"values": values, "samples": len(affected)}
+
+
 def inspect_dataset_document(operation: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dispatch a closed inspection request after Rust path authorization."""
     from nirs4all.api.dataset_inspection import (
@@ -35,7 +57,7 @@ def inspect_dataset_document(operation: str, payload: dict[str, Any]) -> dict[st
 
     allowed = {
         "dataset.inspect_multimodal": {"dataset_document"},
-        "dataset.preview": {"config", "max_samples", "load_limits", "max_input_bytes"},
+        "dataset.preview": {"config", "max_samples", "load_limits", "max_input_bytes", "count_missing_spectra"},
         "dataset.stats": {"config", "partition", "load_limits", "max_input_bytes"},
         "dataset.inspect_format": {"path", "params", "sample_rows"},
     }
@@ -52,5 +74,9 @@ def inspect_dataset_document(operation: str, payload: dict[str, Any]) -> dict[st
     if not isinstance(payload.get("config"), dict):
         raise ValueError("Dataset inspection requires an explicit authorized config")
     if operation == "dataset.preview":
-        return preview_dataset(**payload)
+        count_missing = payload.pop("count_missing_spectra", False) is True
+        preview = preview_dataset(**payload)
+        if count_missing and preview.get("success") is True:
+            preview["summary"]["missing_spectra"] = _missing_spectra(payload)
+        return preview
     return dataset_statistics(**payload)

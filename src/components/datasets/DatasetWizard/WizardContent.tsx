@@ -28,7 +28,7 @@ import { ParsingStep } from "./ParsingStep";
 import { TargetsStep } from "./TargetsStep";
 import { PreviewStep } from "./PreviewStep";
 import { buildDatasetWizardConfig, buildDatasetWizardFiles } from "./DatasetWizardConfig";
-import type { WizardStep, DatasetConfig } from "@/types/datasets";
+import type { WizardStep, DatasetConfig, DatasetFile } from "@/types/datasets";
 
 const STEP_CONFIG: Record<WizardStep, { icon: ReactNode }> = {
   source: {
@@ -100,6 +100,11 @@ function StepIndicator() {
       })}
     </div>
   );
+}
+
+/** Spectra with missing values are refused at load only when the user chose to abort on them. */
+function spectraNeedNaChoice(file: { path: string; type: string }, configuredFiles: DatasetFile[]): boolean {
+  return file.type === "X" && configuredFiles.find(configured => configured.path === file.path)?.overrides?.na_policy === "abort";
 }
 
 export function DataStats() {
@@ -337,7 +342,8 @@ export function DataStats() {
 
       {state.files.filter(file => (state.validatedShapes[file.path]?.missing_count ?? 0) > 0).map(file => (
         <span key={file.path} role="status" className="w-full text-amber-700 dark:text-amber-400 font-sans">
-          {t("datasets.wizard.stats.missingCells", { file: file.filename, count: state.validatedShapes[file.path].missing_count })}
+          {t(spectraNeedNaChoice(file, configuredFiles) ? "datasets.wizard.stats.missingSpectralCells" : "datasets.wizard.stats.missingCells",
+            { file: file.filename, count: state.validatedShapes[file.path].missing_count })}
         </span>
       ))}
 

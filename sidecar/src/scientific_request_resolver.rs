@@ -7,6 +7,7 @@
 //! the attested library adapter and emits the general V2 callable contract.
 
 use std::{
+    borrow::Cow,
     fs::{self},
     io::Read,
     path::{Path, PathBuf},
@@ -43,20 +44,24 @@ pub enum ScientificResolveError {
     CatalogueTooLarge,
     CatalogueInvalid,
     DatasetMissing,
-    DatasetInvalid,
+    /// The reason names the dataset, the setting and the file that is wrong.
+    DatasetInvalid(String),
     PipelineMissing,
     PipelineUnsafe,
     PipelineTooLarge,
     PipelineInvalid,
-    ExecutionUnavailable { code: String, message: String },
+    ExecutionUnavailable {
+        code: String,
+        message: String,
+    },
     DatasetAssembly,
 }
 
 impl ScientificResolveError {
     /// Stable machine code and user-readable explanation of the refusal.
     #[must_use]
-    pub const fn refusal(&self) -> (&'static str, &'static str) {
-        match self {
+    pub fn refusal(&self) -> (&'static str, Cow<'static, str>) {
+        let (code, explanation) = match self {
             Self::InvalidSubmission => (
                 "scientific_submission_invalid",
                 "the submission does not match its manifest and campaign specification",
@@ -85,10 +90,12 @@ impl ScientificResolveError {
                 "scientific_dataset_missing",
                 "the selected dataset is not linked",
             ),
-            Self::DatasetInvalid => (
-                "scientific_dataset_invalid",
-                "the selected dataset link or configuration is not valid",
-            ),
+            Self::DatasetInvalid(reason) => {
+                return (
+                    "scientific_dataset_invalid",
+                    Cow::Owned(format!("the selected dataset cannot be used: {reason}")),
+                )
+            }
             Self::PipelineMissing => (
                 "scientific_pipeline_missing",
                 "the selected pipeline is not saved in the active workspace",
@@ -113,8 +120,21 @@ impl ScientificResolveError {
                 "scientific_dataset_assembly_failed",
                 "the selected dataset cannot be loaded within the executor limits",
             ),
-        }
+        };
+        (code, Cow::Borrowed(explanation))
     }
+}
+
+impl std::fmt::Display for ScientificResolveError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (code, explanation) = self.refusal();
+        write!(formatter, "{explanation} ({code})")
+    }
+}
+
+/// Build the refusal for one dataset setting that cannot be used.
+pub(crate) fn dataset_invalid(reason: impl Into<String>) -> ScientificResolveError {
+    ScientificResolveError::DatasetInvalid(reason.into())
 }
 
 #[derive(Clone, Debug)]
@@ -131,9 +151,8 @@ impl ScientificRequestResolver {
         value: &mut Value,
         root: &Path,
     ) -> Result<(), ScientificResolveError> {
-        let root =
-            canonical_directory(root).map_err(|()| ScientificResolveError::DatasetInvalid)?;
-        general::confine_config(value, &root, true)
+        let root = canonical_directory(root).map_err(|()| unusable_folder(root))?;
+        general::confine_config(value, &root, true, &mut String::new())
     }
 
     #[must_use]
@@ -460,26 +479,30 @@ fn resolve_dataset(
 ) -> Result<DatasetRecord, ScientificResolveError> {
     let object = value
         .as_object()
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
+        .ok_or_else(|| dataset_invalid(format!("the record of {expected_id} is not an object")))?;
     if object.get("id").and_then(Value::as_str) != Some(expected_id)
         || !object
             .get("name")
             .and_then(Value::as_str)
             .is_some_and(|value| !value.trim().is_empty() && value.len() <= 256)
     {
-        return Err(ScientificResolveError::DatasetInvalid);
+        return Err(dataset_invalid(format!(
+            "the record of {expected_id} has no valid name"
+        )));
     }
     let root = object
         .get("path")
         .and_then(Value::as_str)
         .map(Path::new)
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
-    let root = canonical_directory(root).map_err(|()| ScientificResolveError::DatasetInvalid)?;
+        .ok_or_else(|| dataset_invalid(format!("the record of {expected_id} has no folder")))?;
+    let root = canonical_directory(root).map_err(|()| unusable_folder(root))?;
     let config = object
         .get("config")
         .filter(|value| value.is_object())
         .cloned()
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
+        .ok_or_else(|| {
+            dataset_invalid(format!("the record of {expected_id} has no configuration"))
+        })?;
     validate_role_config_slice(&config)?;
     Ok(DatasetRecord { root, config })
 }
@@ -487,7 +510,7 @@ fn resolve_dataset(
 fn validate_role_config_slice(config: &Value) -> Result<(), ScientificResolveError> {
     let object = config
         .as_object()
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
+        .ok_or_else(|| dataset_invalid("its configuration is not an object"))?;
     if object.get("task_type").and_then(Value::as_str) != Some("regression")
         || object
             .get("aggregation")
@@ -512,11 +535,11 @@ fn validate_role_config_slice(config: &Value) -> Result<(), ScientificResolveErr
     for file in files {
         let file = file
             .as_object()
-            .ok_or(ScientificResolveError::DatasetInvalid)?;
+            .ok_or_else(|| dataset_invalid("an entry of its \"files\" setting is not an object"))?;
         let path = file
             .get("path")
             .and_then(Value::as_str)
-            .ok_or(ScientificResolveError::DatasetInvalid)?;
+            .ok_or_else(|| dataset_invalid("an entry of its \"files\" setting has no path"))?;
         let extension = Path::new(path)
             .extension()
             .and_then(|value| value.to_str())
@@ -712,7 +735,7 @@ fn project_train_regression(
     let block = assembled
         .blocks
         .get("train")
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
+        .ok_or_else(|| dataset_invalid("it has no training partition"))?;
     let x = block
         .x
         .first()
@@ -721,7 +744,7 @@ fn project_train_regression(
     let y = block
         .y
         .as_ref()
-        .ok_or(ScientificResolveError::DatasetInvalid)?;
+        .ok_or_else(|| dataset_invalid("its training partition has no target values"))?;
     if !(MIN_SAMPLES..=MAX_SAMPLES).contains(&x.n_rows)
         || x.n_cols == 0
         || x.n_cols > MAX_FEATURES
@@ -796,6 +819,13 @@ fn object_at<'a>(
         .get(key)
         .and_then(Value::as_object)
         .ok_or(ScientificResolveError::InvalidSubmission)
+}
+
+fn unusable_folder(path: &Path) -> ScientificResolveError {
+    dataset_invalid(format!(
+        "its folder \"{}\" does not exist, is not a directory or is a symbolic link",
+        path.display()
+    ))
 }
 
 fn canonical_directory(path: &Path) -> Result<PathBuf, ()> {

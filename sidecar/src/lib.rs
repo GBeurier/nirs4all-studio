@@ -3545,7 +3545,7 @@ fn scientific_submission_runtime_response(
             503,
             json!({
                 "code": code,
-                "detail": format!("Scientific job executor preflight failed: {detail} ({code})"),
+                "detail": format!("The run cannot start: {detail} ({code})"),
             })
             .to_string(),
         ),
@@ -3555,7 +3555,7 @@ fn scientific_submission_runtime_response(
             503,
             json!({
                 "code": "scientific_executor_invalid_capability",
-                "detail": "Scientific job executor preflight failed: the executor returned an invalid execution identity (scientific_executor_invalid_capability)",
+                "detail": "The run cannot start: the executor returned an invalid execution identity (scientific_executor_invalid_capability)",
             })
             .to_string(),
         ),
