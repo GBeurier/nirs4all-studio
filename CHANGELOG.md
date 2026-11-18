@@ -44,8 +44,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 - Python environment: Studio installs nirs4all 1.4.19 with nirs4all-core
   0.5.1, dag-ml 0.4.3, dag-ml-data 0.2.17, nirs4all-io 0.3.6 and
   nirs4all-methods 1.3.18 (libn4m ABI 2.23). An existing environment is kept
-  as long as its nirs4all is at least 1.4.18 (below 1.5); otherwise Studio
-  updates it to the required packages.
+  as long as its nirs4all is at least 1.4.19 (below 1.5); an older one is
+  offered the update to the required packages, so the fixes above reach
+  existing environments.
 - The native backend uses the published nirs4all 0.5.1 crate with nirs4all-io
   0.3.6, dag-ml 0.4.3, dag-ml-data 0.2.17, nirs4all-formats 0.2.17 and n4m
   0.4.2.

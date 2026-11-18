@@ -368,7 +368,7 @@ existing Python environment may hold) uses the same granularity:
 `nirs4all-io >=0.3,<0.4`, `nirs4all-methods >=1.3,<2`; an empty range accepts
 any version. The `nirs4all` range is the exception: Studio reinstalls the
 required cohort at its `install` versions only when an environment falls
-outside these ranges, so the SDK range floor (`>=1.4.18,<1.5`) is how a Studio
+outside these ranges, so the SDK range floor (`>=1.4.19,<1.5`) is how a Studio
 release delivers an SDK fix to existing environments, and its minor cap is
 where Studio qualifies its Python host. This is a documented exception to the
 minor-granularity rule, decided by the maintainer: a product's

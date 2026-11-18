@@ -10,7 +10,7 @@
   },
   "sdk_selection": {
     "version": "1.4.19",
-    "requirement": ">=1.4.18,<1.5",
+    "requirement": ">=1.4.19,<1.5",
     "publication_status": "published-registry",
     "meaning": "public SDK selection; publication is not installed-host or all-platform shipping qualification"
   },
