@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 async function mount(runs: Array<{
-  id: string; name: string; status: string;
+  id: string; name: string; status: string; format?: string;
   progress?: number; progress_message?: string; progress_unavailable?: boolean;
 }>) {
   vi.stubGlobal("WebSocket", Socket);
@@ -80,6 +80,17 @@ describe("active run polling and render cost", () => {
     expect(app.value().getRunProgress("run-1")?.status).toBe("cancelled");
     expect(app.value().hasActiveRuns).toBe(false);
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+  it("does not track a running workspace store row listed beside its live job", async () => {
+    const app = await mount([
+      { id: "run-1", name: "PLS", status: "running" },
+      { id: "store-row", name: "PLS", status: "running", format: "store" },
+    ]);
+    expect(app.value().activeRuns.map((run) => run.runId)).toEqual(["run-1"]);
+    await app.message({ type: "job_completed", channel: "job:run-1", data: {} });
+    await app.poll({ runs: [], total: 0 });
+    expect(app.value().hasActiveRuns).toBe(false);
+    expect(mocks.getWorkspaceExecutionJobRecord).not.toHaveBeenCalledWith("store-row");
   });
   it("removes a terminal run from the widget without a further active-run change", async () => {
     const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
