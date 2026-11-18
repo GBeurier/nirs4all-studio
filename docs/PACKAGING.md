@@ -360,30 +360,34 @@ wheel, and no required package is built from source on any target.
 
 ### Version constraints
 
-Studio follows the ecosystem contract for cross-repository dependencies: a
-constraint is never more precise than the minor version. The sidecar depends on
-`nirs4all = "0.5"` and `nirs4all-io = "0.3"` (Cargo caret ranges), and the
-`range` of a `required` package in `recommended-config.json` (the versions an
-existing Python environment may hold) uses the same granularity:
-`nirs4all-io >=0.3,<0.4`, `nirs4all-methods >=1.3,<2`; an empty range accepts
-any version. The `nirs4all` range is the exception: Studio reinstalls the
-required cohort at its `install` versions only when an environment falls
-outside these ranges, so the SDK range floor (`>=1.4.20,<1.5`) is how a Studio
-release delivers an SDK fix to existing environments, and its minor cap is
-where Studio qualifies its Python host. This is a documented exception to the
-minor-granularity rule, decided by the maintainer: a product's
-environment-admission floor may carry a patch floor when it is the delivery
-mechanism for a fix, whereas library-to-library constraints may not. Exact versions are not
-constraints: the `install` versions, the hash-pinned wheel locks above,
-`sidecar/Cargo.lock`, `build/runtime-cohort.json` and the packaged Methods
-identity define exactly what Studio installs and ships, and stay exact. An
-owner patch release therefore never forces a Studio release; a fix needed from
-a specific owner patch reaches users through these locks. In return an owner
-patch release changes no wire format, persisted schema, `.n4a` payload
-semantics or native ABI; the full policy is
-`docs/contracts/release/VERSION_CONSTRAINTS.md` in `nirs4all-ecosystem`.
-`tests/test_nirs4all_release_pin.py` checks the sidecar ranges, the single
-source of the SDK range and the locks.
+Studio follows the ecosystem versioning rule. Versions are `X.Y.Z`: a patch
+(`Z`) carries fixes and purely additive, backward-compatible features; a minor
+(`Y`) carries any compatibility break (API signature, ABI break or ABI version
+change, wire/schema/fixture, renamed ids, changed numerical results).
+Cross-repository constraints accept every patch of one tested minor series,
+`>=X.Y[.Z],<X.(Y+1)`, with a patch floor only when a fix or feature from that
+patch is required; moving to a new minor series is an explicit, tested Studio
+decision. For 1.x owners the caret forms that stop at the next major (npm
+`^1.x`, Cargo `"1.x"`, `<2`) are not used.
+
+The sidecar depends on `nirs4all = "0.5"` and `nirs4all-io = "0.3"` (0.x Cargo
+caret ranges, which stop at the next minor). The `range` of a `required` package
+in `recommended-config.json` (the versions an existing Python environment may
+hold) follows the same rule, for example `nirs4all-io >=0.3,<0.4`; an empty
+range accepts any version, and the 1.x `nirs4all-methods`/`pls4all` ranges
+`>=1.3,<2` are narrowed to one series at the next release. These ranges are Studio's environment-admission
+ranges: Studio reinstalls the required cohort at its `install` versions only
+when an environment falls outside them, so the SDK range floor
+(`>=1.4.20,<1.5`) is how a Studio release delivers an SDK fix to existing
+environments, and its minor cap is where Studio qualifies its Python host.
+Exact versions are not constraints: the `install` versions, the hash-pinned
+wheel locks above, `sidecar/Cargo.lock`, `build/runtime-cohort.json` and the
+packaged Methods identity define exactly what Studio installs and ships, and
+stay exact. An owner patch release therefore never forces a Studio release. The
+full policy is
+[`docs/contracts/release/VERSION_CONSTRAINTS.md`](https://github.com/GBeurier/nirs4all-ecosystem/blob/main/docs/contracts/release/VERSION_CONSTRAINTS.md) in
+`nirs4all-ecosystem`. `tests/test_nirs4all_release_pin.py` checks the sidecar
+ranges, the single source of the SDK range and the locks.
 
 ### Supported release formats
 
