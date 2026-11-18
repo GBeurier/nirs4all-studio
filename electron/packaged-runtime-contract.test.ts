@@ -57,9 +57,9 @@ function makeResources(): { resourcesPath: string; sidecarPath: string } {
         member: null,
         abi: { major: 2, minor: 23 },
         source: {
-          commit: "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
-          tree: "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
-          project_version: "1.3.18",
+          commit: "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
+          tree: "586b0c555be350a6d5658bbd9c1d843656a2764c",
+          project_version: "1.3.19",
         },
       },
     }),
@@ -90,7 +90,7 @@ describe("packaged runtime contract", () => {
       expect(check(methods, "linux", "x64")).toBe(true);
       expect(check(methods, "linux", "arm64")).toBe(false);
       expect(check(methods, "darwin", "x64")).toBe(false);
-      expect(check({ ...methods, source: { commit: "eccbe5", tree: "unknown", project_version: "1.3.18" } }, "linux", "x64")).toBe(false);
+      expect(check({ ...methods, source: { commit: "eccbe5", tree: "unknown", project_version: "1.3.19" } }, "linux", "x64")).toBe(false);
       expect(check({ ...methods, abi: { major: 2, minor: 20 } }, "linux", "x64")).toBe(false);
       expect(check({ ...methods, member: { ...methods.member, sha256: "a".repeat(64) } }, "linux", "x64")).toBe(false);
       for (const artifact of [
@@ -175,9 +175,9 @@ describe("packaged runtime contract", () => {
         .toThrow("does not match the selected public wheel artifact");
       const written = producer.writeRuntimeContract({ ...options, methodsIdentityProfile: "source-build" });
       expect(written.contract.methods_library.source).toEqual({
-        commit: "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
-        tree: "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
-        project_version: "1.3.18",
+        commit: "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
+        tree: "586b0c555be350a6d5658bbd9c1d843656a2764c",
+        project_version: "1.3.19",
       });
       expect(written.contract.methods_library).not.toHaveProperty("artifact");
       const verification = {
@@ -328,9 +328,9 @@ describe("packaged runtime contract", () => {
       },
       abi: { major: 2, minor: 23 },
       source: {
-        commit: "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
-        tree: "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
-        project_version: "1.3.18",
+        commit: "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
+        tree: "586b0c555be350a6d5658bbd9c1d843656a2764c",
+        project_version: "1.3.19",
       },
     };
     fs.writeFileSync(contractPath, JSON.stringify(contract));

@@ -18,7 +18,7 @@ crate release that pins them. Browser npm and
 owner-built browser artifacts have separate provenance and are not this graph.
 
 Packaged Methods has two explicit identity paths at ABI 2.23. The default
-`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.18
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.19
 artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
 installed library size/hash, wheel reference and unknown source. It does not
 infer a source commit from the package version, ABI, public tag or Rust crate.

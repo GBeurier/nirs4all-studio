@@ -190,9 +190,9 @@ def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
     assert cohort["sdk_selection"]["requirement"] == _required_nirs4all()["range"]
     assert cohort["sdk_selection"]["publication_status"] == "published-registry"
     assert cohort["packaged_methods_identity"] == {
-        "commit": "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
-        "tree": "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
-        "project_version": "1.3.18",
+        "commit": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
+        "tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
+        "project_version": "1.3.19",
     }
 
 

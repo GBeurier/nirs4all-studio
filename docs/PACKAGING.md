@@ -161,7 +161,7 @@ remains fail-closed.
 
 The sidecar builder refuses to emit a product tree unless the build supplies
 one content-addressed native Methods library at ABI 2.23
-(`nirs4all-methods` 1.3.18). Every release gate invokes
+(`nirs4all-methods` 1.3.19). Every release gate invokes
 `native-runtime-contract.cjs` with `--require-python-payload` and
 `--require-bundled-methods`, so an installer cannot be published without `uv`,
 the required wheels (on macOS: no embedded wheels), the attested adapters and
