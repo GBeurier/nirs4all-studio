@@ -1,32 +1,32 @@
 {
   "schema": "nirs4all.studio.runtime-cohort.v1",
   "sdk": {
-    "version": "1.4.18",
-    "source_sha": "615875790460cd4133f345d9fee7b38c9064fff4",
-    "wheel_sha256": "200d89f95ce0a77a73c20f65b3d2c714908e6568bbb29052bf75ca72fe880ea1",
+    "version": "1.4.19",
+    "source_sha": "526052d13c7903a391ce1898ad99ee96c4c2bfce",
+    "wheel_sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9",
     "qualification_oracle_sha256": "1bc8dafee66bd3ff2cd517128da920427c4e2b5b453a65b4790b519e29ef4e8b",
-    "source_tree": "be5206134c84d43ab4a2197676700e1fcdde4482",
+    "source_tree": "e314d693c08af003a86f430fb4e7b9a06ac06adf",
     "publication_status": "published-registry",
-    "wheel_url": "https://files.pythonhosted.org/packages/24/7d/e6688e020274acc54143ec04141db576291a2dda103bd99df40e504ad267/nirs4all-1.4.18-py3-none-any.whl"
+    "wheel_url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl"
   },
   "dag": {
-    "version": "0.4.2",
-    "source_sha": "cacd24f4d5025664ca404b47ecff45ca0491d3b3"
+    "version": "0.4.3",
+    "source_sha": "d796152c148db3bb3f4398f818e1083f5e3aa816"
   },
   "dag_data": {
     "version": "0.2.17",
     "source_sha": "854d5bebd88e1de761283139189735c349a6226c"
   },
   "core": {
-    "version": "0.5.0",
-    "source_sha": "53f53b727e983057f137f42ca0f87d7368db5990",
-    "native_version": "0.5.0",
+    "version": "0.5.1",
+    "source_sha": "053704bd62b8d08f04dc6f61f744dee04e6a2387",
+    "native_version": "0.5.1",
     "native_source_status": "published-registry",
-    "native_source_sha": "53f53b727e983057f137f42ca0f87d7368db5990"
+    "native_source_sha": "053704bd62b8d08f04dc6f61f744dee04e6a2387"
   },
   "io": {
-    "version": "0.3.5",
-    "source_sha": "4598eeb669731bc62905d617fc63bf912108adca"
+    "version": "0.3.6",
+    "source_sha": "284f50609212456e3275567f25dc0234e58333f6"
   },
   "formats": {
     "version": "0.2.17",

@@ -32,8 +32,8 @@ env:
   VITE_SENTRY_DSN: ""
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
-  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '615875790460cd4133f345d9fee7b38c9064fff4' || 'main') }}
-  DAG_ML_REF: ${{ inputs.dag_ml_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'cacd24f4d5025664ca404b47ecff45ca0491d3b3' || 'main') }}
+  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '526052d13c7903a391ce1898ad99ee96c4c2bfce' || 'main') }}
+  DAG_ML_REF: ${{ inputs.dag_ml_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'd796152c148db3bb3f4398f818e1083f5e3aa816' || 'main') }}
   DAG_ML_DATA_REF: ${{ inputs.dag_ml_data_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '854d5bebd88e1de761283139189735c349a6226c' || 'main') }}
 
 jobs:
