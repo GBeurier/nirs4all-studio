@@ -8,8 +8,8 @@ The only executable is `studio-sidecar`.
 
 `contracts/studio_native_source_cohort_v2.json` selects Core 0.5.1, DAG 0.4.3,
 DMD 0.2.17, IO 0.3.6, Formats 0.2.17 and Rust n4m 0.4.2 from crates.io.
-`Cargo.toml` depends on the owner crates at minor granularity (`nirs4all =
-"0.5"`, `nirs4all-io = "0.3"`), and `Cargo.lock` selects the exact cohort shared
+`Cargo.toml` depends on one tested minor series of each owner crate (`nirs4all =
+"0.5"`, `nirs4all-io = "0.3"`; see [version constraints](../docs/PACKAGING.md#version-constraints)), and `Cargo.lock` selects the exact cohort shared
 with Core, so one Rust IO version resolves. Use the ordinary registry lock
 without candidate source overrides. The Python
 environment follows `recommended-config.json` (`required`) and may carry newer
