@@ -10,6 +10,7 @@
  * Phase 3 Implementation
  */
 
+import { displayPath } from "@/lib/displayPath";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -215,7 +216,7 @@ export function CreateWorkspaceDialog({
               </div>
               <div>
                 <span className="text-muted-foreground">{t("settings.workspace.create.path")}: </span>
-                <span className="font-mono text-xs">{success.path}</span>
+                <span className="font-mono text-xs">{displayPath(success.path)}</span>
               </div>
               {success.description && (
                 <div>

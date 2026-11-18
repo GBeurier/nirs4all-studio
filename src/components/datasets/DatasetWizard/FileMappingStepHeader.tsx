@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +35,7 @@ export function FileMappingStepHeader({
         </div>
       </div>
       <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-mono truncate">
-        {basePath}
+        {displayPath(basePath)}
       </div>
     </div>
   );

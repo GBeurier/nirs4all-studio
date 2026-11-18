@@ -5,6 +5,7 @@
  * Used when dataset path is missing or needs to be updated.
  */
 
+import { displayPath } from "@/lib/displayPath";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link2, FolderOpen, AlertTriangle, Check, X } from "lucide-react";
@@ -124,7 +125,7 @@ export function RelinkDialog({
             <Label className="text-muted-foreground">{t("datasets.relink.currentPath")}</Label>
             <div className="rounded-md border bg-muted/50 p-2">
               <p className="text-sm font-mono break-all text-muted-foreground">
-                {dataset.path}
+                {displayPath(dataset.path)}
               </p>
             </div>
           </div>

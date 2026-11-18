@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 
@@ -62,7 +63,7 @@ export function PyTorchInstallDialog({
           {environmentPath && (
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3">
               <dt className="text-muted-foreground">{t("pythonEnv.pytorch.environment")}</dt>
-              <dd className="break-all font-mono text-xs leading-5">{environmentPath}</dd>
+              <dd className="break-all font-mono text-xs leading-5">{displayPath(environmentPath)}</dd>
             </dl>
           )}
           {installing ? (

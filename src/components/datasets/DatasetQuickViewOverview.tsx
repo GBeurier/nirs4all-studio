@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
@@ -235,14 +236,14 @@ function DatasetDetailsCard({ dataset }: { dataset: Dataset }) {
       <CardContent className="space-y-3 px-3 py-3">
         <div>
           <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.originalPath")}</p>
-          <p className="font-mono text-[11px] truncate break-all" title={dataset.path}>
-            {dataset.path}
+          <p className="font-mono text-[11px] truncate break-all" title={displayPath(dataset.path)}>
+            {displayPath(dataset.path)}
           </p>
         </div>
         <div>
           <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.storageLocation")}</p>
-          <p className="font-mono text-[11px] truncate break-all" title={dataset.storage_path}>
-            {dataset.storage_path}
+          <p className="font-mono text-[11px] truncate break-all" title={displayPath(dataset.storage_path)}>
+            {displayPath(dataset.storage_path)}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">

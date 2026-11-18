@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -143,7 +144,7 @@ export function DatasetsWorkspaceInfo({
                 {t("datasets.workspace")}
               </p>
               <p className="text-sm font-medium truncate leading-none mt-1">
-                {workspacePath || (
+                {(workspacePath && displayPath(workspacePath)) || (
                   <span className="text-muted-foreground italic">
                     {t("datasets.noWorkspaceSelected")}
                   </span>

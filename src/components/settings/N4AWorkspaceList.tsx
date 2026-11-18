@@ -4,6 +4,7 @@
  * Phase 7 Implementation
  */
 
+import { displayPath } from "@/lib/displayPath";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -117,7 +118,7 @@ function WorkspaceItem({
           </div>
 
           <p className="text-xs text-muted-foreground mt-1 truncate">
-            {workspace.path}
+            {displayPath(workspace.path)}
           </p>
 
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">

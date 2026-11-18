@@ -3,6 +3,7 @@
  * Settings "Python" tab: current environment, environments found on this
  * computer, package choices and one action.
  */
+import { displayPath } from "@/lib/displayPath";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -97,7 +98,7 @@ function CurrentEnvironment({
               </>
             )}
             <dt className="text-muted-foreground">{t("pythonEnv.current.path")}</dt>
-            <dd className="truncate font-mono text-xs leading-5" title={path}>{path}</dd>
+            <dd className="truncate font-mono text-xs leading-5" title={displayPath(path)}>{displayPath(path)}</dd>
           </dl>
         )}
 

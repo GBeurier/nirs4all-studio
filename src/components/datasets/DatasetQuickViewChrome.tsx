@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { useTranslation } from "react-i18next";
 import {
   Database,
@@ -28,7 +29,7 @@ export function DatasetQuickViewHeader({
     <div className="flex items-center justify-between border-b border-border p-4 flex-shrink-0">
       <div className="min-w-0 flex-1">
         <h3 className="font-semibold text-foreground truncate">{dataset.name}</h3>
-        <p className="text-xs text-muted-foreground font-mono truncate">{dataset.path}</p>
+        <p className="text-xs text-muted-foreground font-mono truncate">{displayPath(dataset.path)}</p>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
         <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={onClose}>
