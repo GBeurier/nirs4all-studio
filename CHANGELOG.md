@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.17.3] — 2026-11-18
+
+### Fixed
+
+- The SHAP tab works on Windows again: the Python host gets a private home
+  directory, so libraries that resolve the user's home no longer fail with
+  "Could not determine home directory".
+- A finished run no longer stays "running" in the floating runs widget, and
+  the widget no longer reappears on New experiment with stale entries: only
+  live executions are tracked, workspace history rows stay in the run list.
+- Windows paths of linked workspaces, datasets and Python environments are
+  shown in their ordinary form (`D:\...`, `\\server\share\...`) instead of
+  the extended-length `\\?\` form.
+- A run whose workspace the Python environment cannot write to (Windows
+  Controlled Folder Access or antivirus software) is refused before any model
+  is fitted, with a message naming the Python interpreter to allow, instead of
+  failing after every cross-validation fit (nirs4all 1.4.20).
+
+### Changed
+
+- Python environment: Studio installs nirs4all 1.4.20 and nirs4all-methods
+  1.3.19 (libn4m ABI 2.23 unchanged); nirs4all-core 0.5.1, dag-ml 0.4.3,
+  dag-ml-data 0.2.17 and nirs4all-io 0.3.6 are unchanged. An existing
+  environment is kept as long as its nirs4all is at least 1.4.20 (below 1.5);
+  an older one is offered the update, so the fixes above reach existing
+  environments.
+- The native backend uses the Methods 1.3.19 library (ABI 2.23).
+
 ## [0.17.2] — 2026-11-18
 
 ### Fixed
