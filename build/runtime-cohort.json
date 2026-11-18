@@ -1,13 +1,13 @@
 {
   "schema": "nirs4all.studio.runtime-cohort.v1",
   "sdk": {
-    "version": "1.4.19",
-    "source_sha": "526052d13c7903a391ce1898ad99ee96c4c2bfce",
-    "wheel_sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9",
+    "version": "1.4.20",
+    "source_sha": "c79932f744502eee745ef0f7f9da666fae45e78e",
+    "wheel_sha256": "f5b6304e62d3861c53db5c6dd468a5361d6df6b410855fdd07925b3d8efe49a2",
     "qualification_oracle_sha256": "1bc8dafee66bd3ff2cd517128da920427c4e2b5b453a65b4790b519e29ef4e8b",
-    "source_tree": "e314d693c08af003a86f430fb4e7b9a06ac06adf",
+    "source_tree": "e0f0dadfda8b2e7a7c7d8863d6c4317eda455366",
     "publication_status": "published-registry",
-    "wheel_url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl"
+    "wheel_url": "https://files.pythonhosted.org/packages/27/91/34b06476a0c2366ffee68e60ea9f6c1c25f570047f09614ed1ab2d03eee9/nirs4all-1.4.20-py3-none-any.whl"
   },
   "dag": {
     "version": "0.4.3",
@@ -33,9 +33,13 @@
     "source_sha": "53624331210b1a6e2d797fd13c6f07363386a91e"
   },
   "methods": {
-    "version": "1.3.18",
-    "source_sha": "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
-    "source_tree": "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
+    "version": "1.3.19",
+    "source_sha": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
+    "source_tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
     "abi": "2.23.0"
+  },
+  "pls4all": {
+    "version": "1.3.19",
+    "lockstep": "methods"
   }
 }

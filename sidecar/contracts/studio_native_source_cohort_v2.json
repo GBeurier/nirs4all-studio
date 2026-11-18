@@ -4,18 +4,18 @@
   "public_registry_verified": true,
   "requires_explicit_local_cargo_config": false,
   "packaged_methods_identity": {
-    "commit": "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
-    "tree": "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
-    "project_version": "1.3.18"
+    "commit": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
+    "tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
+    "project_version": "1.3.19"
   },
   "sdk_selection": {
-    "version": "1.4.19",
-    "requirement": ">=1.4.19,<1.5",
+    "version": "1.4.20",
+    "requirement": ">=1.4.20,<1.5",
     "publication_status": "published-registry",
     "meaning": "public SDK selection; publication is not installed-host or all-platform shipping qualification"
   },
   "methods_selection": {
-    "project_version": "1.3.18",
+    "project_version": "1.3.19",
     "abi_major": 2,
     "abi_minor": 23,
     "meaning": "exact selected public source and ABI; source identity alone does not attest a packaged binary"
@@ -38,9 +38,9 @@
   "notes": [
     "Rust owner publication is recorded in the Root release-integration-20261109 receipts; this declaration is not a Studio build or installed-runtime qualification.",
     "Use the ordinary crates.io graph without local source overrides. Core 0.5.1 and Studio resolve one Rust IO version (0.3.6) through minor-level requirements; browser npm/source artifacts are separate profiles.",
-    "packaged_methods_identity selects only the source-built public v1.3.18 profile. It does not attribute a PyPI wheel library to that commit/tree. Packaged selection still requires the matching contract, binary size/SHA-256, exact ABI and Core preflight.",
+    "packaged_methods_identity selects only the source-built public v1.3.19 profile. It does not attribute a PyPI wheel library to that commit/tree. Packaged selection still requires the matching contract, binary size/SHA-256, exact ABI and Core preflight.",
     "Packaged startup also accepts the exact Linux x64 public wheel artifact declared in scripts/methods-public-wheel-profile.json, with unknown source; it is disjoint from packaged_methods_identity. The separate local native eccbe5 artifact must not be relabelled.",
-    "SDK 1.4.19 is public on PyPI; build/runtime-cohort.json records its wheel SHA-256 and source commit. sdk_selection.publication_status records registry availability only; each installed host requires its own bake and packaged admission. Historical shipping attestations do not qualify this profile.",
+    "SDK 1.4.20 is public on PyPI; build/runtime-cohort.json records its wheel SHA-256 and source commit. sdk_selection.publication_status records registry availability only; each installed host requires its own bake and packaged admission. Historical shipping attestations do not qualify this profile.",
     "The historical published-registry cohort remains byte-exact in studio_native_source_cohort_v1.json."
   ]
 }

@@ -18,7 +18,7 @@ crate release that pins them. Browser npm and
 owner-built browser artifacts have separate provenance and are not this graph.
 
 Packaged Methods has two explicit identity paths at ABI 2.23. The default
-`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.18
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.19
 artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
 installed library size/hash, wheel reference and unknown source. It does not
 infer a source commit from the package version, ABI, public tag or Rust crate.
@@ -40,7 +40,7 @@ The retained injected HTTP test alone does not qualify that startup path.
 The ignored `public_methods_wheel_startup` integration test launches the real
 binary and replays the same owner-produced fixture, then checks typed refusal
 for absent, incompatible or altered selections without acquiring Python.
-SDK 1.4.19 is public on PyPI; `build/runtime-cohort.json` records its wheel
+SDK 1.4.20 is public on PyPI; `build/runtime-cohort.json` records its wheel
 hash and source commit. Studio host installation and current-closure
 qualification remain separate; historical SDK shipping receipts do not qualify
 that closure. The retained SDK host-cohort status is owned by that integration

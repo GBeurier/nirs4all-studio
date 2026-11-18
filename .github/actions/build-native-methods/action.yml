@@ -16,7 +16,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: GBeurier/nirs4all-methods
-        ref: 50b307dd2fc76c0a04ff06e83c316d408c19fc68
+        ref: 18dd0b5cece9da5eaac709a0451ce3e884fa1dda
         path: _deps/nirs4all-methods
         persist-credentials: false
 

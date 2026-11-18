@@ -10,12 +10,13 @@
   },
   "requirements": {
     "required": [
-      "nirs4all==1.4.19",
+      "nirs4all==1.4.20",
       "nirs4all-core==0.5.1",
       "dag-ml==0.4.3",
       "dag-ml-data==0.2.17",
       "nirs4all-io==0.3.6",
-      "nirs4all-methods==1.3.18"
+      "nirs4all-methods==1.3.19",
+      "pls4all==1.3.19"
     ],
     "recommended": [
       "pyopls==20.3.post1",
@@ -51,10 +52,10 @@
     },
     {
       "name": "cloudpickle",
-      "version": "3.1.2",
-      "filename": "cloudpickle-3.1.2-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl",
-      "sha256": "9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a"
+      "version": "3.1.3",
+      "filename": "cloudpickle-3.1.3-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a4/42/3b121b42b114919ffc6195a81c1c7065a465f62f46477fbdb87a07699e51/cloudpickle-3.1.3-py3-none-any.whl",
+      "sha256": "1654f4f18e416447210a63c5c25a135d65a292156aa5fa519dfa4baf7726dddb"
     },
     {
       "name": "colorama",
@@ -198,10 +199,10 @@
     },
     {
       "name": "nirs4all",
-      "version": "1.4.19",
-      "filename": "nirs4all-1.4.19-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl",
-      "sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9"
+      "version": "1.4.20",
+      "filename": "nirs4all-1.4.20-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/27/91/34b06476a0c2366ffee68e60ea9f6c1c25f570047f09614ed1ab2d03eee9/nirs4all-1.4.20-py3-none-any.whl",
+      "sha256": "f5b6304e62d3861c53db5c6dd468a5361d6df6b410855fdd07925b3d8efe49a2"
     },
     {
       "name": "nirs4all-core",
@@ -219,10 +220,10 @@
     },
     {
       "name": "nirs4all-methods",
-      "version": "1.3.18",
-      "filename": "nirs4all_methods-1.3.18-py3-none-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/31/69/45cf64979c57222e75bde70e964ce373d44b2eadcab1ebd6d55effbf3f99/nirs4all_methods-1.3.18-py3-none-win_amd64.whl",
-      "sha256": "c3daecdc8a86c8f5692dc284f39d5ef149541790986ca800e2b75a8a6a60a10d"
+      "version": "1.3.19",
+      "filename": "nirs4all_methods-1.3.19-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/93/a2/30f8eeca38f54be6624a9e1b913f59e525dabe09ae53f181762fde071ac3/nirs4all_methods-1.3.19-py3-none-win_amd64.whl",
+      "sha256": "68d61b8e8be4ea89a600039aecab73d78caa6a984824aef94b2c5b04ce8063fe"
     },
     {
       "name": "numba",
@@ -261,10 +262,10 @@
     },
     {
       "name": "pls4all",
-      "version": "1.3.18",
-      "filename": "pls4all-1.3.18-py3-none-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/70/2b/b7c3e17fe8582c3b355654a36ceb8b8406c8c06614737d5c5fad4c978e97/pls4all-1.3.18-py3-none-win_amd64.whl",
-      "sha256": "92468329dd582135564e266b51000b0d6abfb4fcf5810b870fbcedad8983f1e5"
+      "version": "1.3.19",
+      "filename": "pls4all-1.3.19-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/a7/5e/bc88859f7bce6f7224d92ebd536817573bcd101bb5f1bcd847b2ab69c69a/pls4all-1.3.19-py3-none-win_amd64.whl",
+      "sha256": "b26e0ff2fd7822060055fc38e6a86c560429d6906358237e8d9b65531a37088c"
     },
     {
       "name": "polars",

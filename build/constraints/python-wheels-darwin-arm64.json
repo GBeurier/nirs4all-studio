@@ -11,12 +11,13 @@
   },
   "requirements": {
     "required": [
-      "nirs4all==1.4.19",
+      "nirs4all==1.4.20",
       "nirs4all-core==0.5.1",
       "dag-ml==0.4.3",
       "dag-ml-data==0.2.17",
       "nirs4all-io==0.3.6",
-      "nirs4all-methods==1.3.18"
+      "nirs4all-methods==1.3.19",
+      "pls4all==1.3.19"
     ]
   },
   "packages": [
@@ -36,10 +37,10 @@
     },
     {
       "name": "nirs4all",
-      "version": "1.4.19",
-      "filename": "nirs4all-1.4.19-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl",
-      "sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9"
+      "version": "1.4.20",
+      "filename": "nirs4all-1.4.20-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/27/91/34b06476a0c2366ffee68e60ea9f6c1c25f570047f09614ed1ab2d03eee9/nirs4all-1.4.20-py3-none-any.whl",
+      "sha256": "f5b6304e62d3861c53db5c6dd468a5361d6df6b410855fdd07925b3d8efe49a2"
     },
     {
       "name": "nirs4all-core",
@@ -57,10 +58,17 @@
     },
     {
       "name": "nirs4all-methods",
-      "version": "1.3.18",
-      "filename": "nirs4all_methods-1.3.18-py3-none-macosx_11_0_universal2.whl",
-      "url": "https://files.pythonhosted.org/packages/ce/04/f7179420f88aab723cf67cbe4def98dd9ac566056fb97573b5780490435d/nirs4all_methods-1.3.18-py3-none-macosx_11_0_universal2.whl",
-      "sha256": "497c8973349b5adf1908fd5ec6e0e2b344b9ed3dd5f360b0bb4af7221493e046"
+      "version": "1.3.19",
+      "filename": "nirs4all_methods-1.3.19-py3-none-macosx_11_0_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/69/cf/d1755b7e6e9c2b5fe5e96d5c430aa2911c40c876fd8bd316c50fa5e2e6ca/nirs4all_methods-1.3.19-py3-none-macosx_11_0_universal2.whl",
+      "sha256": "14e467f346590dbb3e195d66b8e6136f8e7f5e39233daee0825588ba52676541"
+    },
+    {
+      "name": "pls4all",
+      "version": "1.3.19",
+      "filename": "pls4all-1.3.19-py3-none-macosx_11_0_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/05/73/b922764e2a77743793c3eccc91929e20834bcb46790baaa85cffc2227455/pls4all-1.3.19-py3-none-macosx_11_0_universal2.whl",
+      "sha256": "ad9e1f64088889681e548fef8a2ffe69e59e412a7a1746bb0b7e53f9ef0ab868"
     }
   ]
 }
