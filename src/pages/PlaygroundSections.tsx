@@ -31,7 +31,8 @@ export interface PlaygroundContentProps {
   dataSource: ReturnType<typeof useSpectralData>['dataSource'];
   currentDatasetInfo: PlaygroundDatasetInfo | null;
   loadDemoData: ReturnType<typeof useSpectralData>['loadDemoData'];
-  loadFromWorkspace: ReturnType<typeof useSpectralData>['loadFromWorkspace'];
+  /** Opens a workspace dataset on its saved default target. */
+  loadFromWorkspace: (datasetId: string, datasetName: string, partition?: PartitionKey) => void;
   clearData: ReturnType<typeof useSpectralData>['clearData'];
   showDatasetSelector: boolean;
   onToggleDatasetSelector: () => void;
@@ -374,10 +375,9 @@ export function PlaygroundContent({
     datasetId: string,
     datasetName: string,
     partition?: PartitionKey,
-    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples' | 'schemaRef'>,
   ) => {
     resetPipelineForDatasetChange();
-    loadFromWorkspace(datasetId, datasetName, partition, datasetInfo);
+    loadFromWorkspace(datasetId, datasetName, partition);
   }, [resetPipelineForDatasetChange, loadFromWorkspace]);
 
   const handleClearData = useCallback(() => {

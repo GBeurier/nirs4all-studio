@@ -136,6 +136,21 @@ mod imp {
         }
     }
 
+    /// Physical memory Windows reports as available now, in bytes.
+    pub fn available_physical_memory() -> io::Result<u64> {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        // SAFETY: MEMORYSTATUSEX is plain data; zero is a valid initial value.
+        let mut status: MEMORYSTATUSEX = unsafe { mem::zeroed() };
+        status.dwLength = u32::try_from(mem::size_of::<MEMORYSTATUSEX>())
+            .map_err(|_| io::Error::other("memory status structure is too large"))?;
+        // SAFETY: `status` is a writable MEMORYSTATUSEX whose dwLength names its
+        // size, as the API requires; the call does not retain the pointer.
+        if unsafe { GlobalMemoryStatusEx(&mut status) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(status.ullAvailPhys)
+    }
+
     /// Owned Job Object configured to terminate all members on last-handle close.
     ///
     /// Once the current process is assigned, dropping this guard terminates that
@@ -208,13 +223,20 @@ mod imp {
 }
 
 pub use imp::{
-    file_change_stamp, file_entry_stamp, system_windows_directory, FileChangeStamp, FileEntryStamp,
-    KillOnCloseJob,
+    available_physical_memory, file_change_stamp, file_entry_stamp, system_windows_directory,
+    FileChangeStamp, FileEntryStamp, KillOnCloseJob,
 };
 
 #[cfg(test)]
 mod tests {
-    use super::{file_change_stamp, system_windows_directory, KillOnCloseJob};
+    use super::{
+        available_physical_memory, file_change_stamp, system_windows_directory, KillOnCloseJob,
+    };
+
+    #[test]
+    fn available_physical_memory_is_reported() {
+        assert!(available_physical_memory().unwrap() > 0);
+    }
 
     #[test]
     fn change_marker_detects_same_size_edit_with_restored_mtime() {

@@ -118,10 +118,14 @@ describe("NewExperimentReviewStep", () => {
         groupingSelection={groupingSelection}
         missingTargetPolicy="predict"
         missingTargetRemovalAvailable
+        missingSpectra={{ counts: [], choice: null, onChange: vi.fn() }}
         selectedDatasetIds={["d1"]}
         onExperimentDescriptionChange={vi.fn()}
         onExperimentNameChange={vi.fn()}
         onMissingTargetPolicyChange={vi.fn()}
+        missingTargetCounts={[]}
+        targetOptions={[]}
+        onTargetChange={vi.fn()}
       />,
     );
 
@@ -202,10 +206,14 @@ describe("NewExperimentReviewStep", () => {
         groupingSelection={groupingSelection}
         missingTargetPolicy="predict"
         missingTargetRemovalAvailable
+        missingSpectra={{ counts: [], choice: null, onChange: vi.fn() }}
         selectedDatasetIds={["d1"]}
         onExperimentDescriptionChange={vi.fn()}
         onExperimentNameChange={vi.fn()}
         onMissingTargetPolicyChange={vi.fn()}
+        missingTargetCounts={[]}
+        targetOptions={[]}
+        onTargetChange={vi.fn()}
       />,
     );
 

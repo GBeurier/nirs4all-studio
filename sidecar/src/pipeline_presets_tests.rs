@@ -67,15 +67,6 @@ fn unknown_ids_variants_and_malformed_bodies_never_reach_conversion() {
     ] {
         assert_eq!(selection("simple_pls", body).unwrap_err().0, 400);
     }
-    assert_eq!(
-        selection(
-            "simple_pls",
-            &vec![b' '; crate::document_cpython::MAX_DOCUMENT_BYTES + 1]
-        )
-        .unwrap_err()
-        .0,
-        413
-    );
 }
 
 #[test]

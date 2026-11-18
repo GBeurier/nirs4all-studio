@@ -39,9 +39,7 @@ fn inspection_loading_params(params: &Value) -> Result<LoadingParams, String> {
 pub mod cache;
 mod discovery;
 
-const MAX_ENTRIES: usize = 4096;
 const MAX_SAMPLE_ROWS: usize = 1000;
-const MAX_PRESENTATION_BYTES: usize = 32 * 1024 * 1024;
 
 /// Read-only inspection scoped to one user-selected or catalogue-authorized root.
 pub struct DatasetInspection {
@@ -168,8 +166,9 @@ impl DatasetInspection {
             .len()
             .checked_mul(samples + 2)
             .ok_or("Presentation size overflow")?;
-        if slots > MAX_PRESENTATION_BYTES / 32 {
-            return Err("Table inspection exceeds presentation cardinality budget".into());
+        let allowance = crate::host_memory::allowance();
+        if slots > allowance / 32 {
+            return Err(crate::host_memory::exceeded("Previewing this table"));
         }
         // Account for worst-case JSON escaping before cloning string cells or
         // duplicating the historical headers/column_names presentation fields.
@@ -185,8 +184,8 @@ impl DatasetInspection {
                         .ok_or("Presentation size overflow")?;
                 }
             }
-            if bytes > MAX_PRESENTATION_BYTES {
-                return Err("Table inspection exceeds presentation byte budget".into());
+            if bytes > allowance {
+                return Err(crate::host_memory::exceeded("Previewing this table"));
             }
         }
         let sample_data: Vec<Vec<String>> = (0..samples)
@@ -213,13 +212,8 @@ impl DatasetInspection {
     fn files(&self, recursive: bool) -> Result<Vec<PathBuf>, String> {
         let mut pending = vec![self.root.clone()];
         let mut files = Vec::new();
-        let mut entries = 0;
         while let Some(directory) = pending.pop() {
             for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
-                entries += 1;
-                if entries > MAX_ENTRIES {
-                    return Err("Dataset folder exceeds directory-entry budget".into());
-                }
                 let entry = entry.map_err(|error| error.to_string())?;
                 if entry.file_name().to_string_lossy().starts_with('.') {
                     continue;
@@ -278,7 +272,7 @@ impl DatasetInspection {
 
     /// Authorize and admit a complete selected list before any reader callback.
     pub fn admit_files(&self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
-        if paths.len() > MAX_ENTRIES || paths.len() as u64 > self.limits.max_files {
+        if paths.len() as u64 > self.limits.max_files {
             return Err("Selected files exceed count budget".into());
         }
         let mut result = Vec::new();
@@ -399,10 +393,10 @@ impl DatasetInspection {
     ) -> Result<Value, String> {
         let mut record = json!({"path":self.root,"config":value});
         ScientificRequestResolver::confine_dataset_config(&mut record, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         let mut config = adapt("dataset.configure", &json!({"record":record}))?;
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         if !config.is_object() {
             return Err("Dataset adapter returned no explicit config".into());
         }
@@ -424,6 +418,27 @@ impl DatasetInspection {
         self.preview_configured(&config, max_samples, adapt)
     }
 
+    /// The preview recorded in the dataset catalogue: it also counts the
+    /// missing spectral values the dataset keeps.
+    /// # Errors
+    /// Propagates confinement, reader and projection errors without fallback.
+    pub fn catalogue_preview(
+        &self,
+        config: &Value,
+        max_samples: usize,
+        adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, String> {
+        if max_samples == 0 {
+            return Err("max_samples must be positive".into());
+        }
+        let config = self.config(config, adapt)?;
+        adapt(
+            "dataset.preview",
+            &json!({"config":config,"max_samples":max_samples,
+            "max_input_bytes":self.limits.max_total_bytes,"count_missing_spectra":true}),
+        )
+    }
+
     /// Preview an already normalized config without invoking the normalizer again.
     /// # Errors
     /// Rejects non-object configs, escaping paths and invalid sample limits.
@@ -441,7 +456,7 @@ impl DatasetInspection {
         }
         let mut config = config.clone();
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         adapt(
             "dataset.preview",
             &json!({"config":config,"max_samples":max_samples,

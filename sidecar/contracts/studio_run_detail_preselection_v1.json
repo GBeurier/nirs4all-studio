@@ -51,7 +51,7 @@
     "input_bytes": 8192,
     "preflight_timeout_ms": 15000,
     "request_timeout_ms": 15000,
-    "stdout_bytes": 4194304,
+    "stdout_bytes": "host_memory",
     "stderr_bytes": 65536,
     "stdout_schema": "exact_seven_field_owner_envelope_or_null",
     "stderr_exposure_to_renderer": "forbidden",

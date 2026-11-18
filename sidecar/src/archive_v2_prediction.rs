@@ -54,9 +54,9 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.5.0";
+const CORE_PROJECT_VERSION: &str = "0.5.1";
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 22;
+const METHODS_ABI_MINOR: u32 = 23;
 const NATIVE_SOURCE_COHORT: &str = include_str!("../contracts/studio_native_source_cohort_v2.json");
 const WINDOWS_NATIVE_LINKAGE_PROFILE: &str = "studio-msvc-static-crt-v1";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
@@ -139,7 +139,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The selected cohort fixes ABI 2.22 and this preflight
+    /// capability. The selected cohort fixes ABI 2.23 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -2018,7 +2018,7 @@ mod tests {
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.5.0+libn4m-abi-2.22:{methods_sha256}")
+            format!("nirs4all-core@0.5.1+libn4m-abi-2.23:{methods_sha256}")
         );
         // Independent affine oracle for the new named fixture; the old ABI 2.0
         // witness and its numerical oracle remain historical provenance.
@@ -2045,9 +2045,9 @@ mod tests {
         assert_eq!(
             cohort["packaged_methods_identity"],
             json!({
-                "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
-                "tree": "61406cd2cf11204273a9972e4f268acfde7eb424",
-                "project_version": "1.3.15"
+                "commit": "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
+                "tree": "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
+                "project_version": "1.3.18"
             })
         );
         assert!(packaged_methods_library_identity().is_none());
@@ -2095,11 +2095,11 @@ mod tests {
             size: 1,
             sha256: "b".repeat(64),
             abi_major: 2,
-            abi_minor: 22,
+            abi_minor: 23,
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.5.0+libn4m-abi-2.22:{}", "b".repeat(64))
+            format!("nirs4all-core@0.5.1+libn4m-abi-2.23:{}", "b".repeat(64))
         );
     }
 
@@ -2219,7 +2219,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "published nirs4all 0.5.0 crates.io cohort; ordinary registry lock and exact selected Methods source required"
+            "published nirs4all 0.5.1 crates.io cohort; ordinary registry lock and exact selected Methods source required"
         );
     }
 }

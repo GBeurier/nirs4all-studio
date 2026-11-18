@@ -10,12 +10,12 @@
   },
   "requirements": {
     "required": [
-      "nirs4all==1.4.16",
-      "nirs4all-core==0.5.0",
-      "dag-ml==0.4.0",
-      "dag-ml-data==0.2.16",
-      "nirs4all-io==0.3.1",
-      "nirs4all-methods==1.3.15"
+      "nirs4all==1.4.19",
+      "nirs4all-core==0.5.1",
+      "dag-ml==0.4.3",
+      "dag-ml-data==0.2.17",
+      "nirs4all-io==0.3.6",
+      "nirs4all-methods==1.3.18"
     ],
     "recommended": [
       "pyopls==20.3.post1",
@@ -77,24 +77,24 @@
     },
     {
       "name": "dag-ml",
-      "version": "0.4.0",
-      "filename": "dag_ml-0.4.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/50/02/df444b38f22159c35a87a00e7d26279514f00c48be8e11436becb0156f3a/dag_ml-0.4.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "sha256": "47ac3b346dee81fbb726748dea705c2e54a9232349bf16829347565ce8bd585a"
+      "version": "0.4.3",
+      "filename": "dag_ml-0.4.3-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/b5/67/8012c52f792d814f69c4946f368b3d8988fe121a159b6ee0bc73015526b3/dag_ml-0.4.3-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "7afd4d9272da236c840adaf12cf8e9a12c83f91ee67125afd41033021e9a038f"
     },
     {
       "name": "dag-ml-data",
-      "version": "0.2.16",
-      "filename": "dag_ml_data-0.2.16-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/0a/e6/f54a653ddd3070a7a201943e323ce6f585fb68aef293dd44fa91758be6c8/dag_ml_data-0.2.16-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "sha256": "6ed3c5d347dd86bd25a7297199213403c44a3e1be0b2686292316ca3ee2a4b0d"
+      "version": "0.2.17",
+      "filename": "dag_ml_data-0.2.17-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/38/aa/dfab9409e311e77d4af87afb8bbebe038a26763e787e036d94a59734a814/dag_ml_data-0.2.17-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "b15006d8c6d25d39ec6fc62665b1f6bec42aa731066cd9045e2b8c44e2949b34"
     },
     {
       "name": "filelock",
-      "version": "4.2.10",
-      "filename": "filelock-4.2.10-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/ef/90/5d0096a325aa0f83ba7a3968bfb485b67e32c947bdf9cd0fcb4b485be718/filelock-4.2.10-py3-none-any.whl",
-      "sha256": "9479aaeb4db20b5a53e3da28493edd24720b66b8a0b84030aa56ccdf243d6857"
+      "version": "4.2.12",
+      "filename": "filelock-4.2.12-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/8a/c9/eb6b6528c7edb958d4c24ac47a8b94113d9de36e4cfc6eecd599b1a4f349/filelock-4.2.12-py3-none-any.whl",
+      "sha256": "21decfec02f116ed4c954433cdb31f28c3b346b784543177b6d7059da2702ee9"
     },
     {
       "name": "fsspec",
@@ -182,10 +182,10 @@
     },
     {
       "name": "narwhals",
-      "version": "2.28.0",
-      "filename": "narwhals-2.28.0-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/cf/82/8ef9c7e0f50493307a49c09cfa7f00c5a778b6d1921f7b2dabe1d3a5809e/narwhals-2.28.0-py3-none-any.whl",
-      "sha256": "1f69d6385ec30e2fa6e1fdeb37c562ecabd0f713f6f3e3b58a668c5c9df9567f"
+      "version": "2.29.0",
+      "filename": "narwhals-2.29.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/9e/2b/20b4b463c3795dc390db8fa6ec2b5c3e0aea90a760f813305da4c33dd814/narwhals-2.29.0-py3-none-any.whl",
+      "sha256": "1c69b3dc30240f6e848c5a673cafc86affa44184ecce721e25b7194663ad10dc"
     },
     {
       "name": "networkx",
@@ -196,31 +196,31 @@
     },
     {
       "name": "nirs4all",
-      "version": "1.4.16",
-      "filename": "nirs4all-1.4.16-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl",
-      "sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
+      "version": "1.4.19",
+      "filename": "nirs4all-1.4.19-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl",
+      "sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9"
     },
     {
       "name": "nirs4all-core",
-      "version": "0.5.0",
-      "filename": "nirs4all_core-0.5.0-cp311-abi3-manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/f5/f5/ba168ce21f7020d760d55fe973a0dbe3803aa00aebc8aafaaabebcd9eb53/nirs4all_core-0.5.0-cp311-abi3-manylinux_2_28_x86_64.whl",
-      "sha256": "46921c79918f3e55374d1bcceb560872cd8238ebde8af45b6bfdc534f6655d8e"
+      "version": "0.5.1",
+      "filename": "nirs4all_core-0.5.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/90/65/bc0addf77e424a582ba9ec209f601b06b03a2159df70aa290e0132bd283b/nirs4all_core-0.5.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "b6909a58e7dd606f943173ae6620b37356ee31a12e26873d3c9b3bd63f6dcb83"
     },
     {
       "name": "nirs4all-io",
-      "version": "0.3.1",
-      "filename": "nirs4all_io-0.3.1-cp311-abi3-manylinux_2_34_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/34/25/8daf4e99262f8a59ca658d7de83a8bb8c0b28e7d3f5d35ef4d4ebb923327/nirs4all_io-0.3.1-cp311-abi3-manylinux_2_34_x86_64.whl",
-      "sha256": "c553806286ded850df891a245759daf1ec841fc96a79fc5d4165611757dca99f"
+      "version": "0.3.6",
+      "filename": "nirs4all_io-0.3.6-cp311-abi3-manylinux_2_34_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/88/cb/ac00e8939960928345b5e112306d5e100a534f13a3aa680de6db7c159e8e/nirs4all_io-0.3.6-cp311-abi3-manylinux_2_34_x86_64.whl",
+      "sha256": "7ae8573987afe1c1545a49dfc3a27a3655e603d10385ef227f5c0c793dc36c70"
     },
     {
       "name": "nirs4all-methods",
-      "version": "1.3.15",
-      "filename": "nirs4all_methods-1.3.15-py3-none-manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/66/d0/9a8e124484104ab15e5939c45ba744aac6a9aa4ff6913762425e3d4cd624/nirs4all_methods-1.3.15-py3-none-manylinux_2_28_x86_64.whl",
-      "sha256": "4822cea941375c8e08f747ea45d9363dcf92792d91d0a28e058d25e4c56c6d5e"
+      "version": "1.3.18",
+      "filename": "nirs4all_methods-1.3.18-py3-none-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/41/11/d8ccff780dc933c8926ef2d6b7ac3151e128362a608b0d6e7e1ffa338b47/nirs4all_methods-1.3.18-py3-none-manylinux_2_28_x86_64.whl",
+      "sha256": "ef5de72c8ef0834f9714df73617241d325bed0d7b14176fb9d6b68aa37c56029"
     },
     {
       "name": "numba",
@@ -513,17 +513,17 @@
     },
     {
       "name": "dag-ml",
-      "version": "0.4.0",
-      "filename": "dag_ml-0.4.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/50/02/df444b38f22159c35a87a00e7d26279514f00c48be8e11436becb0156f3a/dag_ml-0.4.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "sha256": "47ac3b346dee81fbb726748dea705c2e54a9232349bf16829347565ce8bd585a"
+      "version": "0.4.3",
+      "filename": "dag_ml-0.4.3-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/b5/67/8012c52f792d814f69c4946f368b3d8988fe121a159b6ee0bc73015526b3/dag_ml-0.4.3-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "7afd4d9272da236c840adaf12cf8e9a12c83f91ee67125afd41033021e9a038f"
     },
     {
       "name": "dag-ml-data",
-      "version": "0.2.16",
-      "filename": "dag_ml_data-0.2.16-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/0a/e6/f54a653ddd3070a7a201943e323ce6f585fb68aef293dd44fa91758be6c8/dag_ml_data-0.2.16-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "sha256": "6ed3c5d347dd86bd25a7297199213403c44a3e1be0b2686292316ca3ee2a4b0d"
+      "version": "0.2.17",
+      "filename": "dag_ml_data-0.2.17-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/38/aa/dfab9409e311e77d4af87afb8bbebe038a26763e787e036d94a59734a814/dag_ml_data-0.2.17-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "sha256": "b15006d8c6d25d39ec6fc62665b1f6bec42aa731066cd9045e2b8c44e2949b34"
     },
     {
       "name": "fonttools",
@@ -618,38 +618,38 @@
     },
     {
       "name": "narwhals",
-      "version": "2.28.0",
-      "filename": "narwhals-2.28.0-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/cf/82/8ef9c7e0f50493307a49c09cfa7f00c5a778b6d1921f7b2dabe1d3a5809e/narwhals-2.28.0-py3-none-any.whl",
-      "sha256": "1f69d6385ec30e2fa6e1fdeb37c562ecabd0f713f6f3e3b58a668c5c9df9567f"
+      "version": "2.29.0",
+      "filename": "narwhals-2.29.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/9e/2b/20b4b463c3795dc390db8fa6ec2b5c3e0aea90a760f813305da4c33dd814/narwhals-2.29.0-py3-none-any.whl",
+      "sha256": "1c69b3dc30240f6e848c5a673cafc86affa44184ecce721e25b7194663ad10dc"
     },
     {
       "name": "nirs4all",
-      "version": "1.4.16",
-      "filename": "nirs4all-1.4.16-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl",
-      "sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
+      "version": "1.4.19",
+      "filename": "nirs4all-1.4.19-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl",
+      "sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9"
     },
     {
       "name": "nirs4all-core",
-      "version": "0.5.0",
-      "filename": "nirs4all_core-0.5.0-cp311-abi3-manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/f5/f5/ba168ce21f7020d760d55fe973a0dbe3803aa00aebc8aafaaabebcd9eb53/nirs4all_core-0.5.0-cp311-abi3-manylinux_2_28_x86_64.whl",
-      "sha256": "46921c79918f3e55374d1bcceb560872cd8238ebde8af45b6bfdc534f6655d8e"
+      "version": "0.5.1",
+      "filename": "nirs4all_core-0.5.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/90/65/bc0addf77e424a582ba9ec209f601b06b03a2159df70aa290e0132bd283b/nirs4all_core-0.5.1-cp311-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "b6909a58e7dd606f943173ae6620b37356ee31a12e26873d3c9b3bd63f6dcb83"
     },
     {
       "name": "nirs4all-io",
-      "version": "0.3.1",
-      "filename": "nirs4all_io-0.3.1-cp311-abi3-manylinux_2_34_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/34/25/8daf4e99262f8a59ca658d7de83a8bb8c0b28e7d3f5d35ef4d4ebb923327/nirs4all_io-0.3.1-cp311-abi3-manylinux_2_34_x86_64.whl",
-      "sha256": "c553806286ded850df891a245759daf1ec841fc96a79fc5d4165611757dca99f"
+      "version": "0.3.6",
+      "filename": "nirs4all_io-0.3.6-cp311-abi3-manylinux_2_34_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/88/cb/ac00e8939960928345b5e112306d5e100a534f13a3aa680de6db7c159e8e/nirs4all_io-0.3.6-cp311-abi3-manylinux_2_34_x86_64.whl",
+      "sha256": "7ae8573987afe1c1545a49dfc3a27a3655e603d10385ef227f5c0c793dc36c70"
     },
     {
       "name": "nirs4all-methods",
-      "version": "1.3.15",
-      "filename": "nirs4all_methods-1.3.15-py3-none-manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/66/d0/9a8e124484104ab15e5939c45ba744aac6a9aa4ff6913762425e3d4cd624/nirs4all_methods-1.3.15-py3-none-manylinux_2_28_x86_64.whl",
-      "sha256": "4822cea941375c8e08f747ea45d9363dcf92792d91d0a28e058d25e4c56c6d5e"
+      "version": "1.3.18",
+      "filename": "nirs4all_methods-1.3.18-py3-none-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/41/11/d8ccff780dc933c8926ef2d6b7ac3151e128362a608b0d6e7e1ffa338b47/nirs4all_methods-1.3.18-py3-none-manylinux_2_28_x86_64.whl",
+      "sha256": "ef5de72c8ef0834f9714df73617241d325bed0d7b14176fb9d6b68aa37c56029"
     },
     {
       "name": "numba",

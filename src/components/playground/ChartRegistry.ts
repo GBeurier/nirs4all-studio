@@ -28,7 +28,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { PlaygroundResult } from '@/types/playground';
-import type { SpectralData } from '@/types/spectral';
+import type { SpectralData, TargetValue } from '@/types/spectral';
 import type { PlaygroundDataViewProjection } from '@/lib/playground/dataViewProjection';
 import {
   buildPlaygroundChartAvailabilityReadModel,
@@ -53,7 +53,7 @@ export interface BaseChartProps {
   /** Raw spectral data */
   rawData: SpectralData | null;
   /** Y values */
-  y?: number[];
+  y?: TargetValue[];
   /** Whether chart is in loading state */
   isLoading?: boolean;
   /** Use SelectionContext for cross-chart selection */

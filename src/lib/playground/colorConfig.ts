@@ -10,6 +10,7 @@
  * - Supports ordinal scales
  */
 
+import type { TargetValue } from '@/types/spectral';
 import { type TargetType } from './targetTypeDetection';
 import {
   type CategoricalPalette,
@@ -102,7 +103,7 @@ export interface ColorResult {
  */
 export interface ColorContext {
   // For target mode
-  y?: number[];
+  y?: TargetValue[];
   yMin?: number;
   yMax?: number;
 
@@ -359,7 +360,9 @@ export function getWebGLSampleColor(
   // Get base color by mode
   const baseColor = getBaseColor(sampleIndex, config, context);
 
-  return baseColor;
+  // The neutral colour (no target value, unknown fold, missing metadata) is a
+  // CSS variable that WebGL/canvas cannot parse.
+  return baseColor === HIGHLIGHT_COLORS.unselected ? HIGHLIGHT_COLORS_CONCRETE.unselected : baseColor;
 }
 
 /**

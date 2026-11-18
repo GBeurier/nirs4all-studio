@@ -1,3 +1,6 @@
+import { getObservedTargetRange } from '@/lib/playground/targetValues';
+import type { TargetValue } from '@/types/spectral';
+
 export interface SpectraWebGLRangeStats {
   min: number[];
   max: number[];
@@ -123,13 +126,9 @@ export function computeSpectraWebGLRanges({
   };
 }
 
-export function computeSpectraTargetValueRange(values?: number[]): { yMin: number; yMax: number } {
-  if (!values || values.length === 0) return { yMin: 0, yMax: 1 };
-
-  return {
-    yMin: Math.min(...values),
-    yMax: Math.max(...values),
-  };
+export function computeSpectraTargetValueRange(values?: TargetValue[]): { yMin: number; yMax: number } {
+  const range = getObservedTargetRange(values);
+  return range ? { yMin: range.min, yMax: range.max } : { yMin: 0, yMax: 1 };
 }
 
 export function shouldSyncSpectraXViewRange({

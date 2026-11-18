@@ -52,9 +52,8 @@ describe("inventory evaluation", () => {
       outdatedRecommendedCount: 0,
     });
     expect(report.required.map((item) => item.status)).toEqual(REQUIRED_PACKAGES.map(() => "ok"));
-    expect(report.required[0]).toEqual({
-      name: "nirs4all", installedVersion: "1.4.16", requiredRange: ">=1.4.16,<1.5", targetVersion: "1.4.16", status: "ok",
-    });
+    const [{ range, install }] = REQUIRED_PACKAGES;
+    expect(report.required[0]).toEqual({ name: "nirs4all", installedVersion: install, requiredRange: range, targetVersion: install, status: "ok" });
     expect(report.recommended.every((item) => item.status === "missing" || item.status === "unsupported_python")).toBe(true);
   });
 
@@ -72,7 +71,7 @@ describe("inventory evaluation", () => {
   });
 
   it("accepts an editable install that is within the required range, and any version without a range", () => {
-    const value = withPackages({ nirs4all: "1.4.17", "dag-ml": "9.9.9" }, { editable: ["nirs4all", "requests"] });
+    const value = withPackages({ nirs4all: "1.4.99", "dag-ml": "9.9.9" }, { editable: ["nirs4all", "requests"] });
     const report = evaluate(value);
     expect(report.usable).toBe(true);
     expect(report.required.find((item) => item.name === "nirs4all")?.status).toBe("ok");
@@ -81,12 +80,13 @@ describe("inventory evaluation", () => {
 
   it("pins the installed required packages for other installations, leaving missing and editable ones out", () => {
     const value = withPackages(
-      { nirs4all: "1.4.18", "dag-ml": "0.5.0.dev1", "nirs4all-core": undefined, torch: "2.6.0" },
+      { nirs4all: "1.4.99", "dag-ml": "0.5.0.dev1", "nirs4all-core": undefined, torch: "2.6.0" },
       { editable: ["dag-ml", "torch"] },
     );
     expect(editableRequiredPackages(value)).toEqual(["dag-ml"]);
     expect(installedRequiredPins(value)).toEqual([
-      "nirs4all==1.4.18", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15",
+      "nirs4all==1.4.99",
+      ...REQUIRED_PACKAGES.filter((spec) => !["nirs4all", "nirs4all-core", "dag-ml"].includes(spec.name)).map((spec) => `${spec.name}==${spec.install}`),
     ]);
   });
 

@@ -43,6 +43,7 @@ describe('DimensionReductionFooter', () => {
         xAxisLabel="PC1 (55.00%)"
         yAxisLabel="PC2 (20.00%)"
         selectedCount={3}
+        leftOutCount={5}
         hasReferenceData
         referenceLabel="Reference set"
       />
@@ -50,6 +51,7 @@ describe('DimensionReductionFooter', () => {
 
     expect(container.textContent).toContain('Var: PC1 (55.00%), PC2 (20.00%)');
     expect(container.textContent).toContain('• 3 selected');
+    expect(container.textContent).toContain('5 samples left out: missing values');
     expect(container.textContent).toContain('Reference set');
     expect(container.querySelector('[style*="polygon"]')).not.toBeNull();
 

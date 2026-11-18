@@ -79,12 +79,19 @@ export const FoldsInfoSchema = z.object({
 /**
  * PCA projection results
  */
+const ProjectionLeftOutSchema = z.object({
+  reason: z.literal('missing_values'),
+  count: z.number(),
+  sample_indices: z.array(z.number()),
+});
+
 export const PCAResultSchema = z.object({
   coordinates: z.array(z.array(z.number())),
+  left_out: ProjectionLeftOutSchema.optional(),
   explained_variance_ratio: z.array(z.number()),
   explained_variance: z.array(z.number()),
   n_components: z.number(),
-  y: z.array(z.number()).optional(),
+  y: z.array(z.number().nullable()).optional(),
   fold_labels: z.array(z.number()).optional(),
   error: z.string().optional(),
 });
@@ -94,12 +101,13 @@ export const PCAResultSchema = z.object({
  */
 export const UMAPResultSchema = z.object({
   coordinates: z.array(z.array(z.number())),
+  left_out: ProjectionLeftOutSchema.optional(),
   n_components: z.number(),
   params: z.object({
     n_neighbors: z.number(),
     min_dist: z.number(),
   }).optional(),
-  y: z.array(z.number()).optional(),
+  y: z.array(z.number().nullable()).optional(),
   fold_labels: z.array(z.number()).optional(),
   error: z.string().optional(),
   available: z.boolean().optional(),
@@ -116,7 +124,7 @@ export const DataSectionSchema = z.object({
   sample_indices: z.array(z.number()).optional(),
   sample_ids: z.array(z.string()).optional(),
   metadata: z.record(z.string(), z.array(z.unknown())).optional(),
-  y: z.array(z.number()).optional(),
+  y: z.array(z.number().nullable()).optional(),
   shape: z.array(z.number()),
   statistics: SpectrumStatsSchema.optional(),
 });
@@ -175,8 +183,8 @@ export const RepetitionDataPointSchema = z.object({
   sample_index: z.number(),
   sample_id: z.string(),
   distance: z.number(),
-  y: z.number().optional(),
-  y_mean: z.number().optional(),
+  y: z.number().nullable().optional(),
+  y_mean: z.number().nullable().optional(),
 });
 
 /**

@@ -76,6 +76,7 @@ interface DimensionReductionChartFrameProps {
   compact: boolean;
   showVarianceSummary: boolean;
   selectedCount: number;
+  leftOutCount?: number;
   globalColorConfig?: GlobalColorConfig;
   colorContext?: ColorContext;
   hasReferenceData: boolean;
@@ -140,6 +141,7 @@ export function DimensionReductionChartFrame({
   compact,
   showVarianceSummary,
   selectedCount,
+  leftOutCount,
   globalColorConfig,
   colorContext,
   hasReferenceData,
@@ -241,6 +243,7 @@ export function DimensionReductionChartFrame({
         xAxisLabel={axisLabels.x}
         yAxisLabel={axisLabels.y}
         selectedCount={selectedCount}
+        leftOutCount={leftOutCount}
         globalColorConfig={globalColorConfig}
         colorContext={colorContext}
         hasReferenceData={hasReferenceData}

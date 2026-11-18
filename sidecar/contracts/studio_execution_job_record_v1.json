@@ -20,7 +20,7 @@
   },
   "snapshot": {
     "relative_path": "runs/{job_id}/execution_job_record.json",
-    "maximum_bytes": 262144,
+    "maximum_bytes": "host_memory",
     "read_mode": "bounded_read_only",
     "symlink_or_workspace_escape": "reject",
     "changed_during_read": "reject",

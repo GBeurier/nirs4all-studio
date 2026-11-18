@@ -470,7 +470,7 @@ describe("ChainDetailPanel", () => {
       expect(container.textContent).toContain("Unavailable from stored predictions (5)");
       expect(container.textContent).toContain("spectral noise");
       expect(container.textContent).toContain("Requires explicit spectra and a frozen predictor replay surface.");
-      expect(container.textContent).toContain("Spectral/OOD replay preflight: blocked");
+      expect(container.textContent).toContain("Spectral/OOD replay check: blocked");
       expect(container.textContent).toContain("Prediction-space ready");
       expect(container.textContent).toContain("Spectral/OOD blocked");
       expect(container.textContent).toContain("Evidence present 2/4");

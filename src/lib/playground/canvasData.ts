@@ -1,5 +1,5 @@
 import type { FoldsInfo, PlaygroundResult, SourcePartitions, YStats } from '@/types/playground';
-import type { SpectralData } from '@/types/spectral';
+import type { SpectralData, TargetValue } from '@/types/spectral';
 import {
   getPlaygroundProjectionMetadataColumns,
   getPlaygroundProjectionTargetColumn,
@@ -11,9 +11,10 @@ import {
   type TargetType,
 } from '@/lib/playground/targetTypeDetection';
 import { getColumnarMetadata } from '@/lib/playground/repetition';
+import { getObservedTargetRange, getObservedTargets } from '@/lib/playground/targetValues';
 
 export interface PlaygroundTargetView {
-  yValues: number[];
+  yValues: TargetValue[];
   yMin: number;
   yMax: number;
   targetType?: TargetType;
@@ -27,38 +28,23 @@ export interface PartitionIndexSets {
   testIndices?: Set<number>;
 }
 
-function getNumericRange(values: number[]): { yMin: number; yMax: number } {
-  if (values.length === 0) {
-    return { yMin: 0, yMax: 1 };
-  }
-
-  let yMin = values[0];
-  let yMax = values[0];
-  for (let i = 1; i < values.length; i++) {
-    const value = values[i];
-    if (value < yMin) yMin = value;
-    if (value > yMax) yMax = value;
-  }
-  return { yMin, yMax };
-}
-
 function summarizeY(values: number[]): YStats | undefined {
-  if (values.length === 0) {
+  const range = getObservedTargetRange(values);
+  if (!range) {
     return undefined;
   }
 
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
-  const { yMin, yMax } = getNumericRange(values);
   return {
     mean,
     std: Math.sqrt(variance),
-    min: yMin,
-    max: yMax,
+    min: range.min,
+    max: range.max,
   };
 }
 
-export function getPlaygroundYValues(rawData: SpectralData | null, result: PlaygroundResult | null): number[] {
+export function getPlaygroundYValues(rawData: SpectralData | null, result: PlaygroundResult | null): TargetValue[] {
   if (result?.processed?.y && result.processed.y.length > 0) {
     return result.processed.y;
   }
@@ -71,14 +57,16 @@ export function buildPlaygroundTargetView(
   dataView?: PlaygroundDataViewProjection | null,
 ): PlaygroundTargetView {
   const yValues = getPlaygroundYValues(rawData, result);
-  const { yMin, yMax } = getNumericRange(yValues);
+  // The colour scale and legend only span observed values; samples without a
+  // target value stay in `yValues` (as `null`) so indices keep matching.
+  const range = getObservedTargetRange(yValues) ?? { min: 0, max: 1 };
   const targetTypeResult = yValues.length > 0 ? detectTargetType(yValues) : null;
   const classLabels = targetTypeResult?.classLabels;
 
   return {
     yValues,
-    yMin,
-    yMax,
+    yMin: range.min,
+    yMax: range.max,
     targetType: targetTypeResult?.type,
     classLabels,
     classLabelMap: classLabels ? createClassLabelMap(classLabels) : undefined,
@@ -121,7 +109,7 @@ export function hasPlaygroundFolds(result: PlaygroundResult | null): boolean {
 export function buildEffectivePlaygroundFolds(
   result: PlaygroundResult | null,
   rawSampleCount: number,
-  rawY: number[] = []
+  rawY: TargetValue[] = []
 ): FoldsInfo | null {
   if (result?.folds && result.folds.n_folds > 0) {
     const distinctFoldLabels = new Set((result.folds.fold_labels ?? []).filter((label) => label >= 0));
@@ -156,8 +144,8 @@ export function buildEffectivePlaygroundFolds(
       { length: sourcePartitions.n_test },
       (_, i) => sourcePartitions.n_train + i
     );
-    const yTrain = trainIndices.map((index) => rawY[index]).filter((value) => value !== undefined);
-    const yTest = testIndices.map((index) => rawY[index]).filter((value) => value !== undefined);
+    const yTrain = getObservedTargets(trainIndices.map((index) => rawY[index]));
+    const yTest = getObservedTargets(testIndices.map((index) => rawY[index]));
 
     return {
       splitter_name: 'Source Partition',

@@ -1,3 +1,4 @@
+import type { UpdateDatasetRequest } from "@/api/datasets";
 import { getConfiguredRepetitionColumn, getInitialAggregationConfig } from "@/lib/datasetConfig";
 import { effectiveFileParsing } from "./DatasetWizard/ParsingStepLogic";
 import type {
@@ -174,5 +175,20 @@ export function buildInitialState(dataset: Dataset): WizardInitialState {
     hasFoldFile: config.folds?.source === "file",
     foldFilePath: config.folds?.file,
     metadataColumns: buildInitialMetadataColumns(dataset, config),
+  };
+}
+
+/**
+ * The catalogue update of the edit dialog: the name typed in the dialog is
+ * the dataset's name, and its default target and task type follow the wizard.
+ */
+export function buildDatasetUpdate(dataset: Dataset, config: Partial<DatasetConfig>): UpdateDatasetRequest {
+  const name = config.name?.trim();
+  return {
+    ...(name ? { name } : {}),
+    config,
+    default_target: config.default_target ?? dataset.default_target,
+    task_type: config.task_type ?? dataset.task_type ?? undefined,
+    signal_types: config.signal_type && config.signal_type !== "auto" ? [config.signal_type] : [],
   };
 }

@@ -89,8 +89,6 @@ pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(86
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
-pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
-pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
 
 /// Shared start of every host script: the process audit, then the environment.
 ///
@@ -171,9 +169,7 @@ print(json.dumps({"schema":"nirs4all.studio-scientific-cpython-host.v2","impleme
 /// Worker: `argv[3]` is the nirs4all version admitted at acquisition.
 const EXECUTION_SCRIPT: &str = concat!(
     host_bootstrap!(),
-    r#"raw=sys.stdin.buffer.read(33554433)
-if len(raw)>33554432:
-    raise RuntimeError("scientific request exceeds stdin budget")
+    r#"raw=sys.stdin.buffer.read()
 request=json.loads(raw)
 if importlib.metadata.version("nirs4all") != sys.argv[3]:
     raise RuntimeError("the nirs4all distribution changed since the scientific host was admitted")
@@ -184,16 +180,13 @@ if not callable(target):
 import contextlib
 with contextlib.redirect_stdout(sys.stderr):
     if request.get("schema") == "nirs4all.studio-document-request.v1":
-        document_limit=33554432 if request.get("operation") in {"predictions.run","predictions.file","analysis.shap_view"} else (8388608 if request.get("operation") == "documents.batch" else 2097152)
-        if len(raw)>document_limit:
-            raise RuntimeError("document request exceeds stdin budget")
         from studio_document_adapters.api.library_documents import adapt_document
         try:
             result=adapt_document(request["operation"],request["payload"])
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.dataset_chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file","operators.availability","results.export","inspector.data","inspector.histogram","inspector.rankings","inspector.branch-topology","inspector.scatter","inspector.heatmap","inspector.candlestick","inspector.branch-comparison","inspector.fold-stability","inspector.confusion","inspector.preprocessing-impact","inspector.hyperparameter","inspector.bias-variance","analysis.shap_compute","analysis.shap_view","synthesis.preview"} else document_limit
+        response_limit=None
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -256,7 +249,7 @@ with contextlib.redirect_stdout(sys.stderr):
             with progress_lock:
                 if progress_state["pending"]:
                     write_progress(progress_state["event"])
-        response_limit=262144
+        response_limit=None
     elif request.get("schema") in {"nirs4all.studio-synthetic-dataset-job.v1","nirs4all.studio-playground-job.v1"}:
         from nirs4all.api.studio_scientific import StudioScientificJobError
         if request["schema"] == "nirs4all.studio-synthetic-dataset-job.v1":
@@ -265,10 +258,10 @@ with contextlib.redirect_stdout(sys.stderr):
             from nirs4all.api.general_synthesis import studio_synthetic_dataset_job_v1 as facade
             response_limit=65536
         else:
-            if len(raw)>8388608:
-                raise RuntimeError("Playground request exceeds stdin budget")
+            # Studio, the host, bounds this exchange by the memory it can spare
+            # (Rust refuses a larger frame); the library imposes no ceiling.
             from nirs4all.api.library_playground import studio_playground_job_v1 as facade
-            response_limit=33554432
+            response_limit=None
         try:
             response=facade(request)
         except StudioScientificJobError as error:
@@ -281,7 +274,7 @@ with contextlib.redirect_stdout(sys.stderr):
 encoded=bytearray()
 for text_chunk in json.JSONEncoder(allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).iterencode(response):
     chunk=text_chunk.encode("utf-8")
-    if len(chunk)>response_limit-len(encoded):
+    if response_limit is not None and len(chunk)>response_limit-len(encoded):
         raise RuntimeError("scientific response exceeds stdout budget")
     encoded.extend(chunk)
 sys.stdout.buffer.write(encoded)
@@ -298,6 +291,8 @@ pub enum ScientificCpythonUnavailable {
     OutputReadFailed,
     StdoutTooLarge,
     StderrTooLarge,
+    /// The request is larger than the memory the host can spare now.
+    RequestTooLarge,
     MalformedResponse,
     NotCpython,
     UnsupportedPythonVersion,
@@ -328,6 +323,7 @@ impl ScientificCpythonUnavailable {
             Self::OutputReadFailed => "python_host_output_read_failed",
             Self::StdoutTooLarge => "python_host_stdout_too_large",
             Self::StderrTooLarge => "python_host_stderr_too_large",
+            Self::RequestTooLarge => "python_host_request_too_large",
             Self::MalformedResponse => "python_host_malformed_response",
             Self::NotCpython => "python_host_not_cpython",
             Self::UnsupportedPythonVersion => "python_host_version_unsupported",
@@ -345,6 +341,23 @@ impl ScientificCpythonUnavailable {
             Self::InvalidRequest => "scientific_request_invalid",
             Self::Cancelled => "scientific_execution_cancelled",
         }
+    }
+
+    /// What the user reads: the stable reason, or what to do when the
+    /// exchange outgrew the memory the host can spare.
+    #[must_use]
+    pub fn detail(self) -> String {
+        match self {
+            Self::StdoutTooLarge => crate::host_memory::exceeded("The result of this operation"),
+            Self::RequestTooLarge => crate::host_memory::exceeded("This request"),
+            _ => self.reason().to_owned(),
+        }
+    }
+
+    /// Whether the exchange outgrew the memory the host can spare.
+    #[must_use]
+    pub const fn exceeds_host_memory(self) -> bool {
+        matches!(self, Self::StdoutTooLarge | Self::RequestTooLarge)
     }
 }
 
@@ -433,7 +446,11 @@ impl CpythonScientificJobExecutor {
                 if matches!(std::env::var("CI").as_deref(), Ok("true" | "1")) {
                     eprintln!("Scientific library facade unavailable: {}", error.reason());
                 }
-                fail(error.reason(), "Scientific library facade failed")
+                if error.exceeds_host_memory() {
+                    fail("resource_limit", &error.detail())
+                } else {
+                    fail(error.reason(), "Scientific library facade failed")
+                }
             })?;
         if response.get("schema").and_then(Value::as_str)
             == Some("nirs4all.studio-library-error.v1")
@@ -504,7 +521,7 @@ impl CpythonScientificJobExecutor {
         } else {
             self.run_interactive_request(host, &bytes, SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT)
         }
-        .map_err(|error| error.reason().to_owned())?;
+        .map_err(ScientificCpythonUnavailable::detail)?;
         if response["success"] == true {
             Ok(response["result"].clone())
         } else {
@@ -619,7 +636,7 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         if !self.is_selected() {
             return Err(JobExecutorError::PreflightRefused {
                 code: self.unavailable_reason(),
-                detail: "the scientific Python host is not available",
+                detail: "the scientific Python host is not available".into(),
             });
         }
         // The host was admitted at acquisition: do not run a second cold import
@@ -640,7 +657,8 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         validate_scientific_request(&payload, &request.job_id).map_err(|error| {
             JobExecutorError::PreflightRefused {
                 code: error.reason(),
-                detail: "the resolved scientific request does not satisfy the executor contract",
+                detail: "the resolved scientific request does not satisfy the executor contract"
+                    .into(),
             }
         })?;
         Ok(ScientificExecutorSelection {
@@ -690,10 +708,7 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
                 Err(ScientificCpythonUnavailable::Cancelled) => {
                     terminal.acknowledge_cancel(&job_id)
                 }
-                Err(error) => terminal.fail(
-                    &job_id,
-                    diagnostic.as_deref().unwrap_or_else(|| error.reason()),
-                ),
+                Err(error) => terminal.fail(&job_id, &diagnostic.unwrap_or_else(|| error.detail())),
             };
             if callback.is_err() {
                 terminal_callback_failed.store(true, Ordering::Release);
@@ -1068,74 +1083,23 @@ fn run_scientific_process(
     (result, diagnostic)
 }
 
+/// Bytes a request to the Python worker and its response may occupy.
+///
+/// Requests and responses that carry user content (datasets, spectra,
+/// documents, results, predictions) are bounded only by the memory the host can
+/// spare now. The admission probe, the synthetic-dataset receipt and the V1
+/// receipt have fixed shapes whose frames keep their protocol bounds.
 fn request_limits(request: &Value) -> (usize, usize) {
     match request.get("schema").and_then(Value::as_str) {
         Some("nirs4all.studio-synthetic-dataset-job.v1") => (65_536, 65_536),
-        Some("nirs4all.studio-playground-job.v1") => (8 * 1024 * 1024, 32 * 1024 * 1024),
-        Some(crate::document_cpython::REQUEST_SCHEMA) => {
-            let limit = if matches!(
-                request["operation"].as_str(),
-                Some("predictions.run" | "predictions.file" | "analysis.shap_view")
-            ) {
-                crate::document_cpython::MAX_PREDICTION_BYTES
-            } else if request["operation"] == "documents.batch" {
-                crate::document_cpython::MAX_BATCH_BYTES
-            } else {
-                crate::document_cpython::MAX_DOCUMENT_BYTES
-            };
-            let output_limit = if matches!(
-                request["operation"].as_str(),
-                Some(
-                    "spectra.data"
-                        | "spectra.stats"
-                        | "playground.operators"
-                        | "playground.presets"
-                        | "dataset.preview"
-                        | "dataset.stats"
-                        | "dataset.inspect_format"
-                        | "results.chain_steps"
-                        | "results.pipeline_steps"
-                        | "results.chains"
-                        | "results.dataset_chains"
-                        | "results.top"
-                        | "results.chain"
-                        | "results.chain_detail"
-                        | "results.arrays"
-                        | "results.page"
-                        | "results.summary"
-                        | "predictions.catalogue"
-                        | "predictions.run"
-                        | "predictions.file"
-                        | "operators.availability"
-                        | "results.export"
-                        | "inspector.data"
-                        | "inspector.histogram"
-                        | "inspector.rankings"
-                        | "inspector.branch-topology"
-                        | "inspector.scatter"
-                        | "inspector.heatmap"
-                        | "inspector.candlestick"
-                        | "inspector.branch-comparison"
-                        | "inspector.fold-stability"
-                        | "inspector.confusion"
-                        | "inspector.preprocessing-impact"
-                        | "inspector.hyperparameter"
-                        | "inspector.bias-variance"
-                        | "analysis.shap_compute"
-                        | "analysis.shap_view"
-                        | "synthesis.preview"
-                )
-            ) {
-                crate::document_cpython::MAX_INSPECTION_BYTES
-            } else {
-                limit
-            };
-            (limit, output_limit)
+        Some(
+            "nirs4all.studio-playground-job.v1"
+            | crate::document_cpython::REQUEST_SCHEMA
+            | "nirs4all.studio-scientific-job.v2",
+        ) => {
+            let allowance = crate::host_memory::allowance();
+            (allowance, allowance)
         }
-        Some("nirs4all.studio-scientific-job.v2") => (
-            MAX_GENERAL_SCIENTIFIC_STDIN_BYTES,
-            MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES,
-        ),
         _ => (
             MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES,
             MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES,
@@ -1165,7 +1129,7 @@ fn run_scientific_process_with_progress(
         serde_json::from_slice(input).map_err(|_| ScientificCpythonUnavailable::InvalidRequest)?;
     let (input_limit, output_limit) = request_limits(&request);
     if input.len() > input_limit {
-        return Err(ScientificCpythonUnavailable::InvalidRequest);
+        return Err(ScientificCpythonUnavailable::RequestTooLarge);
     }
     let expected_job_id = request
         .get(
@@ -1784,10 +1748,6 @@ fn validate_general_request(
             .get("workspace_path")
             .and_then(Value::as_str)
             .is_some_and(|path| Path::new(path).is_absolute())
-        || serde_json::to_vec(request)
-            .map_err(|_| ScientificCpythonUnavailable::InvalidRequest)?
-            .len()
-            > MAX_GENERAL_SCIENTIFIC_STDIN_BYTES
     {
         return Err(ScientificCpythonUnavailable::InvalidRequest);
     }
@@ -2341,7 +2301,13 @@ progress_tick()
             "dataset":[{"train_x":dataset_a},{"train_x":dataset_b}],
             "options":{"workspace_path":workspace, "name":"General workflow", "random_state":7}});
         validate_scientific_request(&request, "general-run").unwrap();
-        assert_eq!(request_limits(&request), (8 * 1024 * 1024, 256 * 1024));
+        let allowance = crate::host_memory::allowance();
+        assert!(allowance > 256 * 1024 * 1024);
+        let (input, output) = request_limits(&request);
+        // Memory moves between reads; both directions follow the same rule.
+        assert!(
+            input.abs_diff(allowance) < allowance / 2 && output.abs_diff(allowance) < allowance / 2
+        );
         request["allow_fallback"] = serde_json::json!(true);
         assert!(validate_scientific_request(&request, "general-run").is_err());
         let mut response = serde_json::json!({"schema":"nirs4all.studio-scientific-job-result.v2", "job_id":"general-run", "engine":"dag-ml", "result":{
@@ -2416,26 +2382,31 @@ progress_tick()
         }
     }
     #[test]
-    fn document_batch_and_inspection_have_distinct_bounded_wire_budgets() {
+    fn content_carrying_documents_are_bounded_only_by_host_memory() {
         use serde_json::json;
-        for (operation, expected) in [
-            ("pipeline.normalize", (2 * 1024 * 1024, 2 * 1024 * 1024)),
-            ("documents.batch", (8 * 1024 * 1024, 8 * 1024 * 1024)),
-            ("dataset.preview", (2 * 1024 * 1024, 32 * 1024 * 1024)),
-            ("dataset.stats", (2 * 1024 * 1024, 32 * 1024 * 1024)),
-            ("predictions.catalogue", (2 * 1024 * 1024, 32 * 1024 * 1024)),
-            ("predictions.run", (32 * 1024 * 1024, 32 * 1024 * 1024)),
-            ("predictions.file", (32 * 1024 * 1024, 32 * 1024 * 1024)),
+        let allowance = crate::host_memory::allowance();
+        for operation in [
+            "pipeline.normalize",
+            "documents.batch",
+            "dataset.preview",
+            "dataset.stats",
+            "predictions.catalogue",
+            "predictions.run",
+            "predictions.file",
         ] {
-            assert_eq!(
-                request_limits(
-                    &json!({"schema":crate::document_cpython::REQUEST_SCHEMA,"operation":operation})
-                ),
-                expected
+            let (input, output) = request_limits(
+                &json!({"schema":crate::document_cpython::REQUEST_SCHEMA,"operation":operation}),
             );
+            assert_eq!(input, output);
+            assert!(input.abs_diff(allowance) < allowance / 2, "{operation}");
+            // Far above the former fixed 2/8/32 MiB budgets.
+            assert!(input > 256 * 1024 * 1024, "{operation}");
         }
         assert!(EXECUTION_SCRIPT.contains("JSONEncoder(allow_nan=False"));
-        assert!(EXECUTION_SCRIPT.contains("response_limit-len(encoded)"));
+        assert!(EXECUTION_SCRIPT.contains("raw=sys.stdin.buffer.read()\n"));
+        assert!(!EXECUTION_SCRIPT.contains("document_limit"));
+        assert!(EXECUTION_SCRIPT
+            .contains("response_limit is not None and len(chunk)>response_limit-len(encoded)"));
     }
 
     #[test]
@@ -2449,10 +2420,11 @@ progress_tick()
             "request_id":"playground-1"
         });
         assert_eq!(request_limits(&synthesis), (65_536, 65_536));
-        assert_eq!(
-            request_limits(&playground),
-            (8 * 1024 * 1024, 32 * 1024 * 1024)
-        );
+        let (input, output) = request_limits(&playground);
+        assert_eq!(input, output);
+        // Above the former 32 MiB ceiling that refused an 898 x 1557 dataset.
+        assert!(output > 256 * 1024 * 1024);
+        assert!(!EXECUTION_SCRIPT.contains("MAX_PLAYGROUND"));
         validate_library_facade_response(
             "nirs4all.studio-synthetic-dataset-job.v1",
             &serde_json::json!({
@@ -2701,7 +2673,7 @@ case "$request" in
   *dataset.preview*) result='{"success":true,"error":null,"summary":{"num_samples":1,"num_features":2},"spectra_preview":null}' ;;
   *) result='{"json":"{}","yaml":"{}","filename":"pipeline.yaml"}' ;;
 esac
-printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result" | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4,"little")+data);sys.stdout.buffer.flush()'
+printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result" | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(8,"little")+data);sys.stdout.buffer.flush()'
 done"#,
         );
         admitted_executor(&host, root)
@@ -3244,7 +3216,7 @@ done"#,
 
     #[cfg(unix)]
     fn framed_host_response(json_printf: &str) -> String {
-        format!("{json_printf} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'")
+        format!("{json_printf} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(8, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'")
     }
 
     #[cfg(unix)]

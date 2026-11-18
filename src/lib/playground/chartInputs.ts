@@ -7,7 +7,7 @@ import type {
   RepetitionResult,
   UMAPResult,
 } from '@/types/playground';
-import type { ProcessedData, SampleMetadata, SpectralData } from '@/types/spectral';
+import type { ProcessedData, SampleMetadata, SpectralData, TargetValue } from '@/types/spectral';
 import type { PipelineExecutionMetricObservation } from '@/lib/pipelineExecutionContract';
 import { buildPlaygroundChartAvailabilityReadModel } from './chartAvailability';
 import {
@@ -24,7 +24,7 @@ import {
 export interface SpectraChartDataInput {
   original: DataSection;
   processed: DataSection;
-  y: number[];
+  y: TargetValue[];
   sampleIds?: string[];
   folds?: FoldsInfo | null;
   metadata?: Record<string, unknown[]>;
@@ -32,7 +32,7 @@ export interface SpectraChartDataInput {
 }
 
 export interface HistogramChartDataInput {
-  y: number[];
+  y: TargetValue[];
   folds: FoldsInfo | null;
   metadata?: Record<string, unknown[]>;
   hasYValues: boolean;
@@ -40,7 +40,7 @@ export interface HistogramChartDataInput {
 
 export interface FoldDistributionChartDataInput {
   folds: FoldsInfo | null;
-  y: number[];
+  y: TargetValue[];
   metadata?: Record<string, unknown[]>;
   hasFoldDistributionData?: boolean;
 }
@@ -48,7 +48,7 @@ export interface FoldDistributionChartDataInput {
 export interface DimensionReductionChartDataInput {
   pca: PCAResult;
   umap?: UMAPResult | null;
-  y: number[];
+  y: TargetValue[];
   folds: FoldsInfo | null;
   sampleIds?: string[];
   metadata?: Record<string, unknown[]>;
@@ -59,7 +59,7 @@ export interface DimensionReductionChartDataInput {
 export interface EmbeddingOverlayInput {
   embedding: number[][];
   partitions?: string[];
-  targets: number[];
+  targets: TargetValue[];
   sampleIds?: string[];
   embeddingMethod: 'pca';
 }
@@ -67,7 +67,7 @@ export interface EmbeddingOverlayInput {
 export interface RepetitionsChartDataInput {
   repetitionData: RepetitionResult | null;
   spectraData?: number[][];
-  y: number[];
+  y: TargetValue[];
   metadata?: Record<string, unknown[]>;
   metadataColumns?: string[];
   sampleIds?: string[];
@@ -176,7 +176,7 @@ export function buildSpectraChartInput({
 }: {
   rawData: SpectralData | null;
   result: PlaygroundResult | null;
-  yValues: number[];
+  yValues: TargetValue[];
   effectiveFolds: FoldsInfo | null;
   columnMetadata?: Record<string, unknown[]>;
   metadataColumns?: string[];
@@ -218,7 +218,7 @@ export function buildSpectraChartInput({
 }
 
 export function buildHistogramChartInput(
-  yValues: number[],
+  yValues: TargetValue[],
   effectiveFolds: FoldsInfo | null,
   columnMetadata?: Record<string, unknown[]>,
   readModel?: PlaygroundChartInputReadModel | null,
@@ -233,7 +233,7 @@ export function buildHistogramChartInput(
 
 export function buildFoldDistributionChartInput(
   effectiveFolds: FoldsInfo | null,
-  yValues: number[],
+  yValues: TargetValue[],
   columnMetadata?: Record<string, unknown[]>,
   readModel?: PlaygroundChartInputReadModel | null,
 ): FoldDistributionChartDataInput {
@@ -259,7 +259,7 @@ export function buildDimensionReductionChartInput({
 }: {
   result: PlaygroundResult | null;
   rawData: SpectralData | null;
-  yValues: number[];
+  yValues: TargetValue[];
   effectiveFolds: FoldsInfo | null;
   columnMetadata?: Record<string, unknown[]>;
   referencePca?: PCAResult | null;
@@ -306,7 +306,7 @@ export function buildEmbeddingOverlayInput({
   sampleIds,
 }: {
   result: PlaygroundResult | null;
-  yValues: number[];
+  yValues: TargetValue[];
   trainIndices?: Set<number>;
   testIndices?: Set<number>;
   totalSamples: number;
@@ -338,7 +338,7 @@ export function buildRepetitionsChartInput({
 }: {
   result: PlaygroundResult | null;
   rawData: SpectralData | null;
-  yValues: number[];
+  yValues: TargetValue[];
   columnMetadata?: Record<string, unknown[]>;
   metadataColumns?: string[];
   dataView?: PlaygroundDataViewProjection | null;
@@ -398,7 +398,7 @@ export function buildPlaygroundChartExportInput({
 export function buildSampleDetailsData(
   rawData: SpectralData | null,
   result: PlaygroundResult | null,
-  yValues: number[],
+  yValues: TargetValue[],
   dataView?: PlaygroundDataViewProjection | null,
 ): ProcessedData | null {
   if (!rawData || !isPlaygroundSpectralProjection(dataView)) {

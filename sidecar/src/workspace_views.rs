@@ -11,9 +11,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-const MAX_FILES: usize = 100_000;
-const MAX_ROWS: usize = 20_000;
-
 #[derive(Eq, Ord, PartialEq, PartialOrd)]
 struct DatasetCohortKey {
     name: String,
@@ -151,7 +148,6 @@ fn files(root: &Path) -> Result<Vec<(PathBuf, u64)>, String> {
     }
     let mut result = Vec::new();
     let mut stack = vec![(root.to_owned(), 0usize)];
-    let mut visited = 0usize;
     while let Some((directory, depth)) = stack.pop() {
         if depth > 32 {
             return Err("Workspace directory depth exceeds 32".into());
@@ -161,10 +157,6 @@ fn files(root: &Path) -> Result<Vec<(PathBuf, u64)>, String> {
             continue;
         }
         for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
-            visited += 1;
-            if visited > MAX_FILES {
-                return Err("Workspace scan exceeds 100000 entries".into());
-            }
             let entry = entry.map_err(|error| error.to_string())?;
             let metadata = fs::symlink_metadata(entry.path()).map_err(|error| error.to_string())?;
             if metadata.file_type().is_symlink() {
@@ -202,10 +194,7 @@ fn read_store_cohorts(
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
         })
         .map_err(|error| error.to_string())?;
-    for (index, row) in rows.enumerate() {
-        if index >= MAX_ROWS {
-            return Err("Workspace discovery exceeds 20000 runs".into());
-        }
+    for row in rows {
         let (run, serialized) = row.map_err(|error| error.to_string())?;
         let Some(serialized) = serialized else {
             continue;

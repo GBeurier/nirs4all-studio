@@ -19,7 +19,7 @@ use studio_sidecar::{
     },
     route_request, route_request_with_body,
     scientific_request_resolver::ScientificRequestResolver,
-    SidecarState, MAX_REQUEST_BODY_BYTES,
+    SidecarState,
 };
 
 #[derive(Debug, Default)]
@@ -475,7 +475,7 @@ fn submission_contract_is_anchored_to_the_product_route_and_capabilities_are_hon
     .unwrap();
     assert_eq!(contract["route"]["method"], "POST");
     assert_eq!(contract["route"]["path"], "/api/runs/run-groups");
-    assert_eq!(contract["route"]["maximum_body_bytes"], 65_536);
+    assert_eq!(contract["route"]["maximum_body_bytes"], "host_memory");
     let route_oracle: Value = serde_json::from_str(
         &fs::read_to_string(
             studio_root.join("docs/contracts/studio-v1/fixtures/routes.snapshot.json"),
@@ -535,7 +535,7 @@ fn default_executor_refuses_before_body_workspace_or_registry_mutation() {
 }
 
 #[test]
-fn invalid_and_oversized_submissions_never_call_the_executor_or_write_a_job() {
+fn invalid_submissions_never_call_the_executor_or_write_a_job() {
     let root = test_directory("invalid");
     let config = root.join("config");
     let workspace = root.join("workspace");
@@ -554,9 +554,11 @@ fn invalid_and_oversized_submissions_never_call_the_executor_or_write_a_job() {
     );
     assert_eq!(response.status, 422);
 
-    let oversized = vec![b' '; MAX_REQUEST_BODY_BYTES + 1];
-    let response = route_request_with_body(&mut state, "POST", "/api/runs/run-groups", &oversized);
-    assert_eq!(response.status, 413);
+    // A large body is no longer refused for its size (only host memory bounds
+    // it at the listener); a malformed one is still refused before any work.
+    let malformed = vec![b' '; 2 * 1024 * 1024];
+    let response = route_request_with_body(&mut state, "POST", "/api/runs/run-groups", &malformed);
+    assert_eq!(response.status, 400);
     assert_eq!(executor.preflights.load(Ordering::Relaxed), 0);
     assert_eq!(executor.submissions.load(Ordering::Relaxed), 0);
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
@@ -594,7 +596,7 @@ fn resolver_id_mismatch_is_refused_before_registry_events_or_durable_mutation() 
         body(&response),
         json!({
             "code": "scientific_submission_invalid",
-            "detail": "Scientific job executor preflight failed: the submission does not match its manifest and campaign specification (scientific_submission_invalid)",
+            "detail": "The run cannot start: the submission does not match its manifest and campaign specification (scientific_submission_invalid)",
         })
     );
     assert_eq!(runtime.published_event_count(), 0);

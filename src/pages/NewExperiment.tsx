@@ -22,7 +22,14 @@ import {
   canRemoveMissingTargetSamples,
   resolveMissingTargetPolicy,
 } from "@/lib/experimentMissingTargets";
-import type { MissingTargetPolicy } from "@/types/runs";
+import { missingSpectraCounts, resolveMissingSpectraChoice } from "@/lib/experimentMissingSpectra";
+import {
+  buildTargetByDataset,
+  missingTargetCounts as countMissingTargets,
+  resolveExperimentTargets,
+  type ExperimentTargetChoice,
+} from "@/lib/experimentTargets";
+import type { MissingSpectraPolicy, MissingTargetPolicy } from "@/types/runs";
 
 export default function NewExperiment() {
   const navigate = useNavigate();
@@ -31,6 +38,8 @@ export default function NewExperiment() {
   const [customExperimentName, setCustomExperimentName] = useState("");
   const [experimentDescription, setExperimentDescription] = useState("");
   const [missingTargetChoice, setMissingTargetChoice] = useState<MissingTargetPolicy | null>(null);
+  const [targetChoices, setTargetChoices] = useState<Record<string, ExperimentTargetChoice>>({});
+  const [missingSpectraChoice, setMissingSpectraChoice] = useState<MissingSpectraPolicy | null>(null);
 
   const inputData = useNewExperimentInputData();
   const executionEnvironment = useNewExperimentExecutionEnvironment();
@@ -79,14 +88,27 @@ export default function NewExperiment() {
     const option = planFlow.datasetById.get(id);
     return option ? [option.raw] : [];
   }), [planFlow.datasetById, selectionFlow.selectedDatasetIds]);
+  const targetOptions = useMemo(() => resolveExperimentTargets(targetChoices, selectedDatasets), [selectedDatasets, targetChoices]);
+  const targetByDataset = useMemo(() => buildTargetByDataset(targetOptions), [targetOptions]);
   const missingTargetRemovalAvailable = canRemoveMissingTargetSamples(selectedDatasets);
   const missingTargetPolicy = resolveMissingTargetPolicy(missingTargetChoice, selectedDatasets);
+  const missingTargetCounts = useMemo(() => countMissingTargets(targetOptions, selectedDatasets), [selectedDatasets, targetOptions]);
+  const missingSpectraPolicy = resolveMissingSpectraChoice(missingSpectraChoice, selectedDatasets);
+  const missingSpectra = useMemo(() => ({
+    counts: missingSpectraCounts(selectedDatasets),
+    choice: missingSpectraPolicy,
+    onChange: setMissingSpectraChoice,
+  }), [missingSpectraPolicy, selectedDatasets]);
+  const handleTargetChange = useCallback((datasetId: string, target: ExperimentTargetChoice) => {
+    setTargetChoices((current) => ({ ...current, [datasetId]: target }));
+  }, []);
 
   const canProceedCurrentStep = canProceedNewExperimentStep({
     currentStep,
     selectedPipelineCount: selectionFlow.selectedPipelineIds.length,
     selectedDatasetCount: selectionFlow.selectedDatasetIds.length,
     hasGroupingBlockingError: planFlow.hasGroupingBlockingError,
+    missingSpectraAnswered: missingSpectra.counts.length === 0 || missingSpectraPolicy !== null,
   });
 
   const launchFlow = useNewExperimentLaunchFlow({
@@ -96,6 +118,8 @@ export default function NewExperiment() {
     selectedPipelineConfigs: planFlow.selectedPipelineConfigs,
     selectedGroupingPayload: planFlow.selectedGroupingPayload,
     missingTargetPolicy,
+    targetByDataset,
+    missingSpectraPolicy,
     singlePairSplitSpecResult: planFlow.singlePairSplitSpecResult,
     hasGroupingBlockingError: planFlow.hasGroupingBlockingError,
     executionAdapter: planFlow.executionAdapterResolution.adapter,
@@ -114,13 +138,17 @@ export default function NewExperiment() {
       filteredInputs={filteredInputs}
       inputData={inputData}
       launchFlow={launchFlow}
+      missingTargetCounts={missingTargetCounts}
       missingTargetPolicy={missingTargetPolicy}
       missingTargetRemovalAvailable={missingTargetRemovalAvailable}
+      missingSpectra={missingSpectra}
+      targetOptions={targetOptions}
       planFlow={planFlow}
       selectionFlow={selectionFlow}
       onExperimentDescriptionChange={setExperimentDescription}
       onExperimentNameChange={setCustomExperimentName}
       onMissingTargetPolicyChange={setMissingTargetChoice}
+      onTargetChange={handleTargetChange}
       onBack={() => setCurrentStep(getPreviousNewExperimentStep)}
       onNext={() => setCurrentStep(getNextNewExperimentStep)}
       onExit={() => navigate("/runs")}

@@ -40,6 +40,8 @@ export interface NewExperimentStepReadinessInput {
   selectedPipelineCount: number;
   selectedDatasetCount: number;
   hasGroupingBlockingError: boolean;
+  /** False while the review step still waits for the answer about missing spectral values. */
+  missingSpectraAnswered?: boolean;
 }
 
 export function buildNewExperimentStepProgress(
@@ -59,10 +61,12 @@ export function canProceedNewExperimentStep({
   selectedPipelineCount,
   selectedDatasetCount,
   hasGroupingBlockingError,
+  missingSpectraAnswered = true,
 }: NewExperimentStepReadinessInput): boolean {
   if (currentStep === NEW_EXPERIMENT_PIPELINES_STEP) return selectedPipelineCount > 0;
   if (currentStep === NEW_EXPERIMENT_DATASETS_STEP) return selectedDatasetCount > 0;
   if (currentStep === NEW_EXPERIMENT_RUNTIME_GROUPING_STEP) return !hasGroupingBlockingError;
+  if (currentStep === NEW_EXPERIMENT_REVIEW_STEP) return missingSpectraAnswered;
   return true;
 }
 

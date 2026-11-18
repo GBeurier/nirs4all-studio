@@ -38,6 +38,7 @@ mod error_logs;
 pub mod execution_job_records;
 mod general_prediction;
 mod gpu_detection;
+pub mod host_memory;
 mod http_access;
 mod inspector_views;
 pub mod job_http;
@@ -119,7 +120,6 @@ pub const LEGACY_ROUTE_PARITY: &str = "bootstrap";
 pub const WORKSPACE_FORMAT_STATUS_ROUTE: &str = "/api/workspace/format-status";
 pub const API_PREFIX: &str = "/sidecar/v1";
 pub const MAX_REQUEST_HEADER_BYTES: usize = 8 * 1024;
-pub const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
 pub const MAX_REQUEST_HEADERS: usize = 32;
 pub const MAX_CONCURRENT_CONNECTIONS: usize = 32;
 pub const MAX_CONTROL_JOBS: usize = 64;
@@ -3545,7 +3545,7 @@ fn scientific_submission_runtime_response(
             503,
             json!({
                 "code": code,
-                "detail": format!("Scientific job executor preflight failed: {detail} ({code})"),
+                "detail": format!("The run cannot start: {detail} ({code})"),
             })
             .to_string(),
         ),
@@ -3555,7 +3555,7 @@ fn scientific_submission_runtime_response(
             503,
             json!({
                 "code": "scientific_executor_invalid_capability",
-                "detail": "Scientific job executor preflight failed: the executor returned an invalid execution identity (scientific_executor_invalid_capability)",
+                "detail": "The run cannot start: the executor returned an invalid execution identity (scientific_executor_invalid_capability)",
             })
             .to_string(),
         ),
@@ -3592,7 +3592,7 @@ fn scientific_submission_validation_error(
     match error {
         ScientificSubmissionValidationError::BodyTooLarge => HttpResponse::json(
             413,
-            json!({"detail": "Scientific submission body exceeds 65536 bytes"}).to_string(),
+            json!({"detail": host_memory::exceeded("This experiment submission")}).to_string(),
         ),
         ScientificSubmissionValidationError::InvalidJson => HttpResponse::json(
             400,
@@ -4103,11 +4103,9 @@ fn request_body_too_large_response(path: &str) -> HttpResponse {
     } else if path == ARCHIVE_V2_PREDICTION_ROUTE {
         archive_v2_prediction_error_response(&ArchiveV2PredictionError::BodyTooLarge)
     } else {
-        error_response(
-            400,
-            ErrorCode::InvalidRequest,
-            "Request body exceeds the configured limit",
-            BTreeMap::new(),
+        HttpResponse::json(
+            413,
+            json!({"detail": host_memory::exceeded("This request")}).to_string(),
         )
     }
 }
@@ -4245,7 +4243,7 @@ fn read_http_request_with_access(
                 code: "multipart_content_type_required",
             })?;
         }
-        if content_length > http_body_limit(&request.path) {
+        if content_length > http_body_limit() {
             return Err(RequestReadError::BodyTooLarge { path: request.path });
         }
         request.body.extend_from_slice(&bytes[header_end..]);
@@ -4278,23 +4276,12 @@ fn read_http_request_with_access(
     }
 }
 
-fn http_body_limit(path: &str) -> usize {
-    match path {
-        "/api/datasets/upload" | "/api/datasets/preview-upload" => dataset_import::MAX_UPLOAD_BYTES,
-        "/api/datasets/import-multimodal" => document_cpython::MAX_DOCUMENT_BYTES,
-        "/api/playground/execute"
-        | "/api/playground/diff/compute"
-        | "/api/playground/diff/repetition-variance" => playground::MAX_REQUEST_BYTES,
-        "/api/predict" | "/api/predict/file" => matrix_limits::MAX_PREDICTION_BODY_BYTES,
-        ARCHIVE_V2_PREDICTION_ROUTE
-        | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE
-        | ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE => archive_v2_prediction::MAX_PREDICTION_BODY_BYTES,
-        _ if workspace_documents::owns_path(path) => {
-            usize::try_from(workspace_documents::MAX_DOCUMENT_BYTES)
-                .unwrap_or(MAX_REQUEST_BODY_BYTES)
-        }
-        _ => MAX_REQUEST_BODY_BYTES,
-    }
+/// Request bodies are bounded only by the memory the host can spare now. Host,
+/// origin, credential and content-type checks have already passed when this
+/// applies, before any body byte is read. Routes with a frozen narrower
+/// contract (Archive V2 prediction) still apply their own bound afterwards.
+fn http_body_limit() -> usize {
+    host_memory::allowance()
 }
 
 fn request_content_length(headers: &BTreeMap<String, String>) -> Result<usize, RequestReadError> {
@@ -5455,9 +5442,11 @@ mod tests {
 
         let oversized = request_body_too_large_response(SCIENTIFIC_SUBMISSION_ROUTE);
         assert_eq!(oversized.status, 413);
-        assert_eq!(
-            serde_json::from_str::<Value>(&oversized.body).unwrap(),
-            json!({"detail": "Scientific submission body exceeds 65536 bytes"})
+        assert!(
+            serde_json::from_str::<Value>(&oversized.body).unwrap()["detail"]
+                .as_str()
+                .unwrap()
+                .starts_with("This experiment submission needs more memory")
         );
     }
 
@@ -7408,25 +7397,18 @@ mod tests {
     }
 
     #[test]
-    fn playground_matrix_transport_budget_matches_the_bounded_library_contract() {
-        let body = serde_json::json!({"data": {"x": vec![vec![0; 700]; 60]}}).to_string();
-        assert!(body.len() > MAX_REQUEST_BODY_BYTES);
-        for path in [
-            "/api/playground/execute",
-            "/api/playground/diff/compute",
-            "/api/playground/diff/repetition-variance",
-        ] {
-            assert!(body.len() < http_body_limit(path));
-            assert_eq!(http_body_limit(path), playground::MAX_REQUEST_BYTES);
-        }
-        for path in [
-            "/api/playground/execute/extra",
-            "/api/playground/validate",
-            "/api/playground/capabilities",
-            "/api/preferences",
-        ] {
-            assert_eq!(http_body_limit(path), MAX_REQUEST_BODY_BYTES);
-        }
+    fn request_bodies_are_bounded_only_by_host_memory() {
+        // A Playground matrix of 5,000 x 2,000 values, far above the former
+        // 64 KiB / 2 MiB / 8 MiB / 32 MiB route ceilings.
+        let body_bytes = 5_000 * 2_000 * 20;
+        assert!(http_body_limit() > body_bytes);
+        let refusal = request_body_too_large_response("/api/playground/execute");
+        assert_eq!(refusal.status, 413);
+        let detail = serde_json::from_str::<Value>(&refusal.body).unwrap()["detail"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert!(detail.starts_with("This request needs more memory than this computer can spare"));
     }
 
     #[test]
@@ -7727,7 +7709,7 @@ mod tests {
     fn assert_native_saved_dataset_train_predict(feature_count: usize) {
         let library = PathBuf::from(
             env::var_os("N4M_LIBRARY_PATH")
-                .expect("N4M_LIBRARY_PATH must name the selected ABI 2.22 libn4m"),
+                .expect("N4M_LIBRARY_PATH must name the selected ABI 2.23 libn4m"),
         );
         let library_bytes = fs::read(&library).unwrap();
         let methods = archive_v2_prediction::PackagedMethodsLibraryIdentity {
@@ -7735,7 +7717,7 @@ mod tests {
             size: u64::try_from(library_bytes.len()).unwrap(),
             sha256: format!("{:x}", Sha256::digest(&library_bytes)),
             abi_major: 2,
-            abi_minor: 22,
+            abi_minor: 23,
         };
         let predictor = Arc::new(
             archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(methods.clone())
@@ -8133,7 +8115,7 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256,
                 abi_major: 2,
-                abi_minor: 22,
+                abi_minor: 23,
             },
         )
         .unwrap();
@@ -8269,10 +8251,10 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256.clone(),
                 abi_major: 2,
-                abi_minor: 22,
+                abi_minor: 23,
             },
         )
-        .expect("the selected ABI 2.22 libn4m witness must pass owner compatibility preflight");
+        .expect("the selected ABI 2.23 libn4m witness must pass owner compatibility preflight");
         let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
             Arc::new(executor),
             &config,
@@ -8311,7 +8293,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.5.0+libn4m-abi-2.22:{methods_sha256}")
+            format!("nirs4all-core@0.5.1+libn4m-abi-2.23:{methods_sha256}")
         );
         // Independent affine oracle for the new named fixture, not a
         // reconstruction of the frozen physical ABI 2.0 witness.

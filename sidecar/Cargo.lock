@@ -346,7 +346,7 @@ dependencies = [
  "maybe-owned",
  "rustix 1.1.6",
  "rustix-linux-procfs",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
  "winx",
 ]
 
@@ -376,9 +376,9 @@ dependencies = [
 
 [[package]]
 name = "cfb"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f13298d9178622b7916ec5d01d470425c04273c8ed07e87b1c38b34c4f4612b"
+checksum = "fef29b910ef2b9dbecc60168d1568d643c633b0518af970c17e83bd5f6e2c94f"
 dependencies = [
  "fnv",
  "uuid",
@@ -597,18 +597,18 @@ dependencies = [
 
 [[package]]
 name = "dag-ml"
-version = "0.4.0"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afd30190d4f8ccd8c774be4393ee32758e31df501e5a7c3b15d0d20fd7746f7f"
+checksum = "c397f62aebcfde54b7a4dc824bf56fd56b0ec884c3495658d2d01021d34685f2"
 dependencies = [
  "dag-ml-core",
 ]
 
 [[package]]
 name = "dag-ml-core"
-version = "0.4.0"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c169228bc44da427711b2122aa22f6f4f23d3f9752c02ad35c09efb5f40f502"
+checksum = "84504f2d231d526f1ccf7880cd5f1718a3e9a5e1d07b940be014d4316185f5d5"
 dependencies = [
  "indexmap",
  "n4m",
@@ -624,18 +624,18 @@ dependencies = [
 
 [[package]]
 name = "dag-ml-data"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f57a340d701cc08eadbc0c5b1745dd46d76b91aba1a68a718be4adc4abc77adc"
+checksum = "17a57be77ff52158a680565069ed9eb4e8b0197a350fe966f3a271da05cbe0ff"
 dependencies = [
  "dag-ml-data-core",
 ]
 
 [[package]]
 name = "dag-ml-data-core"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b422140ba492c707ba776403ccb613a4f371f6a64bc1af3adfc2af7d883b2fc"
+checksum = "c997d85b0e92d614a8d8d3ffe2d854bf78cc5d46d4c4b4d5137a4d1f9098a7e7"
 dependencies = [
  "serde",
  "serde_json",
@@ -645,9 +645,9 @@ dependencies = [
 
 [[package]]
 name = "dag-ml-data-provider"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48268bd5b790a5512b71aca85617729d3bad83fea3a0368e257291e3ace2f781"
+checksum = "e25e680be706dc1a7f5a5f0859dd35e0b923c3b5e95a5442e1ed59443a4a70dc"
 dependencies = [
  "dag-ml-data-core",
  "serde",
@@ -656,9 +656,9 @@ dependencies = [
 
 [[package]]
 name = "dag-ml-results"
-version = "0.4.0"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0b661327d89b1b180870da11e2e0cc783df48cb49ec1c3cf91bb1846b12c12a"
+checksum = "7cbc6d90d52499206ab3e9fbafc1e1a8fe7766e1173d9faa3a4ccbf0e34074f5"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -740,7 +740,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -823,7 +823,7 @@ checksum = "94e7099f6313ecacbe1256e8ff9d617b75d1bcb16a6fddef94866d225a01a14a"
 dependencies = [
  "io-lifetimes",
  "rustix 1.1.6",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1232,7 +1232,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2285ddfe3054097ef4b2fe909ef8c3bcd1ea52a8f0d274416caebeef39f04a65"
 dependencies = [
  "io-lifetimes",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1409,9 +1409,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "008a8fa4c3a770dda1baa2c086f776dc23b4c98e94a7812996311401f3472504"
+checksum = "f978438c90cb721c80a9591a0ebc4bc0b27b31193ba0bb1014b808f1d9b89253"
 dependencies = [
  "base64 0.23.1",
  "crc32fast",
@@ -1436,9 +1436,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-formats"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c072dc98c1f054b3ea47f44371adb1d4f2741901016811dc8d53d2168ec80bd3"
+checksum = "4ffb56730678980c5895e3ec601b93647ab57665b02128a4ea50cde0dbce7457"
 dependencies = [
  "calamine",
  "cfb",
@@ -1453,9 +1453,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-formats-core"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6862024cf9ddcaa51586b59943f7768ec35c682f3af58108fe878a6222fee82e"
+checksum = "ac1f917cb49f2ad300ff62d05e94d6e6c572447f91dbbc78590dae14a24d4ae8"
 dependencies = [
  "serde",
  "serde_json",
@@ -1465,9 +1465,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-io"
-version = "0.3.1"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "255263f472836ebdacc6585e53ff7e79caa05d938ec8a427e3c8b0049ef04391"
+checksum = "9dae65c8a224343bb716da64e8e305622c227a96d946f01c462939cc2d4c6e6a"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1491,9 +1491,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-io-core"
-version = "0.3.1"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f3a6d1e60d22f00cf7e1d177b5ba1e08f463d1251066577b47c80cdc598c03"
+checksum = "9fd9cfc9a72283a663c8fb3dcc2350dfbf830d94fa50efc9abd9a1f5659234a6"
 dependencies = [
  "csv",
  "indexmap",
@@ -1507,9 +1507,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-io-dagml"
-version = "0.3.1"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9cf159bff9600132eca4922074bd839b70640bb41814b2d1a415d16cfbfa783"
+checksum = "28e5863d666250978f19dde101d3789f8794173b67bb8054497350f254fecddc"
 dependencies = [
  "anyhow",
  "clap",
@@ -1734,7 +1734,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1935,7 +1935,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1948,7 +1948,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2289,10 +2289,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.6",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2718,7 +2718,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2785,15 +2785,6 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
- "windows-targets",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets",
 ]
@@ -2887,7 +2878,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f3fd376f71958b862e7afb20cfe5a22830e1963462f3a17f49d82a6c1d1f42d"
 dependencies = [
  "bitflags",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

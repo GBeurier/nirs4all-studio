@@ -21,7 +21,6 @@ use serde_json::{json, Value};
 pub const RUN_DETAIL_OWNER_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const RUN_DETAIL_OWNER_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_RUN_DETAIL_OWNER_INPUT_BYTES: usize = 8 * 1024;
-pub const MAX_RUN_DETAIL_OWNER_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_RUN_DETAIL_OWNER_STDERR_BYTES: usize = 64 * 1024;
 
 const PREFLIGHT_SCRIPT: &str = r#"import json
@@ -163,7 +162,8 @@ pub fn materialize_run_detail_owner(
         Some(&input),
         BridgeLimits {
             timeout: RUN_DETAIL_OWNER_TIMEOUT,
-            stdout: MAX_RUN_DETAIL_OWNER_OUTPUT_BYTES,
+            // A run's materialized detail grows with its chains and folds.
+            stdout: crate::host_memory::allowance(),
             stderr: MAX_RUN_DETAIL_OWNER_STDERR_BYTES,
         },
     )?;

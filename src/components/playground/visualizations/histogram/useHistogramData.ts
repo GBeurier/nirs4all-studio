@@ -36,6 +36,7 @@ import {
   getSelectedBins,
   getSelectedClasses,
   mapSamplesToClasses,
+  splitDisplayedTargets,
 } from './histogramDataUtils';
 import {
   type YHistogramProps,
@@ -138,12 +139,12 @@ export function useHistogramData(props: YHistogramProps) {
     return selectedOnlyFilter;
   }, [colorContext?.displayFilteredIndices, config.selectedOnly, selectedSamples]);
 
-  const filteredDisplayY = useMemo(() => {
-    if (!effectiveDisplayFilter) {
-      return displayY;
-    }
-    return displayY.filter((_, idx) => effectiveDisplayFilter.has(idx));
-  }, [displayY, effectiveDisplayFilter]);
+  // Observed target values of the displayed samples. Samples without a target
+  // value are excluded from bins, KDE and statistics and counted separately.
+  const { observed: filteredDisplayY, missingCount: missingTargetCount } = useMemo(
+    () => splitDisplayedTargets(displayY, effectiveDisplayFilter),
+    [displayY, effectiveDisplayFilter]
+  );
 
   // Calculate effective bin count
   const effectiveBinCount = useMemo(() => {
@@ -452,6 +453,7 @@ export function useHistogramData(props: YHistogramProps) {
 
     // Computed data
     displayY,
+    missingTargetCount,
     isProcessed: !!isProcessed,
     histogramData,
     sampleBins,

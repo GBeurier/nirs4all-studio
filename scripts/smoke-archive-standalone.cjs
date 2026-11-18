@@ -614,11 +614,12 @@ async function smokeArchiveStandalone(rawConfig) {
     await verifySelectedEnvironment(port, sessionToken, environment.pythonPath);
     await waitForNativeScientificReady(port, config.timeoutMs, child, outputBuffer, sessionToken);
     await verifyInstalledProduct(port, sessionToken);
+    await verifyRunLaunch(port, sessionToken);
 
     console.log("Smoke check passed.");
     console.log(`  product backend:  Rust sidecar (${healthPayload.protocol_version})`);
     console.log(`  Python:           environment created by the shipped uv${environment.offline ? " from the offline payload alone, with the default recommended packages and then the on-request ones" : ""}`);
-    console.log("  Scientific probe: native training ready + inline Playground facade executed");
+    console.log("  Scientific probe: native training ready + inline Playground facade executed + one experiment launched and completed");
   } finally {
     await terminateApp(child);
     if (!config.keepSandbox && !config.sandboxRoot) {
@@ -627,10 +628,10 @@ async function smokeArchiveStandalone(rawConfig) {
   }
 }
 
-/** Verify the exact dataset wizard path through the installed product. */
-async function verifyInstalledProduct(port, sessionToken) {
+/** The renderer's JSON calls to the installed product's sidecar. */
+function productRequest(port, sessionToken) {
   const headers = { "Content-Type": "application/json", "X-Nirs4all-Session": sessionToken };
-  const request = async (route, body) => {
+  return async (route, body) => {
     const response = await fetch(`http://127.0.0.1:${port}/api${route}`, {
       headers, method: body === undefined ? "GET" : "POST",
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -639,6 +640,11 @@ async function verifyInstalledProduct(port, sessionToken) {
     if (!response.ok) throw new Error(`Installed product ${route}: HTTP ${response.status}: ${await response.text()}`);
     return response.json();
   };
+}
+
+/** Verify the exact dataset wizard path through the installed product. */
+async function verifyInstalledProduct(port, sessionToken) {
+  const request = productRequest(port, sessionToken);
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "studio-wizard-smoke-"));
   try {
     fs.writeFileSync(path.join(fixture, "Xtrain.csv"), "1000;1100\n1;2\n3;4\n");
@@ -700,6 +706,72 @@ async function verifyInstalledProduct(port, sessionToken) {
   }
 }
 
+/**
+ * Launch one experiment with the renderer's own calls and wait for its end.
+ * A product whose runs cannot start (a refused dataset, a host that lacks a
+ * capability) fails here. The dataset has a sample without a target value,
+ * which the run keeps and predicts.
+ */
+async function verifyRunLaunch(port, sessionToken) {
+  const request = productRequest(port, sessionToken);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-run-smoke-"));
+  try {
+    const workspace = path.join(root, "workspace");
+    await request("/workspace/create", { path: workspace, name: "Run smoke", create_dir: true });
+    await request("/workspace/select", { path: workspace });
+    const data = path.join(root, "data");
+    fs.mkdirSync(data);
+    const spectra = ["1000;1100;1200;1300"];
+    const targets = ["target"];
+    for (let index = 0; index < 24; index += 1) {
+      const row = [index / 7, Math.sin(index), Math.cos(index / 3), (index % 5) / 2];
+      spectra.push(row.join(";"));
+      targets.push(index === 5 ? "" : String(2 * row[0] - row[1] + 0.4 * row[2] + row[3]));
+    }
+    fs.writeFileSync(path.join(data, "Xtrain.csv"), `${spectra.join("\n")}\n`);
+    fs.writeFileSync(path.join(data, "Ytrain.csv"), `${targets.join("\n")}\n`);
+    const linked = await request("/datasets/link", { path: data, config: {
+      name: "Run smoke", delimiter: ";", has_header: true,
+      files: [{ path: "Xtrain.csv", type: "X", split: "train" }, { path: "Ytrain.csv", type: "Y", split: "train" }],
+    } });
+    const dataset = linked.dataset?.id;
+    if (linked.success !== true || !dataset || linked.dataset.targets?.[0]?.missing_count !== 1) {
+      throw new Error(`Run smoke dataset registration failed: ${JSON.stringify(linked)}`);
+    }
+    const imported = await request("/pipelines/import", { payload: { name: "Run smoke PLS", pipeline: [
+      { class: "sklearn.preprocessing.StandardScaler" },
+      { class: "sklearn.model_selection.KFold", params: { n_splits: 3 } },
+      { class: "sklearn.cross_decomposition.PLSRegression", params: { n_components: 2 } },
+    ] } });
+    const pipeline = imported.pipeline.id;
+    const pair = `${dataset}::${pipeline}`;
+    const name = "Run smoke";
+    const submitted = await request("/runs/run-groups", {
+      legacyConfig: { name, dataset_ids: [dataset], pipeline_ids: [pipeline], execution_backend: "local-python",
+        engine: "dag-ml", allow_fallback: false, missing_target_policy: "predict" },
+      manifest: { version: "studio.native-launch-payload.v1", legacyExperimentName: name, legacyDatasetCount: 1,
+        legacyPipelineCount: 1, strictCampaignCount: 1, skippedRunCount: 0, sourceRunIds: [pair], skippedRunIds: [] },
+      strictCampaignSpecs: { splitSpecs: [{ id: `single-pair:${pair}`, sourceRunId: pair, sourceDatasetId: dataset,
+        sourcePipelineId: pipeline, campaign: { name, mode: "paired_by_index", executionBackend: "local-python",
+          datasets: [{ id: dataset, name, splitGroupBy: null }],
+          pipelines: [{ id: pipeline, name: "Run smoke PLS", source: "saved" }],
+          runMatrix: [{ id: pair, datasetId: dataset, pipelineId: pipeline, datasetIndex: 0, pipelineIndex: 0, splitGroupBy: null }] } }],
+        skippedRunIds: [] },
+    });
+    const deadline = Date.now() + 180000;
+    for (;;) {
+      const job = await request(`/training/${encodeURIComponent(submitted.job_id)}`);
+      if (job.status === "completed") return;
+      if (["failed", "error", "cancelled"].includes(job.status) || Date.now() > deadline) {
+        throw new Error(`Run smoke did not complete: ${JSON.stringify(job).slice(0, 4000)}`);
+      }
+      await delay(500);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const parsed = parseArgs();
   if (parsed.help) {
@@ -728,6 +800,7 @@ module.exports = {
   resolveLaunchLayout,
   verifyLaunchRuntimeContract,
   smokeArchiveStandalone,
+  verifyRunLaunch,
   waitForChildExit,
   waitForNativeScientificReady,
   verifyInstalledProduct,

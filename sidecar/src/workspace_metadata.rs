@@ -114,9 +114,6 @@ pub fn groups(document: &Value) -> DocumentResult<Value> {
 }
 
 fn request(body: &[u8]) -> DocumentResult<Value> {
-    if body.len() as u64 > crate::workspace_documents::MAX_DOCUMENT_BYTES {
-        return Err((413, "Document exceeds the 2 MiB limit".into()));
-    }
     let value: Value =
         serde_json::from_slice(body).map_err(|_| invalid("Expected a JSON object"))?;
     if !value.is_object() {
@@ -158,9 +155,6 @@ fn mutate(
         let records = document["groups"]
             .as_array_mut()
             .expect("validated catalogue");
-        if records.len() >= 256 {
-            return Err((413, "Group catalogue exceeds 256 records".into()));
-        }
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| (500, error.to_string()))?

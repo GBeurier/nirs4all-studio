@@ -1,5 +1,7 @@
+import type { TargetValue } from '@/types/spectral';
 import type { ColorContext, GlobalColorConfig } from '@/lib/playground/colorConfig';
 import { applySampling, type SamplingResult } from '@/lib/playground/sampling';
+import { getObservedTargetRange, getObservedTargets, isObservedTarget } from '@/lib/playground/targetValues';
 import type { DataSection, FoldsInfo } from '@/types/playground';
 import {
   computeDerivative,
@@ -52,14 +54,14 @@ export interface BuildSpectraSamplingResultInput {
   displayMode: SpectraDisplayMode;
   selectedSamples: ReadonlySet<number>;
   spectra: number[][];
-  yValues?: number[];
+  yValues?: TargetValue[];
   maxForcedSelection?: number;
   baseSampling?: SamplingResult;
 }
 
 export interface BuildSpectraColorContextInput {
   colorContext?: ColorContext;
-  yValues?: number[];
+  yValues?: TargetValue[];
   folds?: FoldsInfo | null;
   metadata?: Record<string, unknown[]>;
   outlierSamples: Set<number>;
@@ -69,7 +71,7 @@ export interface SelectSimilarSpectraSamplesInput {
   sampleIndex: number;
   criterion: SimilarSpectraCriterion;
   folds?: Pick<FoldsInfo, 'fold_labels'> | null;
-  yValues?: number[];
+  yValues?: TargetValue[];
 }
 
 export function buildSpectraSamplingResult({
@@ -157,10 +159,12 @@ export function buildSpectraColorContext({
     testIndices = new Set<number>(firstFold.test_indices ?? []);
   }
 
+  const targetRange = getObservedTargetRange(resolvedYValues) ?? { min: 0, max: 1 };
+
   return {
     y: resolvedYValues,
-    yMin: resolvedYValues.length > 0 ? Math.min(...resolvedYValues) : 0,
-    yMax: resolvedYValues.length > 0 ? Math.max(...resolvedYValues) : 1,
+    yMin: targetRange.min,
+    yMax: targetRange.max,
     trainIndices,
     testIndices,
     foldLabels: folds?.fold_labels,
@@ -193,22 +197,32 @@ export function selectSimilarSpectraSamples({
       if (!yValues) {
         return [];
       }
+      // A sample without a target value has no "similar Y" neighbourhood.
       const targetY = yValues[sampleIndex];
+      if (!isObservedTarget(targetY)) {
+        return [];
+      }
       const tolerance = Math.abs(targetY) * 0.1;
       return yValues
         .map((value, index) => ({ value, index }))
-        .filter(({ value }) => Math.abs(value - targetY) <= tolerance)
+        .filter(({ value }) => isObservedTarget(value) && Math.abs(value - targetY) <= tolerance)
         .map(({ index }) => index);
     }
     case 'outlier': {
       if (!yValues) {
         return [];
       }
-      const mean = yValues.reduce((sum, value) => sum + value, 0) / yValues.length;
-      const std = Math.sqrt(yValues.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / yValues.length);
+      // Mean and spread come from observed values only; a sample without a
+      // target value is never a Y outlier.
+      const observed = getObservedTargets(yValues);
+      if (observed.length === 0) {
+        return [];
+      }
+      const mean = observed.reduce((sum, value) => sum + value, 0) / observed.length;
+      const std = Math.sqrt(observed.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / observed.length);
       return yValues
         .map((value, index) => ({ value, index }))
-        .filter(({ value }) => Math.abs(value - mean) > 2 * std)
+        .filter(({ value }) => isObservedTarget(value) && Math.abs(value - mean) > 2 * std)
         .map(({ index }) => index);
     }
   }

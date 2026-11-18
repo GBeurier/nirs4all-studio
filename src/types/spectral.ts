@@ -6,10 +6,17 @@ export interface SampleMetadata {
   [key: string]: string | number | boolean;
 }
 
+/**
+ * One target (y) value as it travels over JSON. A sample without an observed
+ * target value arrives as `null` (NaN cannot be encoded in JSON); the sample
+ * itself is kept so that spectra, projections and counts stay complete.
+ */
+export type TargetValue = number | null;
+
 export interface SpectralData {
   wavelengths: number[];
   spectra: number[][];
-  y: number[];
+  y: TargetValue[];
   sampleIds?: string[];
   metadata?: SampleMetadata[];
   datasetSource?: string[];
@@ -41,7 +48,7 @@ export interface SpectralData {
 
 export interface ProcessedData extends SpectralData {
   originalSpectra: number[][];
-  originalY: number[];
+  originalY: TargetValue[];
 }
 
 export type SubsetMode = 'all' | 'random' | 'quantiles' | 'kmeans';

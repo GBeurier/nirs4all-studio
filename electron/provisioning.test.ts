@@ -12,6 +12,7 @@ vi.mock("./env/uv", () => ({
   installRequiredPackages: vi.fn(),
   resolveUvPayload: vi.fn(),
 }));
+import { REQUIRED_PACKAGES } from "./env/catalogue";
 import { rmWithRetry } from "./env/process-utils";
 import { downloadFile, extractTarball, verifySha256 } from "./env/python-runtime-installer";
 import { createStudioEnvironment } from "./env/provisioning";
@@ -72,10 +73,7 @@ describe("Studio environment creation", () => {
     expect(createVenv).toHaveBeenCalledWith(path.join(baseDir, "venv"), getStandalonePythonPath(baseDir));
     expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
     // Resolved together with the exact cohort that was just installed.
-    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"], [
-      "nirs4all==1.4.16", "nirs4all-core==0.5.0", "dag-ml==0.4.0", "dag-ml-data==0.2.16",
-      "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15",
-    ]);
+    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"], REQUIRED_PACKAGES.map((spec) => `${spec.name}==${spec.install}`));
     const percents = progress.mock.calls.map(([percent]) => percent as number);
     expect(percents).toEqual([...percents].sort((left, right) => left - right));
     expect(percents.at(-1)).toBe(100);

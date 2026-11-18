@@ -5,7 +5,7 @@
  * Uses fetch with AbortController for request cancellation.
  */
 
-import { api, formatApiErrorDetail } from './transport';
+import { api } from './transport';
 import type {
   ExecuteRequest,
   ExecuteResponse,
@@ -13,20 +13,15 @@ import type {
   PresetsResponse,
   ValidationResponse,
   PlaygroundStep,
+  YStats,
 } from '@/types/playground';
-import type { SpectralData, SampleMetadata } from '@/types/spectral';
+import type { SpectralData, SampleMetadata, TargetValue } from '@/types/spectral';
 import { getSampleIdsFromMetadata } from '@/lib/playground/repetition';
 
 let loadedDatasetResults = new WeakMap<SpectralData, ExecuteResponse>();
-let loadedDatasetDisplayLimits = new WeakMap<SpectralData, number>();
 
 export function invalidateLoadedWorkspaceDatasetResults(): void {
   loadedDatasetResults = new WeakMap();
-  loadedDatasetDisplayLimits = new WeakMap();
-}
-
-export function getLoadedWorkspaceDatasetDisplayLimit(data: SpectralData): number | undefined {
-  return loadedDatasetDisplayLimits.get(data);
 }
 
 /** Reuse the initial raw-data execution when the playground mounts its query. */
@@ -48,7 +43,7 @@ export interface SpectraResponse {
   spectra: number[][];
   wavelengths: (number | string)[];
   wavelength_unit: string;
-  y?: number[] | null;
+  y?: TargetValue[] | null;
   metadata?: Record<string, unknown[]> | null;
   metadata_columns?: string[];
   repetition_column?: string | null;
@@ -81,6 +76,33 @@ export interface SpectraStatsResponse {
   };
 }
 
+/** Fold target statistics as sent by the backend: `null` where a value could not be computed. */
+type WireYStats = { [K in keyof YStats]: number | null };
+
+function readFoldYStats(stats: WireYStats | undefined): YStats | undefined {
+  return stats && Object.values(stats).every(Number.isFinite) ? stats as YStats : undefined;
+}
+
+/**
+ * Drop fold target statistics the backend could not compute (it sends `null`
+ * fields, e.g. when a fold holds samples without a target value), so that
+ * consumers see "no statistics" instead of `null` numbers.
+ */
+function readExecuteResponse(response: ExecuteResponse): ExecuteResponse {
+  if (!response.folds) return response;
+  return {
+    ...response,
+    folds: {
+      ...response.folds,
+      folds: response.folds.folds.map((fold) => ({
+        ...fold,
+        y_train_stats: readFoldYStats(fold.y_train_stats),
+        y_test_stats: readFoldYStats(fold.y_test_stats),
+      })),
+    },
+  };
+}
+
 /**
  * Execute a playground pipeline
  *
@@ -92,7 +114,7 @@ export async function executePlayground(
   request: ExecuteRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  return api.post<ExecuteResponse>('/playground/execute', request, { signal });
+  return readExecuteResponse(await api.post<ExecuteResponse>('/playground/execute', request, { signal }));
 }
 
 /**
@@ -125,7 +147,7 @@ export async function executeDatasetPlayground(
   request: ExecuteDatasetRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  return api.post<ExecuteResponse>('/playground/execute-dataset', request, { signal });
+  return readExecuteResponse(await api.post<ExecuteResponse>('/playground/execute-dataset', request, { signal }));
 }
 
 /**
@@ -210,7 +232,7 @@ export function buildExecuteRequest(params: {
    * echo it back on the original/processed DataSections, letting charts label
    * the X axis correctly even for uploaded data. */
   wavelengthUnit?: string;
-  y?: number[];
+  y?: TargetValue[];
   sampleIds?: string[];
   metadata?: Record<string, unknown[]>;
   steps: PlaygroundStep[];
@@ -412,21 +434,9 @@ export async function loadWorkspaceDataset(
       use_cache: true,
     },
   };
-  let displayLimit: number | undefined;
-  let response: ExecuteResponse;
-  try {
-    response = await executeDatasetPlayground(request, options.signal);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message
-      : formatApiErrorDetail((error as { detail?: unknown })?.detail);
-    if (options.signal?.aborted || !/response exceeds 32\s*MiB/.test(detail)) throw error;
-    // Ask the library to decimate only the returned curves. PCA, statistics and
-    // transformations still run on the complete authorized dataset.
-    displayLimit = 256;
-    response = await executeDatasetPlayground({ ...request,
-      options: { ...request.options, max_wavelengths_returned: displayLimit },
-    }, options.signal);
-  }
+  // The complete spectra at full resolution: drawing fewer points is the
+  // charts' rendering concern, never a cut of the data the analyses use.
+  const response = await executeDatasetPlayground(request, options.signal);
   const original = response.original;
 
   const wavelengths = original.wavelengths.length > 0
@@ -479,7 +489,6 @@ export async function loadWorkspaceDataset(
         : undefined,
   };
   loadedDatasetResults.set(data, response);
-  if (displayLimit !== undefined) loadedDatasetDisplayLimits.set(data, displayLimit);
   return data;
 }
 

@@ -13,6 +13,7 @@
  * - Export functionality (PNG, CSV)
  */
 
+import type { TargetValue } from '@/types/spectral';
 import React, { useMemo, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { exportChart } from '@/lib/chartExport';
@@ -20,7 +21,7 @@ import {
   type GlobalColorConfig,
   type ColorContext,
 } from '@/lib/playground/colorConfig';
-import type { PCAResult, FoldsInfo } from '@/types/playground';
+import type { PCAResult, FoldsInfo, ProjectionLeftOut } from '@/types/playground';
 import {
   buildDimensionReductionWebgl2DProps,
   buildDimensionReductionWebgl3DProps,
@@ -79,9 +80,10 @@ interface DimensionReductionChartProps {
     coordinates: number[][];
     n_components: number;
     error?: string;
+    left_out?: ProjectionLeftOut;
   } | null;
   /** Y values for coloring */
-  y?: number[];
+  y?: TargetValue[];
   /** Fold information for fold coloring */
   folds?: FoldsInfo | null;
   /** Sample IDs for labels */
@@ -569,6 +571,7 @@ export function DimensionReductionChart({
       compact={compact}
       showVarianceSummary={config.method === 'pca' && varianceExplained[config.xAxis] !== undefined}
       selectedCount={selectedSamples.size}
+      leftOutCount={activeResult?.left_out?.count}
       globalColorConfig={globalColorConfig}
       colorContext={externalColorContext}
       hasReferenceData={referenceChartData.length > 0}

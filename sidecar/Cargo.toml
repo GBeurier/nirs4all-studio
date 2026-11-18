@@ -23,9 +23,10 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-# Public owner cohort; Core and Studio share the exact Rust IO version.
-nirs4all = "=0.5.0"
-nirs4all-io = "=0.3.1"
+# Public owner crates at minor granularity; Cargo.lock selects the exact
+# cohort, shared with Core so one Rust IO version resolves.
+nirs4all = "0.5"
+nirs4all-io = "0.3"
 percent-encoding = "2.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 rusqlite = { version = "0.32.1", features = ["bundled", "serialize"] }

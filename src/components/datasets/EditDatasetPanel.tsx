@@ -2,7 +2,7 @@ import { useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { UpdateDatasetRequest } from "@/api/datasets";
 import { DatasetWizard } from "./DatasetWizard";
-import { buildInitialState } from "./editDatasetPanelState";
+import { buildDatasetUpdate, buildInitialState } from "./editDatasetPanelState";
 import type {
   Dataset,
   DatasetConfig,
@@ -28,15 +28,7 @@ export function EditDatasetPanel({
 
   const handleSave = useCallback(async (_path: string, config?: Partial<DatasetConfig>) => {
     if (!dataset || !config) return;
-
-    const updates: UpdateDatasetRequest = {
-      config,
-      default_target: config.default_target ?? dataset.default_target,
-      task_type: config.task_type ?? dataset.task_type ?? undefined,
-      signal_types: config.signal_type && config.signal_type !== "auto" ? [config.signal_type] : [],
-    };
-
-    await onSave(dataset.id, updates);
+    await onSave(dataset.id, buildDatasetUpdate(dataset, config));
   }, [dataset, onSave]);
 
   if (!dataset || !initialState) {

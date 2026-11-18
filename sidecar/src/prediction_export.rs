@@ -112,7 +112,6 @@ fn selection(request: &HttpRequest, dataset: Option<&str>) -> Result<Value, Stri
         .query
         .as_deref()
         .is_some_and(|query| !query.is_empty())
-        || request.body.len() > 65536
     {
         return Err("Invalid prediction export request".into());
     }
@@ -131,7 +130,6 @@ fn selection(request: &HttpRequest, dataset: Option<&str>) -> Result<Value, Stri
     if let Some(names) = value.get("dataset_names") {
         let names = names.as_array().ok_or("dataset_names must be an array")?;
         if names.is_empty()
-            || names.len() > 128
             || names.iter().any(|name| {
                 name.as_str()
                     .is_none_or(|name| name.is_empty() || name.len() > 256 || name.contains('\0'))
@@ -147,15 +145,9 @@ fn binary(value: &Value) -> Result<HttpResponse, String> {
     let encoded = value["content_base64"]
         .as_str()
         .ok_or("Missing export bytes")?;
-    if encoded.len() > 32 * 1024 * 1024 {
-        return Err("Prediction export exceeds 24 MiB".into());
-    }
     let bytes = STANDARD
         .decode(encoded)
         .map_err(|_| "Invalid export encoding")?;
-    if bytes.len() > 24 * 1024 * 1024 {
-        return Err("Prediction export exceeds 24 MiB".into());
-    }
     let name = value["filename"]
         .as_str()
         .ok_or("Missing export filename")?;

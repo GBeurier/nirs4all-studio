@@ -2,22 +2,18 @@
 //!
 //! Rust validates and transports this manifest but deliberately does not
 //! interpret pipeline steps, dataset schema projections, or robustness
-//! scenarios. Those explicitly named values remain bounded scientific payloads
-//! for a separately selected executor.
+//! scenarios. Those explicitly named values remain opaque scientific payloads
+//! for a separately selected executor. The listener bounds the body by the
+//! memory the host can spare; this contract adds no size or count ceiling, and
+//! the JSON parser's recursion limit bounds nesting.
 
 use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
-use crate::MAX_REQUEST_BODY_BYTES;
-
 pub const SCIENTIFIC_SUBMISSION_ROUTE: &str = "/api/runs/run-groups";
 pub const SCIENTIFIC_SUBMISSION_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_submission_v1.json");
-pub const MAX_SCIENTIFIC_SPLIT_SPECS: usize = 64;
-const MAX_COLLECTION_ITEMS: usize = 256;
-const MAX_STRING_BYTES: usize = 4096;
-const MAX_NESTING_DEPTH: usize = 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ScientificSubmissionValidationError {
@@ -62,12 +58,9 @@ pub fn validate_scientific_submission(
     body: &[u8],
 ) -> Result<ValidatedScientificSubmission, ScientificSubmissionValidationError> {
     validate_contract()?;
-    if body.len() > MAX_REQUEST_BODY_BYTES {
-        return Err(ScientificSubmissionValidationError::BodyTooLarge);
-    }
     let payload: Value = serde_json::from_slice(body)
         .map_err(|_| ScientificSubmissionValidationError::InvalidJson)?;
-    validate_bounded_json(&payload, 0)?;
+    validate_json_values(&payload)?;
     let root = object_with_exact_keys(
         &payload,
         &["legacyConfig", "manifest", "strictCampaignSpecs"],
@@ -127,6 +120,8 @@ fn validate_legacy_config(
             "project_id",
             "split_group_by_by_dataset",
             "missing_target_policy",
+            "missing_spectra_policy",
+            "target_by_dataset",
         ],
         "legacyConfig",
     )?;
@@ -176,6 +171,7 @@ fn validate_legacy_config(
             "legacyConfig must select at least one pipeline",
         ));
     }
+    validate_target_map(object.get("target_by_dataset"), &dataset_ids)?;
     Ok((
         name,
         requested_backend.to_owned(),
@@ -220,7 +216,75 @@ fn validate_legacy_runtime_options(
             "legacyConfig.missing_target_policy must be predict or remove",
         ));
     }
+    validate_missing_spectra_policy(object.get("missing_spectra_policy"))?;
     validate_grouping_map(object.get("split_group_by_by_dataset"))
+}
+
+/// The run's answer for missing spectral values: remove the affected samples,
+/// replace the values with one of the library's fill methods, or keep them.
+fn validate_missing_spectra_policy(
+    value: Option<&Value>,
+) -> Result<(), ScientificSubmissionValidationError> {
+    let Some(value) = value else { return Ok(()) };
+    let refused = ScientificSubmissionValidationError::Unsupported(
+        "legacyConfig.missing_spectra_policy must be {policy: remove | keep} or {policy: replace, fill: {method: value, fill_value} | {method: forward_fill | backward_fill}}",
+    );
+    let Some(object) = value.as_object() else {
+        return Err(refused);
+    };
+    let fill = object.get("fill");
+    let valid = match object.get("policy").and_then(Value::as_str) {
+        Some("remove" | "keep") => object.len() == 1,
+        Some("replace") => {
+            object.len() == 2
+                && fill.and_then(Value::as_object).is_some_and(|fill| {
+                    match fill.get("method").and_then(Value::as_str) {
+                        Some("value") => {
+                            fill.len() == 2
+                                && fill
+                                    .get("fill_value")
+                                    .and_then(Value::as_f64)
+                                    .is_some_and(f64::is_finite)
+                        }
+                        Some("forward_fill" | "backward_fill") => fill.len() == 1,
+                        _ => false,
+                    }
+                })
+        }
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(refused)
+    }
+}
+
+/// The target column each selected dataset is trained on. A dataset absent
+/// from the map is trained on all its target columns together.
+fn validate_target_map(
+    value: Option<&Value>,
+    dataset_ids: &[&str],
+) -> Result<(), ScientificSubmissionValidationError> {
+    let Some(value) = value else { return Ok(()) };
+    let object = value
+        .as_object()
+        .ok_or(ScientificSubmissionValidationError::InvalidShape(
+            "legacyConfig.target_by_dataset must be an object",
+        ))?;
+    for (dataset, column) in object {
+        if !dataset_ids.contains(&dataset.as_str()) {
+            return Err(ScientificSubmissionValidationError::InvalidShape(
+                "legacyConfig.target_by_dataset names a dataset that is not selected",
+            ));
+        }
+        if text(column, "target column")?.len() > 256 {
+            return Err(ScientificSubmissionValidationError::InvalidShape(
+                "target column",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_legacy_inline_pipelines(
@@ -230,11 +294,6 @@ fn validate_legacy_inline_pipelines(
     let inline_many = match object.get("inline_pipelines") {
         None => 0,
         Some(Value::Array(values)) => {
-            if values.len() > MAX_COLLECTION_ITEMS {
-                return Err(ScientificSubmissionValidationError::InvalidShape(
-                    "legacyConfig.inline_pipelines is too large",
-                ));
-            }
             for value in values {
                 validate_inline_pipeline(Some(value))?;
             }
@@ -310,11 +369,6 @@ fn validate_grouping_map(value: Option<&Value>) -> Result<(), ScientificSubmissi
         .ok_or(ScientificSubmissionValidationError::InvalidShape(
             "legacyConfig.split_group_by_by_dataset must be an object",
         ))?;
-    if object.len() > MAX_COLLECTION_ITEMS {
-        return Err(ScientificSubmissionValidationError::InvalidShape(
-            "legacyConfig.split_group_by_by_dataset is too large",
-        ));
-    }
     for (key, value) in object {
         identity(key, "grouping dataset id")?;
         optional_text(Some(value), "grouping column", true)?;
@@ -347,11 +401,6 @@ fn validate_strict_specs(
         "strictCampaignSpecs.splitSpecs",
         false,
     )?;
-    if specs.len() > MAX_SCIENTIFIC_SPLIT_SPECS {
-        return Err(ScientificSubmissionValidationError::InvalidShape(
-            "strictCampaignSpecs.splitSpecs exceeds 64 entries",
-        ));
-    }
     let mut identities = Vec::with_capacity(specs.len());
     let mut ids = BTreeSet::new();
     for spec in specs {
@@ -768,8 +817,8 @@ fn validate_contract() -> Result<(), ScientificSubmissionValidationError> {
         || contract.get("schema_version").and_then(Value::as_u64) != Some(1)
         || contract
             .pointer("/route/maximum_body_bytes")
-            .and_then(Value::as_u64)
-            != Some(MAX_REQUEST_BODY_BYTES as u64)
+            .and_then(Value::as_str)
+            != Some("host_memory")
         || contract
             .pointer("/accepted_submission/http_status")
             .and_then(Value::as_u64)
@@ -782,45 +831,24 @@ fn validate_contract() -> Result<(), ScientificSubmissionValidationError> {
     Ok(())
 }
 
-fn validate_bounded_json(
-    value: &Value,
-    depth: usize,
-) -> Result<(), ScientificSubmissionValidationError> {
-    if depth > MAX_NESTING_DEPTH {
-        return Err(ScientificSubmissionValidationError::InvalidShape(
-            "JSON nesting exceeds the native limit",
-        ));
-    }
+/// Keys are nonempty text and numbers finite. Sizes and counts are bounded by
+/// the host memory that admitted the body; nesting by the JSON parser.
+fn validate_json_values(value: &Value) -> Result<(), ScientificSubmissionValidationError> {
     match value {
         Value::Object(object) => {
-            if object.len() > MAX_COLLECTION_ITEMS {
-                return Err(ScientificSubmissionValidationError::InvalidShape(
-                    "JSON object exceeds the native field limit",
-                ));
-            }
             for (key, value) in object {
-                if key.is_empty() || key.len() > 128 || key.chars().any(char::is_control) {
+                if key.is_empty() || key.chars().any(char::is_control) {
                     return Err(ScientificSubmissionValidationError::InvalidShape(
                         "JSON object contains an invalid key",
                     ));
                 }
-                validate_bounded_json(value, depth + 1)?;
+                validate_json_values(value)?;
             }
         }
         Value::Array(values) => {
-            if values.len() > MAX_COLLECTION_ITEMS {
-                return Err(ScientificSubmissionValidationError::InvalidShape(
-                    "JSON array exceeds the native item limit",
-                ));
-            }
             for value in values {
-                validate_bounded_json(value, depth + 1)?;
+                validate_json_values(value)?;
             }
-        }
-        Value::String(value) if value.len() > MAX_STRING_BYTES => {
-            return Err(ScientificSubmissionValidationError::InvalidShape(
-                "JSON string exceeds the native byte limit",
-            ));
         }
         Value::Number(number) if !number.as_f64().is_some_and(f64::is_finite) => {
             return Err(ScientificSubmissionValidationError::InvalidShape(
@@ -964,7 +992,7 @@ fn bounded_array<'a>(
     let values = value
         .as_array()
         .ok_or(ScientificSubmissionValidationError::InvalidShape(label))?;
-    if values.len() > MAX_COLLECTION_ITEMS || (!allow_empty && values.is_empty()) {
+    if !allow_empty && values.is_empty() {
         return Err(ScientificSubmissionValidationError::InvalidShape(label));
     }
     Ok(values)
@@ -1062,6 +1090,58 @@ mod tests {
     }
 
     #[test]
+    fn opaque_scientific_payloads_have_no_size_count_or_depth_ceiling() {
+        // Above the former 64 KiB body, 256 items, 4096-byte string and depth-16 ceilings.
+        let mut nested = json!({"leaf": "x".repeat(10_000)});
+        for _ in 0..40 {
+            nested = json!({"branch": [nested]});
+        }
+        let mut payload = payload();
+        payload["legacyConfig"]["robustness"] =
+            json!({"mode": "clean_frozen", "scenarios": vec![nested; 300]});
+        let body = serde_json::to_vec(&payload).unwrap();
+        assert!(body.len() > 2 * 1024 * 1024);
+        validate_scientific_submission(&body).unwrap();
+        payload["legacyConfig"]["robustness"]["scenarios"] = json!([{"": 1}]);
+        assert!(validate_scientific_submission(&serde_json::to_vec(&payload).unwrap()).is_err());
+    }
+
+    #[test]
+    fn accepts_only_the_closed_missing_spectra_choices() {
+        for policy in [
+            json!({"policy":"remove"}),
+            json!({"policy":"keep"}),
+            json!({"policy":"replace","fill":{"method":"value","fill_value":0}}),
+            json!({"policy":"replace","fill":{"method":"forward_fill"}}),
+            json!({"policy":"replace","fill":{"method":"backward_fill"}}),
+        ] {
+            let mut accepted = payload();
+            accepted["legacyConfig"]["missing_spectra_policy"] = policy;
+            assert!(
+                validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok()
+            );
+        }
+        for policy in [
+            json!("remove"),
+            json!({"policy":"remove_sample"}),
+            json!({"policy":"remove","fill":{"method":"forward_fill"}}),
+            json!({"policy":"replace"}),
+            json!({"policy":"replace","fill":{"method":"mean"}}),
+            json!({"policy":"replace","fill":{"method":"value"}}),
+            json!({"policy":"replace","fill":{"method":"value","fill_value":"0"}}),
+            json!({"policy":"replace","fill":{"method":"forward_fill","fill_value":0}}),
+            json!(null),
+        ] {
+            let mut refused = payload();
+            refused["legacyConfig"]["missing_spectra_policy"] = policy;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
+    }
+
+    #[test]
     fn accepts_only_the_closed_missing_target_choices() {
         for policy in ["predict", "remove"] {
             let mut accepted = payload();
@@ -1076,6 +1156,27 @@ mod tests {
             assert!(matches!(
                 validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
                 Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn accepts_a_target_column_only_for_a_selected_dataset() {
+        let mut accepted = payload();
+        accepted["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "protein"});
+        assert!(validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok());
+        for targets in [
+            json!({"dataset-b": "protein"}),
+            json!({"dataset-a": ""}),
+            json!({"dataset-a": null}),
+            json!({"dataset-a": 2}),
+            json!(["protein"]),
+        ] {
+            let mut refused = payload();
+            refused["legacyConfig"]["target_by_dataset"] = targets;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::InvalidShape(_))
             ));
         }
     }

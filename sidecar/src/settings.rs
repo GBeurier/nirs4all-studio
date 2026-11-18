@@ -24,7 +24,6 @@ use sha2::{Digest, Sha256};
 
 const APP_SETTINGS_FILE: &str = "app_settings.json";
 const DATASET_LINKS_FILE: &str = "dataset_links.json";
-const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
 const CONFIG_ENV: &str = "NIRS4ALL_CONFIG";
 const PORTABLE_ROOT_ENV: &str = "NIRS4ALL_PORTABLE_ROOT";
 const PORTABLE_EXE_ENV: &str = "NIRS4ALL_PORTABLE_EXE";
@@ -485,9 +484,8 @@ impl AppSettingsStore {
 
     /// Load the minimal, read-only dataset catalogue used by native result
     /// projections. Missing or malformed JSON has the same effective default
-    /// as the legacy `AppConfig` loader: no linked datasets. The bounded reader
-    /// rejects an oversized file instead of parsing a prefix or allocating
-    /// without limit.
+    /// as the legacy `AppConfig` loader: no linked datasets. A file larger than
+    /// the memory the host can spare is refused instead of parsing a prefix.
     pub fn dataset_links(&self) -> Result<Vec<DatasetLinkIdentity>, String> {
         let path = self.config_dir.join(DATASET_LINKS_FILE);
         let mut file = match fs::File::open(&path) {
@@ -495,21 +493,12 @@ impl AppSettingsStore {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(format!("could not read {}: {error}", path.display())),
         };
-        let capacity = usize::try_from(MAX_DATASET_LINKS_BYTES)
-            .unwrap_or(usize::MAX)
-            .saturating_add(1);
-        let mut encoded = Vec::with_capacity(capacity.min(64 * 1024));
-        Read::by_ref(&mut file)
-            .take(MAX_DATASET_LINKS_BYTES.saturating_add(1))
-            .read_to_end(&mut encoded)
-            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
-        if u64::try_from(encoded.len()).unwrap_or(u64::MAX) > MAX_DATASET_LINKS_BYTES {
-            return Err(format!(
-                "{} exceeds the {} byte dataset-links limit",
-                path.display(),
-                MAX_DATASET_LINKS_BYTES
-            ));
-        }
+        let encoded = crate::host_memory::read_within(
+            Read::by_ref(&mut file),
+            crate::host_memory::allowance_u64(),
+        )
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?
+        .ok_or_else(|| crate::host_memory::exceeded(&format!("Reading {}", path.display())))?;
 
         let Ok(root) = serde_json::from_slice::<Value>(&encoded) else {
             return Ok(Vec::new());
@@ -581,9 +570,6 @@ impl AppSettingsStore {
             )?;
             index
         } else {
-            if workspaces.len() >= 256 {
-                return Err("Workspace catalogue limit reached (256)".into());
-            }
             let id = new_workspace_id(canonical, timestamp, workspaces);
             workspaces.push(json!({"id": id, "path": canonical, "name": name,
                 "linked_at": timestamp, "is_active": false, "discovered": {}}));
@@ -992,7 +978,7 @@ mod tests {
 
     use super::{
         path_matches_open_file, AppSettingsStore, Connection, DatasetLinkIdentity,
-        BEFORE_LINKED_STORE_OPEN, MAX_DATASET_LINKS_BYTES,
+        BEFORE_LINKED_STORE_OPEN,
     };
 
     fn temporary_directory(name: &str) -> PathBuf {
@@ -1155,16 +1141,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_oversized_dataset_links_without_parsing_a_prefix() {
+    fn reads_dataset_links_beyond_the_former_2_mib_and_256_dataset_ceilings() {
         let directory = temporary_directory("dataset-links-size");
         let path = directory.join("dataset_links.json");
-        let oversized_len = usize::try_from(MAX_DATASET_LINKS_BYTES).unwrap() + 1;
-        fs::write(&path, vec![b' '; oversized_len]).unwrap();
-        let store = AppSettingsStore::new(&directory);
-
-        let error = store.dataset_links().unwrap_err();
-        assert!(error.contains("exceeds the"));
-        assert!(error.contains("dataset-links limit"));
+        let datasets = (0..600)
+            .map(|index| {
+                serde_json::json!({"id": format!("dataset-{index}"), "name": format!("Dataset {index}"),
+                    "path": format!("/data/{index}"), "notes": "x".repeat(5_000)})
+            })
+            .collect::<Vec<_>>();
+        let encoded = serde_json::to_vec(&serde_json::json!({"datasets": datasets})).unwrap();
+        assert!(encoded.len() > 2 * 1024 * 1024);
+        fs::write(&path, encoded).unwrap();
+        let links = AppSettingsStore::new(&directory).dataset_links().unwrap();
+        assert_eq!(links.len(), 600);
+        assert_eq!(links[599].id, "dataset-599");
         fs::remove_dir_all(directory).unwrap();
     }
 

@@ -16,6 +16,7 @@
  * - Export functionality
  */
 
+import type { TargetValue } from '@/types/spectral';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
   type GlobalColorConfig,
@@ -56,7 +57,7 @@ interface RepetitionsChartProps {
   /** Enable SelectionContext integration */
   useSelectionContext?: boolean;
   /** Y values for target coloring */
-  y?: number[];
+  y?: TargetValue[];
   /** Compact mode */
   compact?: boolean;
   /** Callback to open repetition setup dialog */

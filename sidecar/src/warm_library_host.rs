@@ -20,13 +20,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 const MAX_WORKER_DIAGNOSTIC_BYTES: usize = 4096;
 
-/// Reuse the exact one-shot dispatcher and bootstrap checks with framed stdio.
+/// Reuse the exact one-shot dispatcher and bootstrap checks with framed stdio:
+/// one request per line, each response preceded by its 8-byte length.
 fn worker_script() -> String {
     let (prefix, rest) = EXECUTION_SCRIPT
-        .split_once("raw=sys.stdin.buffer.read(33554433)")
+        .split_once("raw=sys.stdin.buffer.read()")
         .expect("worker input boundary");
     let (_, bootstrap) = rest
         .split_once("request=json.loads(raw)\n")
@@ -35,8 +35,8 @@ fn worker_script() -> String {
         .split_once("import contextlib\n")
         .expect("dispatcher boundary");
     let dispatch = dispatch.replace("sys.stdout.buffer.write(encoded)",
-        "sys.stdout.buffer.write(len(encoded).to_bytes(4, 'little'))\nsys.stdout.buffer.write(encoded)\nsys.stdout.buffer.flush()");
-    format!("{prefix}{bootstrap}import contextlib\nwhile True:\n    raw=sys.stdin.buffer.readline(33554434)\n    if not raw: break\n    if len(raw)>33554433 or not raw.endswith(b'\\n'):\n        raise RuntimeError('interactive request exceeds stdin budget')\n    request=json.loads(raw)\n{}\n",
+        "sys.stdout.buffer.write(len(encoded).to_bytes(8, 'little'))\nsys.stdout.buffer.write(encoded)\nsys.stdout.buffer.flush()");
+    format!("{prefix}{bootstrap}import contextlib\nwhile True:\n    raw=sys.stdin.buffer.readline()\n    if not raw: break\n    if not raw.endswith(b'\\n'):\n        raise RuntimeError('interactive request is not one complete line')\n    request=json.loads(raw)\n{}\n",
         dispatch.lines().map(|line| format!("    {line}")).collect::<Vec<_>>().join("\n"))
 }
 
@@ -84,7 +84,7 @@ impl Worker {
             .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
         let dispatcher = serde_json::to_string(&worker_script())
             .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
-        let script = format!("import contextlib,io,sys\n_capture=io.StringIO()\nwith contextlib.redirect_stdout(_capture):\n    exec({probe})\n_probe=_capture.getvalue().encode('utf-8')\nsys.stdout.buffer.write(len(_probe).to_bytes(4,'little'))\nsys.stdout.buffer.write(_probe)\nsys.stdout.buffer.flush()\nif not ready: raise SystemExit(0)\nsys.argv[3]=distribution_version\nexec({dispatcher})\n");
+        let script = format!("import contextlib,io,sys\n_capture=io.StringIO()\nwith contextlib.redirect_stdout(_capture):\n    exec({probe})\n_probe=_capture.getvalue().encode('utf-8')\nsys.stdout.buffer.write(len(_probe).to_bytes(8,'little'))\nsys.stdout.buffer.write(_probe)\nsys.stdout.buffer.flush()\nif not ready: raise SystemExit(0)\nsys.argv[3]=distribution_version\nexec({dispatcher})\n");
         let mut worker = Self::spawn_script(host, &script)?;
         let output = worker
             .responses
@@ -155,14 +155,16 @@ impl Worker {
             let mut reader = BufReader::new(stdout);
             loop {
                 let result = (|| {
-                    let mut header = [0_u8; 4];
+                    let mut header = [0_u8; 8];
                     reader
                         .read_exact(&mut header)
                         .map_err(|_| ScientificCpythonUnavailable::OutputReadFailed)?;
-                    let size = u32::from_le_bytes(header) as usize;
-                    if size > MAX_FRAME_BYTES {
-                        return Err(ScientificCpythonUnavailable::StdoutTooLarge);
-                    }
+                    // Refuse an announced frame the host cannot hold before
+                    // allocating it: the worker runs third-party code.
+                    let size = usize::try_from(u64::from_le_bytes(header))
+                        .ok()
+                        .filter(|size| *size <= crate::host_memory::allowance())
+                        .ok_or(ScientificCpythonUnavailable::StdoutTooLarge)?;
                     let mut output = vec![0_u8; size];
                     reader
                         .read_exact(&mut output)
@@ -274,7 +276,7 @@ impl CpythonScientificJobExecutor {
             .map_err(|_| ScientificCpythonUnavailable::InvalidRequest)?;
         let (input_limit, output_limit) = request_limits(&request);
         if input.len() > input_limit {
-            return Err(ScientificCpythonUnavailable::InvalidRequest);
+            return Err(ScientificCpythonUnavailable::RequestTooLarge);
         }
         let expected_id = request
             .get("request_id")
@@ -406,7 +408,7 @@ mod tests {
 
     #[test]
     fn interactive_frames_reuse_one_process_and_preserve_request_boundaries() {
-        let mut worker = worker("import sys,json,os\nfor line in sys.stdin.buffer:\n request=json.loads(line)\n value=json.dumps({'pid':os.getpid(),'id':request['id']}).encode()\n sys.stdout.buffer.write(len(value).to_bytes(4,'little')+value)\n sys.stdout.buffer.flush()\n");
+        let mut worker = worker("import sys,json,os\nfor line in sys.stdin.buffer:\n request=json.loads(line)\n value=json.dumps({'pid':os.getpid(),'id':request['id']}).encode()\n sys.stdout.buffer.write(len(value).to_bytes(8,'little')+value)\n sys.stdout.buffer.flush()\n");
         let pid = worker.child.id();
         for id in 0..20 {
             let output = worker
@@ -443,7 +445,7 @@ mod tests {
     fn executed_interactive_failure_is_not_replayed_and_discards_worker() {
         let root = tempfile::tempdir().unwrap();
         let marker = root.path().join("executions");
-        let script = format!("import sys,json\nfor line in sys.stdin.buffer:\n with open({},'a') as f: f.write('executed\\n')\n sys.stdout.buffer.write((2).to_bytes(4,'little')+b'{{}}')\n sys.stdout.buffer.flush()\n", serde_json::to_string(marker.to_str().unwrap()).unwrap());
+        let script = format!("import sys,json\nfor line in sys.stdin.buffer:\n with open({},'a') as f: f.write('executed\\n')\n sys.stdout.buffer.write((2).to_bytes(8,'little')+b'{{}}')\n sys.stdout.buffer.flush()\n", serde_json::to_string(marker.to_str().unwrap()).unwrap());
         let (executor, host) = selected_executor(&root);
         *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
         assert_eq!(
@@ -466,7 +468,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let (executor, host) = selected_executor(&root);
         let reply = r#"{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":{},"error":null}"#;
-        let script = format!("import sys,time\nfor line in sys.stdin.buffer:\n time.sleep(0.4)\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\n sys.stdout.buffer.flush()\n");
+        let script = format!("import sys,time\nfor line in sys.stdin.buffer:\n time.sleep(0.4)\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(8,'little')+v)\n sys.stdout.buffer.flush()\n");
         *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
         // Both slots are busy for 600 ms; the request then needs 400 ms of
         // execution. With a 700 ms budget it only succeeds if queueing is free.
@@ -513,7 +515,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let (executor, host) = selected_executor(&root);
         let reply = r#"{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":{},"error":null}"#;
-        let script = format!("import sys\nfor line in sys.stdin.buffer:\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\n sys.stdout.buffer.flush()\n");
+        let script = format!("import sys\nfor line in sys.stdin.buffer:\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(8,'little')+v)\n sys.stdout.buffer.flush()\n");
         *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
         executor
             .run_interactive_request(&host, DOCUMENT_REQUEST.as_bytes(), Duration::from_secs(2))
@@ -547,7 +549,7 @@ mod tests {
 
     #[test]
     fn interactive_timeout_also_bounds_a_worker_that_does_not_read_stdin() {
-        let mut worker = worker("import sys,time\nsys.stdout.buffer.write((2).to_bytes(4,'little')+b'{}')\nsys.stdout.buffer.flush()\ntime.sleep(60)");
+        let mut worker = worker("import sys,time\nsys.stdout.buffer.write((2).to_bytes(8,'little')+b'{}')\nsys.stdout.buffer.flush()\ntime.sleep(60)");
         let started = Instant::now();
         assert_eq!(
             worker.exchange(&vec![b'x'; 1024 * 1024], Duration::from_millis(50)),
@@ -559,12 +561,20 @@ mod tests {
 
     #[test]
     fn interactive_stdout_is_bounded_before_allocating_an_announced_frame() {
-        let mut worker = worker("import sys\nsys.stdin.buffer.readline()\nsys.stdout.buffer.write((33554433).to_bytes(4,'little'))\nsys.stdout.buffer.flush()");
+        let mut worker = worker("import sys\nsys.stdin.buffer.readline()\nsys.stdout.buffer.write((2**63).to_bytes(8,'little'))\nsys.stdout.buffer.flush()");
         assert_eq!(
             worker.exchange(b"{}", Duration::from_secs(2)),
             Err(ScientificCpythonUnavailable::StdoutTooLarge)
         );
         assert!(worker.child.try_wait().unwrap().is_some());
+    }
+
+    #[test]
+    fn interactive_frames_above_the_former_32_mib_ceiling_are_accepted() {
+        // 40 MiB: what an 898 x 1557 Playground response used to be refused for.
+        let mut worker = worker("import sys\nsys.stdin.buffer.readline()\nv=b'['+b'0,'*(20*1024*1024)+b'0]'\nsys.stdout.buffer.write(len(v).to_bytes(8,'little')+v)\nsys.stdout.buffer.flush()\nsys.stdin.buffer.readline()");
+        let output = worker.exchange(b"{}", Duration::from_secs(30)).unwrap();
+        assert_eq!(output.len(), 40 * 1024 * 1024 + 3);
     }
 
     #[test]
@@ -577,9 +587,10 @@ mod tests {
         assert!(admitted < script.find("import nirs4all\n").unwrap());
         assert!(script.find("import nirs4all\n").unwrap() < loop_start);
         assert!(script.contains("sys.stdout.buffer.flush()"));
-        assert!(script.contains("len(encoded).to_bytes(4, 'little')"));
-        assert!(!script.contains("sys.stdin.buffer.read(33554433)"));
-        let mut worker = worker("import sys,ast\nraw=sys.stdin.buffer.readline()\nimport json\nast.parse(json.loads(raw)['script'])\nv=b'{}'\nsys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\nsys.stdout.buffer.flush()");
+        assert!(script.contains("len(encoded).to_bytes(8, 'little')"));
+        assert!(!script.contains("sys.stdin.buffer.read()"));
+        assert!(script.contains("raw=sys.stdin.buffer.readline()\n"));
+        let mut worker = worker("import sys,ast\nraw=sys.stdin.buffer.readline()\nimport json\nast.parse(json.loads(raw)['script'])\nv=b'{}'\nsys.stdout.buffer.write(len(v).to_bytes(8,'little')+v)\nsys.stdout.buffer.flush()");
         worker
             .exchange(
                 serde_json::json!({"script":script}).to_string().as_bytes(),

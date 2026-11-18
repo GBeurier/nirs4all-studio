@@ -57,6 +57,7 @@ export default function HistogramBase({
   isClassificationMode,
   classBarData,
   isProcessed,
+  missingTargetCount,
   displayStats,
   selectedSamples,
   selectedClasses,
@@ -91,6 +92,11 @@ export default function HistogramBase({
           {isClassificationMode && (
             <span className="text-[10px] text-muted-foreground font-normal">
               {t('playground.charts.histogram.classCount', { count: colorContext?.classLabels?.length ?? 0 })}
+            </span>
+          )}
+          {missingTargetCount > 0 && (
+            <span className="text-[10px] text-muted-foreground font-normal">
+              {t('playground.charts.histogram.missingTargets', { count: missingTargetCount })}
             </span>
           )}
         </h3>

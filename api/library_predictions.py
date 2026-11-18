@@ -7,6 +7,7 @@ Scientific loading, replay, identity and metrics remain library operations.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +15,6 @@ import numpy as np
 
 from .shared.json_safe import sanitize_dict
 
-MAX_MODELS = 10000
-MAX_MULTIMODAL_DESCRIPTOR_BYTES = 1024 * 1024
 MULTIMODAL_DATASET_SCHEMA = "nirs4all.studio-multimodal-dataset.v1"
 
 
@@ -36,7 +35,8 @@ def available_models(document: dict[str, Any]) -> dict[str, Any]:
     root = Path(document["workspace_path"])
     models = []
     if (root / "store.sqlite").is_file():
-        for record in read_model_catalogue(root, max_models=MAX_MODELS):
+        # The whole catalogue: neither Studio nor the library bounds its size.
+        for record in read_model_catalogue(root):
             row, chain = record["summary"], record["chain"]
             steps = chain.get("steps") or []
             marker = steps[0].get("dagml_host_replay") if len(steps) == 1 and isinstance(steps[0], dict) else None
@@ -58,8 +58,8 @@ def available_models(document: dict[str, Any]) -> dict[str, Any]:
                 "target_names": marker.get("target_names", ["y"]),
             })
     exports = document.get("exports", [])
-    if not isinstance(exports, list) or len(exports) + len(models) > MAX_MODELS:
-        raise ValueError("Invalid or oversized model catalogue")
+    if not isinstance(exports, list):
+        raise ValueError("Invalid model catalogue")
     for record in exports:
         path = Path(record["path"])
         manifest = general_archive_manifest(path)
@@ -108,18 +108,15 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
 
             data, reader, sample_labels = load_prediction_file(
                 document["file_path"], params=document.get("params"), load_limits=document.get("load_limits"),
-                max_input_bytes=document.get("max_input_bytes", 512 * 1024 * 1024),
+                max_input_bytes=document.get("max_input_bytes", sys.maxsize),
             )
         else:
             config = document["config"]
             if isinstance(config, dict) and config.get("schema") == MULTIMODAL_DATASET_SCHEMA:
-                import json
-
                 from nirs4all.api.studio_scientific_general import _inline_dataset_arrays
 
-                if (set(config) != {"schema", "cohort"} or not isinstance(config["cohort"], dict)
-                        or len(json.dumps(config, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")) > MAX_MULTIMODAL_DESCRIPTOR_BYTES):
-                    raise ValueError("Invalid or oversized multimodal dataset descriptor")
+                if set(config) != {"schema", "cohort"} or not isinstance(config["cohort"], dict):
+                    raise ValueError("Invalid multimodal dataset descriptor")
                 if document.get("model_source") != "bundle" or not document.get("archive_fingerprint"):
                     raise ValueError("Multimodal prediction requires a fingerprinted exported bundle")
                 data = _inline_dataset_arrays(config)
@@ -128,7 +125,7 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
             else:
                 data, reader = load_dataset_for_analysis(
                     config, load_limits=document.get("load_limits"),
-                    max_input_bytes=document.get("max_input_bytes", 512 * 1024 * 1024),
+                    max_input_bytes=document.get("max_input_bytes", sys.maxsize),
                 )
         partition = document.get("partition") or "all"
         if partition not in {"all", "train", "val", "test"}:

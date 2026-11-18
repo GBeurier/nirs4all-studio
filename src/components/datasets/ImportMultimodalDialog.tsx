@@ -39,18 +39,11 @@ export function ImportMultimodalDialog({ open, onOpenChange, onImport }: Props) 
     setSummary(null);
     setError(null);
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setError(t("datasets.multimodalImport.tooLarge"));
-      return;
-    }
     try {
       const value: unknown = JSON.parse(await file.text());
       if (current !== selection.current) return;
       const candidate = value !== null && typeof value === "object" && !Array.isArray(value)
         ? value as Record<string, unknown> : null;
-      if (candidate && new TextEncoder().encode(JSON.stringify(candidate)).length > 1024 * 1024) {
-        throw new Error(t("datasets.multimodalImport.tooLarge"));
-      }
       const projection = getMultimodalDatasetSummary(candidate);
       if (!candidate || !projection) throw new Error(t("datasets.multimodalImport.invalid"));
       setDocument(candidate);

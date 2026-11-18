@@ -2,6 +2,7 @@
  * Shared types and interfaces for YHistogram sub-components.
  */
 
+import type { TargetValue } from '@/types/spectral';
 import type React from 'react';
 import type { SelectionContextValue } from '@/context/useSelection';
 import type { GlobalColorConfig, ColorContext } from '@/lib/playground/colorConfig';
@@ -90,9 +91,9 @@ export const RANGE_SELECTION_INITIAL: RangeSelection = {
 
 export interface YHistogramProps {
   /** Y values to display */
-  y: number[];
+  y: TargetValue[];
   /** Optional processed Y values (when y_processing is applied) */
-  processedY?: number[];
+  processedY?: TargetValue[];
   /** Fold information for fold-based visualization */
   folds?: FoldsInfo | null;
   /** Metadata for metadata-based coloring */
@@ -125,7 +126,7 @@ export interface HistogramChartProps {
   // Core data
   histogramData: BinData[];
   stats: YStats;
-  displayY: number[];
+  displayY: TargetValue[];
 
   // Config
   config: HistogramConfig;
@@ -183,6 +184,8 @@ export interface HistogramBaseProps {
   isClassificationMode: boolean;
   classBarData: ClassBarData[];
   isProcessed: boolean;
+  /** Displayed samples without a target value (excluded from bins and statistics). */
+  missingTargetCount: number;
   displayStats: YStats | null;
   selectedSamples: Set<number>;
   selectedClasses: Set<number>;

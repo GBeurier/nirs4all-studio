@@ -20,11 +20,18 @@ export interface WorkspaceDatasetInfo {
 export interface LoadWorkspaceDatasetOptions {
   sourceIndex?: number | null;
   targetIndex?: number | null;
+  /**
+   * Another view (target or source) of the dataset already shown: keep it on
+   * screen until the new view arrives, and reject on failure so the caller can
+   * report it while the current view stays.
+   */
+  keepCurrentData?: boolean;
 }
 
 export function useSpectralData() {
   const [rawData, setRawData] = useState<SpectralData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSwitchingView, setIsSwitchingView] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Track the source of the current data
   const [dataSource, setDataSource] = useState<'workspace' | 'demo' | null>(null);
@@ -36,6 +43,7 @@ export function useSpectralData() {
     pendingLoad.current?.abort();
     pendingLoad.current = null;
     setIsLoading(false);
+    setIsSwitchingView(false);
     setRawData(createSyntheticSpectralData());
     setDataSource('demo');
     setCurrentDatasetInfo(null);
@@ -52,9 +60,15 @@ export function useSpectralData() {
     pendingLoad.current?.abort();
     const controller = new AbortController();
     pendingLoad.current = controller;
-    setIsLoading(true);
-    setError(null);
-    setRawData(null);
+    const keepCurrentData = options.keepCurrentData === true;
+    if (keepCurrentData) {
+      setIsSwitchingView(true);
+    } else {
+      setIsSwitchingView(false);
+      setIsLoading(true);
+      setError(null);
+      setRawData(null);
+    }
 
     try {
       const data = await loadWorkspaceDataset(datasetId, datasetName, partition, {
@@ -77,6 +91,7 @@ export function useSpectralData() {
       });
     } catch (err) {
       if (controller.signal.aborted || pendingLoad.current !== controller) return;
+      if (keepCurrentData) throw err;
       setError(err instanceof Error ? err.message : formatApiErrorDetail((err as { detail?: unknown }).detail));
       setRawData(null);
       setDataSource(null);
@@ -85,6 +100,7 @@ export function useSpectralData() {
       if (pendingLoad.current === controller) {
         pendingLoad.current = null;
         setIsLoading(false);
+        setIsSwitchingView(false);
       }
     }
   }, []);
@@ -93,6 +109,7 @@ export function useSpectralData() {
     pendingLoad.current?.abort();
     pendingLoad.current = null;
     setIsLoading(false);
+    setIsSwitchingView(false);
     setRawData(null);
     setError(null);
     setDataSource(null);
@@ -102,6 +119,7 @@ export function useSpectralData() {
   return {
     rawData,
     isLoading,
+    isSwitchingView,
     error,
     dataSource,
     currentDatasetInfo,

@@ -129,17 +129,13 @@ pub struct MultipartPart<'a> {
     pub(crate) payload: &'a [u8],
 }
 
-/// Shared bounded form transport. Payloads borrow the already-admitted HTTP
-/// body; callers apply their own field, filename and persistence policies.
+/// Shared form transport. Payloads borrow the HTTP body the listener admitted
+/// within host memory; callers apply their own field, filename and persistence
+/// policies.
 pub fn multipart_parts<'a>(
     content_type: &str,
     body: &'a [u8],
-    max_bytes: usize,
-    max_parts: usize,
 ) -> Result<Vec<MultipartPart<'a>>, String> {
-    if body.len() > max_bytes {
-        return Err(format!("Upload exceeds {max_bytes} bytes"));
-    }
     let boundary = boundary(content_type)?;
     let first = format!("--{boundary}\r\n");
     let delimiter = format!("\r\n--{boundary}");
@@ -148,9 +144,6 @@ pub fn multipart_parts<'a>(
         .ok_or("Missing multipart opening boundary")?;
     let mut parts = Vec::new();
     loop {
-        if parts.len() >= max_parts {
-            return Err("Too many upload fields".into());
-        }
         let header_end = remaining
             .windows(4)
             .position(|bytes| bytes == b"\r\n\r\n")
@@ -189,12 +182,7 @@ pub fn multipart_parts<'a>(
 }
 
 pub fn parse(content_type: &str, body: &[u8]) -> Result<PredictionUpload, String> {
-    let parts = multipart_parts(
-        content_type,
-        body,
-        crate::matrix_limits::MAX_PREDICTION_BODY_BYTES,
-        8,
-    )?;
+    let parts = multipart_parts(content_type, body)?;
     let mut values = Map::new();
     let mut file = None;
     for MultipartPart {

@@ -10,12 +10,12 @@
   },
   "requirements": {
     "required": [
-      "nirs4all==1.4.16",
-      "nirs4all-core==0.5.0",
-      "dag-ml==0.4.0",
-      "dag-ml-data==0.2.16",
-      "nirs4all-io==0.3.1",
-      "nirs4all-methods==1.3.15"
+      "nirs4all==1.4.19",
+      "nirs4all-core==0.5.1",
+      "dag-ml==0.4.3",
+      "dag-ml-data==0.2.17",
+      "nirs4all-io==0.3.6",
+      "nirs4all-methods==1.3.18"
     ],
     "recommended": [
       "pyopls==20.3.post1",
@@ -79,24 +79,24 @@
     },
     {
       "name": "dag-ml",
-      "version": "0.4.0",
-      "filename": "dag_ml-0.4.0-cp311-abi3-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/56/cb/18dc33f22694219f1f198e831783d25ebcc869fbd9cafcbb428dcad59ffb/dag_ml-0.4.0-cp311-abi3-win_amd64.whl",
-      "sha256": "dbc55c0d5070d39af3c3722e7a2fcc08ddf9d77ee452a14b59f906203150f8fc"
+      "version": "0.4.3",
+      "filename": "dag_ml-0.4.3-cp311-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/f8/be/cc344da2a358ad395179af58858811c6184522c7898ad11d12d5fb4329a0/dag_ml-0.4.3-cp311-abi3-win_amd64.whl",
+      "sha256": "551f567b9f1b7646b401b61f1d6a6df27ea16d063ef60893d5bd730d79d5f349"
     },
     {
       "name": "dag-ml-data",
-      "version": "0.2.16",
-      "filename": "dag_ml_data-0.2.16-cp311-abi3-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/03/0c/c9dd3688cc246cd047507fa7f39b6a384f4d4975d83f4ce03ea917f3dabb/dag_ml_data-0.2.16-cp311-abi3-win_amd64.whl",
-      "sha256": "102fbc0a54f0f87e3d3c2ea7174b683921e9c5781d67ae20889fd755f043f1af"
+      "version": "0.2.17",
+      "filename": "dag_ml_data-0.2.17-cp311-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/97/3d/e5c26f4a4d7125c68b410d73fe94114d0e938d8d1f2862adc980e6b8ce43/dag_ml_data-0.2.17-cp311-abi3-win_amd64.whl",
+      "sha256": "11a230d0d00d5a5d979589dcdbabca431b953e0b88adb94749e9a20ea2510184"
     },
     {
       "name": "filelock",
-      "version": "4.2.10",
-      "filename": "filelock-4.2.10-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/ef/90/5d0096a325aa0f83ba7a3968bfb485b67e32c947bdf9cd0fcb4b485be718/filelock-4.2.10-py3-none-any.whl",
-      "sha256": "9479aaeb4db20b5a53e3da28493edd24720b66b8a0b84030aa56ccdf243d6857"
+      "version": "4.2.12",
+      "filename": "filelock-4.2.12-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/8a/c9/eb6b6528c7edb958d4c24ac47a8b94113d9de36e4cfc6eecd599b1a4f349/filelock-4.2.12-py3-none-any.whl",
+      "sha256": "21decfec02f116ed4c954433cdb31f28c3b346b784543177b6d7059da2702ee9"
     },
     {
       "name": "fsspec",
@@ -184,10 +184,10 @@
     },
     {
       "name": "narwhals",
-      "version": "2.28.0",
-      "filename": "narwhals-2.28.0-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/cf/82/8ef9c7e0f50493307a49c09cfa7f00c5a778b6d1921f7b2dabe1d3a5809e/narwhals-2.28.0-py3-none-any.whl",
-      "sha256": "1f69d6385ec30e2fa6e1fdeb37c562ecabd0f713f6f3e3b58a668c5c9df9567f"
+      "version": "2.29.0",
+      "filename": "narwhals-2.29.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/9e/2b/20b4b463c3795dc390db8fa6ec2b5c3e0aea90a760f813305da4c33dd814/narwhals-2.29.0-py3-none-any.whl",
+      "sha256": "1c69b3dc30240f6e848c5a673cafc86affa44184ecce721e25b7194663ad10dc"
     },
     {
       "name": "networkx",
@@ -198,31 +198,31 @@
     },
     {
       "name": "nirs4all",
-      "version": "1.4.16",
-      "filename": "nirs4all-1.4.16-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl",
-      "sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
+      "version": "1.4.19",
+      "filename": "nirs4all-1.4.19-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl",
+      "sha256": "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9"
     },
     {
       "name": "nirs4all-core",
-      "version": "0.5.0",
-      "filename": "nirs4all_core-0.5.0-cp311-abi3-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/c7/54/a4105ec6e50e4497dd84be84eb109b2d716a03449fb3ddcb59b53de8a107/nirs4all_core-0.5.0-cp311-abi3-win_amd64.whl",
-      "sha256": "f28405da9cb3fed25bbdbda05356a40c7908dc2a280900c19394152f5b3588a7"
+      "version": "0.5.1",
+      "filename": "nirs4all_core-0.5.1-cp311-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/05/e0/7b593d5b6eb42574c4f347d9eb69057cfa424b6ca9a1c634f17672edf611/nirs4all_core-0.5.1-cp311-abi3-win_amd64.whl",
+      "sha256": "b8c028560284f397bff408c550b46edb6caf1ceda083c80e98d95f66cadd3b02"
     },
     {
       "name": "nirs4all-io",
-      "version": "0.3.1",
-      "filename": "nirs4all_io-0.3.1-cp311-abi3-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/82/12/5fa6aa4b11116ce264eb1f319dded80a4dea19346f9d2a5dfc0df5ac5575/nirs4all_io-0.3.1-cp311-abi3-win_amd64.whl",
-      "sha256": "d21e234ca2e4ff2d1e9a03ab6dc21d512be9b94ef41f99168f6f7123d26934eb"
+      "version": "0.3.6",
+      "filename": "nirs4all_io-0.3.6-cp311-abi3-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/f1/b5/2b5baa357aa1bc9d914895f9c6a535a369dd59474a70e1a781ab698d4639/nirs4all_io-0.3.6-cp311-abi3-win_amd64.whl",
+      "sha256": "c8e8521e99c3a06a710f424fcbd6695bdb738c9aa08ca4891acd818593ce1ce6"
     },
     {
       "name": "nirs4all-methods",
-      "version": "1.3.15",
-      "filename": "nirs4all_methods-1.3.15-py3-none-win_amd64.whl",
-      "url": "https://files.pythonhosted.org/packages/e9/b9/a8094247467e6bcc7887fc931401ee324841cd2548517b22e41ce1ad4f58/nirs4all_methods-1.3.15-py3-none-win_amd64.whl",
-      "sha256": "c1b5aea768a5adcdf9cca0043c1457f037b3571faa009a5fd7c53c7a04d64c04"
+      "version": "1.3.18",
+      "filename": "nirs4all_methods-1.3.18-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/31/69/45cf64979c57222e75bde70e964ce373d44b2eadcab1ebd6d55effbf3f99/nirs4all_methods-1.3.18-py3-none-win_amd64.whl",
+      "sha256": "c3daecdc8a86c8f5692dc284f39d5ef149541790986ca800e2b75a8a6a60a10d"
     },
     {
       "name": "numba",

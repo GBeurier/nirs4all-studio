@@ -6,6 +6,7 @@ are delegated to nirs4all. This module has no HTTP listener or application state
 from __future__ import annotations
 
 import importlib.util
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -141,17 +142,16 @@ def shap_compute(document: dict[str, Any]) -> dict[str, Any]:
     from nirs4all.api.dataset_inspection import load_dataset_for_analysis
 
     started = time.monotonic()
-    data, _ = load_dataset_for_analysis(document["config"], max_input_bytes=512 * 1024 * 1024)
+    # Studio sets no input ceiling: the memory of this worker bounds the load.
+    data, _ = load_dataset_for_analysis(document["config"], max_input_bytes=sys.maxsize)
     selector = {} if document.get("partition") == "all" else {"partition": document.get("partition", "test")}
     X = np.asarray(data.x(selector, layout="2d"))
     y = np.asarray(data.y(selector))
     indices = list(range(len(X)))
     if document.get("n_samples") and len(X) > document["n_samples"]:
         indices = sorted(np.random.default_rng(42).choice(len(X), document["n_samples"], replace=False).tolist())
-    if not X.size or X.size > 2_000_000:
-        raise ValueError("SHAP partition is empty or exceeds the 2 million cell input budget; choose a smaller partition")
-    if len(indices) * X.shape[1] > 500_000:
-        raise ValueError("SHAP explanation exceeds the bounded result budget; reduce n_samples")
+    if not X.size:
+        raise ValueError("SHAP partition is empty; choose another partition")
     wavelengths, axis_unit = shap_axis(data, X.shape[1])
     names = [f"Feature {index}" if axis_unit == "index" else f"{value:.1f} {axis_unit or ''}".strip() for index, value in enumerate(wavelengths)]
     source = {"chain_id": document["model_id"], "workspace_path": document["workspace_path"]} if document["model_source"] == "chain" else document["bundle_path"]

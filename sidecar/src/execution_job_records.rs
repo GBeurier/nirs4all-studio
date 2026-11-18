@@ -11,7 +11,6 @@ use std::{
 use atomicwrites::{AllowOverwrite, AtomicFile};
 use serde_json::{json, Map, Value};
 
-pub const MAX_EXECUTION_JOB_RECORD_BYTES: u64 = 256 * 1024;
 pub const EXECUTION_JOB_RECORD_CONTRACT: &str =
     include_str!("../contracts/studio_execution_job_record_v1.json");
 
@@ -65,7 +64,6 @@ pub enum ExecutionJobRecordWriteError {
     InvalidIdentifier,
     SymlinkOrEscape,
     TargetAlreadyExists,
-    TooLarge,
     InvalidShape,
     Write,
 }
@@ -145,7 +143,8 @@ pub fn read_execution_job_record(
         return Err(ExecutionJobRecordReadError::SymlinkOrEscape);
     }
     let before = file_stamp(&canonical)?;
-    if before.len > MAX_EXECUTION_JOB_RECORD_BYTES {
+    let limit = crate::host_memory::allowance_u64();
+    if before.len > limit {
         return Err(ExecutionJobRecordReadError::TooLarge);
     }
     let mut file = File::open(&canonical).map_err(|_| ExecutionJobRecordReadError::Read)?;
@@ -153,10 +152,10 @@ pub fn read_execution_job_record(
         usize::try_from(before.len).map_err(|_| ExecutionJobRecordReadError::TooLarge)?;
     let mut bytes = Vec::with_capacity(capacity);
     Read::by_ref(&mut file)
-        .take(MAX_EXECUTION_JOB_RECORD_BYTES + 1)
+        .take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|_| ExecutionJobRecordReadError::Read)?;
-    if bytes.len() as u64 > MAX_EXECUTION_JOB_RECORD_BYTES {
+    if bytes.len() as u64 > limit {
         return Err(ExecutionJobRecordReadError::TooLarge);
     }
     if file_stamp(&canonical)? != before {
@@ -246,9 +245,6 @@ pub fn write_execution_job_record(
     let mut encoded =
         serde_json::to_vec(record).map_err(|_| ExecutionJobRecordWriteError::InvalidShape)?;
     encoded.push(b'\n');
-    if encoded.len() as u64 > MAX_EXECUTION_JOB_RECORD_BYTES {
-        return Err(ExecutionJobRecordWriteError::TooLarge);
-    }
     AtomicFile::new(&path, AllowOverwrite)
         .write(|file| file.write_all(&encoded).and_then(|()| file.sync_all()))
         .map_err(|_| ExecutionJobRecordWriteError::Write)
@@ -439,8 +435,8 @@ fn validate_contract() -> Result<(), ExecutionJobRecordReadError> {
         || contract.get("schema_version").and_then(Value::as_u64) != Some(1)
         || contract
             .pointer("/snapshot/maximum_bytes")
-            .and_then(Value::as_u64)
-            != Some(MAX_EXECUTION_JOB_RECORD_BYTES)
+            .and_then(Value::as_str)
+            != Some("host_memory")
         || contract
             .pointer("/ownership/fallback_after_native_selection")
             .and_then(Value::as_str)
@@ -632,7 +628,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn refuses_symlinked_snapshots_and_oversized_files() {
+    fn refuses_symlinked_snapshots_and_reads_long_records() {
         use std::os::unix::fs::symlink;
 
         let root = workspace();
@@ -649,14 +645,15 @@ mod tests {
             Err(ExecutionJobRecordReadError::SymlinkOrEscape)
         );
         fs::remove_file(&path).unwrap();
-        fs::write(
-            &path,
-            vec![b' '; usize::try_from(MAX_EXECUTION_JOB_RECORD_BYTES).unwrap() + 1],
-        )
-        .unwrap();
+        // Beyond the former 256 KiB ceiling: a long request is read back whole.
+        let mut large = record("job-1");
+        large["request"]["notes"] = json!("x".repeat(1024 * 1024));
+        write_record(&root, "job-1", &large);
         assert_eq!(
-            read_execution_job_record(&root, "job-1"),
-            Err(ExecutionJobRecordReadError::TooLarge)
+            read_execution_job_record(&root, "job-1").unwrap()["request"]["notes"]
+                .as_str()
+                .map(str::len),
+            Some(1024 * 1024)
         );
         fs::remove_dir_all(root).unwrap();
         fs::remove_file(outside).unwrap();

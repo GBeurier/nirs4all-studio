@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.17.2] — 2026-11-18
+
+### Fixed
+
+- Datasets with missing values or several target columns work again: runs on
+  them start and complete. The settings chosen at import are kept (target
+  columns, default target, missing-value tokens) and the dataset name edited
+  in the dataset dialog is saved.
+- With several target columns, the experiment review step asks which target
+  the run models (the dataset's default target first) and shows how many
+  samples have no value for it. Samples without a value for that target can
+  be removed for this run only; spectra, target and metadata stay aligned.
+- Missing values in spectra no longer prevent loading: the dataset loads as
+  is and records how many values are missing in how many samples. When a run
+  uses such a dataset, the review step asks whether to remove the affected
+  samples, replace the values (constant, previous or next wavelength) or
+  leave them to the pipeline. Saved datasets are never rewritten.
+- A refused run names the dataset, the setting and the file at fault instead
+  of a generic error, and no longer speaks of "preflight".
+- The Playground renders datasets whose target has missing values; those
+  samples stay in spectra and projections in a neutral colour, and PCA/UMAP
+  projections use the complete samples and say how many were left out.
+- The Playground offers its target selector whatever opened it (the dataset
+  picker, a dataset's page or a stored session), opens on the dataset's
+  default target and lists every target with its count of missing values.
+- Large datasets no longer fail in the Playground or elsewhere because of a
+  fixed size ceiling (for example 898 spectra by 1,557 wavelengths, refused
+  at 32 MiB before). Studio imposes no content-size or entry-count ceiling of
+  its own: a payload is refused only when it exceeds a quarter of the memory
+  available at that moment, and the message says so. The Playground charts
+  and analyses use the full spectral resolution, and the prediction model
+  catalogue lists every captured model.
+
+### Changed
+
+- Python environment: Studio installs nirs4all 1.4.19 with nirs4all-core
+  0.5.1, dag-ml 0.4.3, dag-ml-data 0.2.17, nirs4all-io 0.3.6 and
+  nirs4all-methods 1.3.18 (libn4m ABI 2.23). An existing environment is kept
+  as long as its nirs4all is at least 1.4.19 (below 1.5); an older one is
+  offered the update to the required packages, so the fixes above reach
+  existing environments.
+- The native backend uses the published nirs4all 0.5.1 crate with nirs4all-io
+  0.3.6, dag-ml 0.4.3, dag-ml-data 0.2.17, nirs4all-formats 0.2.17 and n4m
+  0.4.2.
+- Studio depends on the ecosystem libraries at minor-version granularity
+  (for example nirs4all-io `>=0.3,<0.4`); exact versions are recorded only
+  in lockfiles and the installed package set.
+
 ## [0.17.1] — 2026-11-17
 
 ### Changed

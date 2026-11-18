@@ -307,27 +307,45 @@ pub fn invoke_with_validation(
         }
         let dependencies = before;
         let bytes = dependencies.iter().fold(
-            serde_json::to_vec(&result)
-                .map_err(|error| error.to_string())?
-                .len(),
+            encoded_len(&result).map_err(|error| error.to_string())?,
             |bytes, dependency| {
                 bytes
                     .saturating_add(dependency.path.as_os_str().len())
                     .saturating_add(std::mem::size_of::<FileStamp>())
             },
         );
-        cache()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(Entry {
-                key,
-                dependencies,
-                result: result.clone(),
-                bytes,
-                created: Instant::now(),
-            });
+        // A result too large to memoize is returned without being copied.
+        if bytes <= MAX_ENTRY_BYTES {
+            cache()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(Entry {
+                    key,
+                    dependencies,
+                    result: result.clone(),
+                    bytes,
+                    created: Instant::now(),
+                });
+        }
     }
     Ok(result)
+}
+
+/// Encoded JSON length of `value`, counted without materializing the bytes.
+fn encoded_len(value: &Value) -> serde_json::Result<usize> {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    serde_json::to_writer(&mut counter, value)?;
+    Ok(counter.0)
 }
 
 pub fn adapt(

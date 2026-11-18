@@ -5,7 +5,7 @@
     "method": "POST",
     "path": "/api/runs/run-groups",
     "query_string": "absent",
-    "maximum_body_bytes": 65536,
+    "maximum_body_bytes": "host_memory",
     "content": "strict_json_object"
   },
   "ownership": {
@@ -50,10 +50,7 @@
     "engine": "dag-ml_required",
     "allow_fallback": false,
     "skipped_run_ids": "forbidden",
-    "maximum_split_specs": 64,
-    "maximum_collection_items": 256,
-    "maximum_string_bytes": 4096,
-    "maximum_nesting_depth": 16,
+    "content_bounds": "host_memory_only_no_size_or_count_ceiling_json_depth_bounded_by_parser",
     "non_finite_numbers": "reject",
     "identities": "nonempty_bounded_no_control_characters"
   },
@@ -114,7 +111,7 @@
       "status": 503,
       "body": {
         "code": "typed_stable_refusal_code",
-        "detail": "Scientific job executor preflight failed: {refusal_explanation} ({code})"
+        "detail": "The run cannot start: {refusal_explanation} ({code})"
       }
     },
     "executor_submission": {

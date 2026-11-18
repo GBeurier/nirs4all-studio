@@ -12,6 +12,8 @@ export interface DimensionReductionFooterProps {
   xAxisLabel: string;
   yAxisLabel: string;
   selectedCount: number;
+  /** Samples the projection left out because their spectrum has missing values. */
+  leftOutCount?: number;
   globalColorConfig?: GlobalColorConfig;
   colorContext?: ColorContext;
   hasReferenceData: boolean;
@@ -24,15 +26,22 @@ export function DimensionReductionFooter({
   xAxisLabel,
   yAxisLabel,
   selectedCount,
+  leftOutCount = 0,
   globalColorConfig,
   colorContext,
   hasReferenceData,
   referenceLabel,
 }: DimensionReductionFooterProps) {
   const { t } = useTranslation();
+  const leftOut = leftOutCount > 0 && (
+    <span className="text-amber-700 dark:text-amber-400">
+      {t('playground.charts.dimReduction.footer.leftOut', { count: leftOutCount })}
+    </span>
+  );
 
   if (compact) {
-    return null;
+    // The left-out count is never hidden: it changes what the chart shows.
+    return leftOut ? <div className="mt-1 text-[10px]">{leftOut}</div> : null;
   }
 
   return (
@@ -43,6 +52,7 @@ export function DimensionReductionFooter({
             {t('playground.charts.dimReduction.footer.variance', { x: xAxisLabel, y: yAxisLabel })}
           </span>
         )}
+        {leftOut}
         {selectedCount > 0 && (
           <span className="text-primary font-medium">
             {t('playground.charts.dimReduction.footer.selected', { count: selectedCount })}

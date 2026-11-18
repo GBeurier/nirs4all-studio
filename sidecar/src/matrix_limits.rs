@@ -1,4 +1,6 @@
-//! Shared spectral dimensions for training, catalogue and prediction.
+//! Dimensions frozen by the native Archive V2 prediction and native training
+//! contracts (`contracts/studio_archive_v2_prediction_v1.json`). The general
+//! prediction, Playground and document routes are bounded by host memory only.
 
 pub const MAX_SPECTRAL_FEATURES: usize = 8_192;
 

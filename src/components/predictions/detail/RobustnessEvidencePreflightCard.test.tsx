@@ -88,7 +88,7 @@ describe("RobustnessEvidencePreflightCard", () => {
       <RobustnessEvidencePreflightCard evidence={evidence()} loading={false} />,
     );
 
-    expect(container.textContent).toContain("Spectral/OOD replay preflight: blocked");
+    expect(container.textContent).toContain("Spectral/OOD replay check: blocked");
     expect(container.textContent).toContain("Prediction-space ready");
     expect(container.textContent).toContain("Spectral/OOD blocked");
     expect(container.textContent).toContain("Evidence present 1/2");

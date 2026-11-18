@@ -4,16 +4,21 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
-## Public backend owner cohort (2026-11-09)
+## Public backend owner cohort (2026-11-18)
 
-`contracts/studio_native_source_cohort_v2.json` selects Core 0.5.0, DAG 0.4.0,
-DMD 0.2.16, IO 0.3.1, Formats 0.2.16 and Rust n4m 0.4.2 from crates.io.
-Core requires Rust IO 0.3.1 exactly; Studio uses the same version. Use the
-ordinary registry lock without candidate source overrides. Browser npm and
+`contracts/studio_native_source_cohort_v2.json` selects Core 0.5.1, DAG 0.4.3,
+DMD 0.2.17, IO 0.3.6, Formats 0.2.17 and Rust n4m 0.4.2 from crates.io.
+`Cargo.toml` depends on the owner crates at minor granularity (`nirs4all =
+"0.5"`, `nirs4all-io = "0.3"`), and `Cargo.lock` selects the exact cohort shared
+with Core, so one Rust IO version resolves. Use the ordinary registry lock
+without candidate source overrides. The Python
+environment follows `recommended-config.json` (`required`) and may carry newer
+owner releases than this Rust graph: the Rust crates move only with a Core
+crate release that pins them. Browser npm and
 owner-built browser artifacts have separate provenance and are not this graph.
 
-Packaged Methods has two explicit identity paths at ABI 2.22. The default
-`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.15
+Packaged Methods has two explicit identity paths at ABI 2.23. The default
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.18
 artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
 installed library size/hash, wheel reference and unknown source. It does not
 infer a source commit from the package version, ABI, public tag or Rust crate.
@@ -35,8 +40,8 @@ The retained injected HTTP test alone does not qualify that startup path.
 The ignored `public_methods_wheel_startup` integration test launches the real
 binary and replays the same owner-produced fixture, then checks typed refusal
 for absent, incompatible or altered selections without acquiring Python.
-SDK 1.4.16 is public, confirmed by Root publication run 42612130615 and the
-recorded public wheel hash. Studio host installation and current-closure
+SDK 1.4.19 is public on PyPI; `build/runtime-cohort.json` records its wheel
+hash and source commit. Studio host installation and current-closure
 qualification remain separate; historical SDK shipping receipts do not qualify
 that closure. The retained SDK host-cohort status is owned by that integration
 lane and is not a claim that the SDK is absent from the public registry.
@@ -62,6 +67,21 @@ pagination. Mixed protocols/domains, macro plus pooled rows, and older macro
 results with missing provenance are refused explicitly. Individual prediction
 pages remain available. The legacy prediction-row dashboard refuses this mode;
 its averages cannot represent chain macro scores.
+
+## Size bounds: host memory only
+
+Studio imposes no content-size or entry-count ceiling of its own: request
+bodies, Python worker requests and responses, workspace documents and
+catalogues, uploads, run histories and model catalogues are bounded only by
+`host_memory::allowance()`, a quarter of the memory the operating system reports
+as available when the operation runs (cgroup-aware on Linux, installed memory
+on macOS). A refusal tells the user the operation needs more memory than the
+computer can spare. Kept fixed bounds are protocol frames of fixed shape (HTTP
+headers, WebSocket control messages, the admission probe and fixed receipts),
+the frozen native Archive V2 prediction/training contract, and bounds owned by
+the libraries (IO decoding defaults, the SDK model-catalogue maximum). The
+Playground worker raises the SDK's fixed 8/32 MiB Playground transport ceilings,
+which the host bounds by memory instead.
 
 ## Status and boundary
 
@@ -194,8 +214,8 @@ CPython library host is configured and preflights the exact owner callable.
 The route surface is always registered but remains fail-closed; static
 capabilities distinguish that surface from host configuration and never claim
 scientific Python execution. Each preflight and target uses a fresh isolated
-(`-I`) process, strict JSON stdin, a 15 second deadline, 8 KiB input, 4 MiB stdout, and 64 KiB stderr
-bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
+(`-I`) process, strict JSON stdin, a 15 second deadline, 8 KiB input, stdout bounded by the memory
+the host can spare, and 64 KiB stderr bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
 response, and never exposes stderr or the resolved workspace path. Missing or
 old stores reject before the target HTTP request in the default session; an
 explicit diagnostic session owns all renderer routes before probing. A native
