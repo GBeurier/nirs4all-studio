@@ -1343,6 +1343,10 @@ fn scientific_worker_command(
         .env("MPLBACKEND", "Agg")
         .env("MPLCONFIGDIR", scratch.join("matplotlib"))
         .env("XDG_CACHE_HOME", scratch.join("cache"))
+        // Windows Python resolves `Path.home()` from USERPROFILE; without it
+        // libraries raise "Could not determine home directory.". Keep the
+        // host contained by pointing home at the private scratch directory.
+        .env("USERPROFILE", scratch)
         .env("TMPDIR", scratch)
         .env("TMP", scratch)
         .env("TEMP", scratch)
@@ -3064,6 +3068,24 @@ done"#,
             String::from_utf8_lossy(&output.stdout).trim(),
             "application"
         );
+    }
+
+    #[test]
+    fn scientific_worker_home_is_the_private_scratch_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let host = ScientificHost {
+            python: root.path().join("python"),
+            site_packages: root.path().join("site-packages"),
+            adapters: root.path().join("adapters"),
+            distribution_version: String::new(),
+        };
+        let scratch = ScratchDirectory::create().unwrap();
+        let command = scientific_worker_command(&host, &scratch.path, "").unwrap();
+        let home = command
+            .get_envs()
+            .find(|(key, _)| *key == OsStr::new("USERPROFILE"))
+            .and_then(|(_, value)| value);
+        assert_eq!(home, Some(scratch.path.as_os_str()));
     }
 
     #[cfg(unix)]
