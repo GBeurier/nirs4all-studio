@@ -358,6 +358,33 @@ distribution in the offline and image closures, and is built into a wheel with
 a `uv`-managed Python when the payload is built. Every other locked file is a
 wheel, and no required package is built from source on any target.
 
+### Version constraints
+
+Studio follows the ecosystem contract for cross-repository dependencies: a
+constraint is never more precise than the minor version. The sidecar depends on
+`nirs4all = "0.5"` and `nirs4all-io = "0.3"` (Cargo caret ranges), and the
+`range` of a `required` package in `recommended-config.json` (the versions an
+existing Python environment may hold) uses the same granularity:
+`nirs4all-io >=0.3,<0.4`, `nirs4all-methods >=1.3,<2`; an empty range accepts
+any version. The `nirs4all` range is the exception: Studio reinstalls the
+required cohort at its `install` versions only when an environment falls
+outside these ranges, so the SDK range floor (`>=1.4.18,<1.5`) is how a Studio
+release delivers an SDK fix to existing environments, and its minor cap is
+where Studio qualifies its Python host. This is a documented exception to the
+minor-granularity rule, decided by the maintainer: a product's
+environment-admission floor may carry a patch floor when it is the delivery
+mechanism for a fix, whereas library-to-library constraints may not. Exact versions are not
+constraints: the `install` versions, the hash-pinned wheel locks above,
+`sidecar/Cargo.lock`, `build/runtime-cohort.json` and the packaged Methods
+identity define exactly what Studio installs and ships, and stay exact. An
+owner patch release therefore never forces a Studio release; a fix needed from
+a specific owner patch reaches users through these locks. In return an owner
+patch release changes no wire format, persisted schema, `.n4a` payload
+semantics or native ABI; the full policy is
+`docs/contracts/release/VERSION_CONSTRAINTS.md` in `nirs4all-ecosystem`.
+`tests/test_nirs4all_release_pin.py` checks the sidecar ranges, the single
+source of the SDK range and the locks.
+
 ### Supported release formats
 
 Publish NSIS for Windows and DEB for Linux, each with its offline variant, DMG

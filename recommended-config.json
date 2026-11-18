@@ -8,8 +8,8 @@
     { "name": "nirs4all-core", "range": "", "install": "0.5.0" },
     { "name": "dag-ml", "range": "", "install": "0.4.2" },
     { "name": "dag-ml-data", "range": "", "install": "0.2.17" },
-    { "name": "nirs4all-io", "range": ">=0.3.0,<0.4", "install": "0.3.5" },
-    { "name": "nirs4all-methods", "range": ">=1.3.18,<2", "install": "1.3.18" }
+    { "name": "nirs4all-io", "range": ">=0.3,<0.4", "install": "0.3.5" },
+    { "name": "nirs4all-methods", "range": ">=1.3,<2", "install": "1.3.18" }
   ],
   "profiles": {
     "cpu": {
