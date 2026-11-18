@@ -66,8 +66,8 @@
     },
     {
       "path": "api/library_predictions.py",
-      "size": 13069,
-      "sha256": "59946a5705490f963473e8d553fe91f6bd8fe90dab7fb3111960b647b691e883"
+      "size": 12979,
+      "sha256": "bc728bf303aac1baf53e0462229ebd89063b386a8f10a7101722d039f6a9f7f2"
     },
     {
       "path": "api/node_registry_loader.py",

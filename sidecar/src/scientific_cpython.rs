@@ -258,12 +258,9 @@ with contextlib.redirect_stdout(sys.stderr):
             from nirs4all.api.general_synthesis import studio_synthetic_dataset_job_v1 as facade
             response_limit=65536
         else:
-            import nirs4all.api.library_playground as playground
             # Studio, the host, bounds this exchange by the memory it can spare
-            # (Rust refuses a larger frame). The library's fixed 8 MiB request
-            # and 32 MiB response ceilings would refuse ordinary datasets.
-            playground.MAX_PLAYGROUND_REQUEST_BYTES=playground.MAX_PLAYGROUND_RESPONSE_BYTES=float("inf")
-            facade=playground.studio_playground_job_v1
+            # (Rust refuses a larger frame); the library imposes no ceiling.
+            from nirs4all.api.library_playground import studio_playground_job_v1 as facade
             response_limit=None
         try:
             response=facade(request)
@@ -2427,9 +2424,7 @@ progress_tick()
         assert_eq!(input, output);
         // Above the former 32 MiB ceiling that refused an 898 x 1557 dataset.
         assert!(output > 256 * 1024 * 1024);
-        assert!(EXECUTION_SCRIPT.contains(
-            "playground.MAX_PLAYGROUND_REQUEST_BYTES=playground.MAX_PLAYGROUND_RESPONSE_BYTES=float(\"inf\")"
-        ));
+        assert!(!EXECUTION_SCRIPT.contains("MAX_PLAYGROUND"));
         validate_library_facade_response(
             "nirs4all.studio-synthetic-dataset-job.v1",
             &serde_json::json!({
@@ -2460,7 +2455,7 @@ progress_tick()
         )
         .unwrap();
         assert!(EXECUTION_SCRIPT.contains("studio_synthetic_dataset_job_v1 as facade"));
-        assert!(EXECUTION_SCRIPT.contains("facade=playground.studio_playground_job_v1"));
+        assert!(EXECUTION_SCRIPT.contains("studio_playground_job_v1 as facade"));
     }
 
     #[test]

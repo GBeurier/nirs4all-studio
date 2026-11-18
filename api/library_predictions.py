@@ -35,9 +35,8 @@ def available_models(document: dict[str, Any]) -> dict[str, Any]:
     root = Path(document["workspace_path"])
     models = []
     if (root / "store.sqlite").is_file():
-        # The library's own maximum: it accepts no larger value and refuses a
-        # store holding more chains. Studio adds no ceiling of its own.
-        for record in read_model_catalogue(root, max_models=10_000):
+        # The whole catalogue: neither Studio nor the library bounds its size.
+        for record in read_model_catalogue(root):
             row, chain = record["summary"], record["chain"]
             steps = chain.get("steps") or []
             marker = steps[0].get("dagml_host_replay") if len(steps) == 1 and isinstance(steps[0], dict) else None
