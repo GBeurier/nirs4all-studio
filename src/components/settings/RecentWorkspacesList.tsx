@@ -7,6 +7,7 @@
  * Phase 3 Implementation
  */
 
+import { displayPath } from "@/lib/displayPath";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
@@ -101,7 +102,7 @@ function WorkspaceItem({
 
           {/* Path */}
           <p className="text-xs text-muted-foreground mt-1 truncate">
-            {workspace.path}
+            {displayPath(workspace.path)}
           </p>
 
           {/* Stats row */}

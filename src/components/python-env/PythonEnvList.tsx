@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Plus } from "lucide-react";
 
@@ -74,7 +75,7 @@ export function PythonEnvList({
                 <Badge variant="secondary" className="px-1.5 py-0 text-[11px]">{t("pythonEnv.detected.current")}</Badge>
               )}
             </div>
-            <p className="truncate font-mono text-xs text-muted-foreground" title={report.pythonPath}>{report.pythonPath}</p>
+            <p className="truncate font-mono text-xs text-muted-foreground" title={displayPath(report.pythonPath)}>{displayPath(report.pythonPath)}</p>
             <ul className="flex flex-wrap gap-1.5" aria-label={t("pythonEnv.detected.statusLabel")}>
               {describeEnvironment(report, t).map((chip) => (
                 <li key={chip.id} className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4", chipTones[chip.tone])}>

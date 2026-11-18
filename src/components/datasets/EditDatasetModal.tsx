@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -130,7 +131,7 @@ export function EditDatasetModal({
             </Label>
             <div className="mt-1 flex items-center gap-2">
               <Input
-                value={dataset.path}
+                value={displayPath(dataset.path)}
                 readOnly
                 className="flex-1 bg-muted/50 font-mono text-sm"
               />

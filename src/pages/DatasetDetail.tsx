@@ -7,6 +7,7 @@
  * - Targets: Target distribution and statistics
  * - Raw Data: Paginated data table
  */
+import { displayPath } from "@/lib/displayPath";
 import { useMemo, useState } from "react";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useParams, useNavigate, Link } from "react-router-dom";
@@ -229,9 +230,9 @@ export default function DatasetDetail() {
                     </h1>
                     <p
                       className="max-w-3xl truncate text-sm font-mono text-muted-foreground"
-                      title={dataset.path}
+                      title={displayPath(dataset.path)}
                     >
-                      {dataset.path}
+                      {displayPath(dataset.path)}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

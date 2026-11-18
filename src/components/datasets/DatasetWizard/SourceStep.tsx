@@ -7,6 +7,7 @@
  * - URL (remote dataset) - future
  * - Synthetic (generate) - future
  */
+import { displayPath } from "@/lib/displayPath";
 import { useRef } from "react";
 import { Folder, File, FolderSearch, Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -255,7 +256,7 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
 
       {state.sourceType === "folder" && state.basePath && (
         <div className="mt-4 space-y-2">
-          <p className="text-sm break-all">{state.basePath}</p>
+          <p className="text-sm break-all">{displayPath(state.basePath)}</p>
           <ul aria-label={t("datasets.wizard.steps.files.title")} className="max-h-48 overflow-y-auto rounded-lg border p-3 text-sm">
             {state.files.map(file => <li key={file.path} className="break-all">{file.filename}</li>)}
           </ul>

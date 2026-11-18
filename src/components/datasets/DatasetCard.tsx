@@ -1,3 +1,4 @@
+import { displayPath } from "@/lib/displayPath";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -172,7 +173,7 @@ export function DatasetCard({
             </Badge>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground/80 font-mono truncate mt-0.5">{dataset.path}</p>
+        <p className="text-xs text-muted-foreground/80 font-mono truncate mt-0.5">{displayPath(dataset.path)}</p>
       </div>
 
       {/* Vertical divider before the metrics grid */}

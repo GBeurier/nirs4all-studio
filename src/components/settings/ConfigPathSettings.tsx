@@ -5,6 +5,7 @@
  * The config folder stores global settings like linked datasets and UI preferences.
  */
 
+import { displayPath } from "@/lib/displayPath";
 import { useState, useEffect } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { FolderCog, RotateCcw, FolderOpen, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -223,7 +224,7 @@ export function ConfigPathSettings() {
           </div>
           {configPath?.is_custom && configPath?.default_path && (
             <p className="text-xs text-muted-foreground">
-              {t("settings.configPath.defaultLabel")} <span className="font-mono">{configPath.default_path}</span>
+              {t("settings.configPath.defaultLabel")} <span className="font-mono">{displayPath(configPath.default_path)}</span>
             </p>
           )}
         </div>

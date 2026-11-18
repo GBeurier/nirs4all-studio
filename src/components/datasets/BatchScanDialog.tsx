@@ -5,6 +5,7 @@
  * and allows importing selected datasets with auto-created groups.
  */
 
+import { displayPath } from "@/lib/displayPath";
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -244,7 +245,7 @@ export function BatchScanDialog({
             </p>
             <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
               <FolderTree className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <code className="text-xs font-mono truncate">{folderPath}</code>
+              <code className="text-xs font-mono truncate">{displayPath(folderPath)}</code>
             </div>
           </div>
         )}

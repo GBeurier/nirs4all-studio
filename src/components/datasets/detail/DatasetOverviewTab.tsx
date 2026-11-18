@@ -1,6 +1,7 @@
 /**
  * DatasetOverviewTab - Summary and metadata tab for dataset detail page
  */
+import { displayPath } from "@/lib/displayPath";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -350,7 +351,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         </CardHeader>
         <CardContent>
           <code className="text-xs bg-muted px-2 py-1 rounded block overflow-x-auto">
-            {dataset.path}
+            {displayPath(dataset.path)}
           </code>
         </CardContent>
       </Card>
