@@ -40,7 +40,7 @@ The retained injected HTTP test alone does not qualify that startup path.
 The ignored `public_methods_wheel_startup` integration test launches the real
 binary and replays the same owner-produced fixture, then checks typed refusal
 for absent, incompatible or altered selections without acquiring Python.
-SDK 1.4.19 is public on PyPI; `build/runtime-cohort.json` records its wheel
+SDK 1.4.20 is public on PyPI; `build/runtime-cohort.json` records its wheel
 hash and source commit. Studio host installation and current-closure
 qualification remain separate; historical SDK shipping receipts do not qualify
 that closure. The retained SDK host-cohort status is owned by that integration

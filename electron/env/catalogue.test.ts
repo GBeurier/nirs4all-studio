@@ -17,7 +17,7 @@ const catalogueFile = require("../../recommended-config.json") as { nirs4all: st
 describe("package catalogue", () => {
   it("requires nirs4all and its owner packages, each installable within its own range", () => {
     expect(REQUIRED_PACKAGES.map((spec) => spec.name)).toEqual([
-      "nirs4all", "nirs4all-core", "dag-ml", "dag-ml-data", "nirs4all-io", "nirs4all-methods",
+      "nirs4all", "nirs4all-core", "dag-ml", "dag-ml-data", "nirs4all-io", "nirs4all-methods", "pls4all",
     ]);
     for (const spec of REQUIRED_PACKAGES) {
       expect(versionSatisfies(spec.install, spec.range), `${spec.name} ${spec.install} within '${spec.range}'`).toBe(true);

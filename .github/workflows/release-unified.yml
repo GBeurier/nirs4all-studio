@@ -58,12 +58,12 @@ env:
   # selected immutable releases and update them with the ecosystem release board.
   # SDK publication source and public wheel bytes are exact.
   NIRS4ALL_PUBLICATION_STATUS: published-registry
-  NIRS4ALL_LIBRARY_REF: 526052d13c7903a391ce1898ad99ee96c4c2bfce
+  NIRS4ALL_LIBRARY_REF: c79932f744502eee745ef0f7f9da666fae45e78e
   DAG_ML_REF: d796152c148db3bb3f4398f818e1083f5e3aa816
   DAG_ML_DATA_REF: 854d5bebd88e1de761283139189735c349a6226c
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/526052d13c7903a391ce1898ad99ee96c4c2bfce.tar.gz
-  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl
-  NIRS4ALL_WHEEL_SHA256: 94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/c79932f744502eee745ef0f7f9da666fae45e78e.tar.gz
+  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/27/91/34b06476a0c2366ffee68e60ea9f6c1c25f570047f09614ed1ab2d03eee9/nirs4all-1.4.20-py3-none-any.whl
+  NIRS4ALL_WHEEL_SHA256: f5b6304e62d3861c53db5c6dd468a5361d6df6b410855fdd07925b3d8efe49a2
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/d796152c148db3bb3f4398f818e1083f5e3aa816.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/854d5bebd88e1de761283139189735c349a6226c.tar.gz
 
@@ -171,7 +171,7 @@ jobs:
             fi
           done
           if [[ "$NIRS4ALL_SOURCE_URL" != "https://github.com/GBeurier/nirs4all/archive/$NIRS4ALL_LIBRARY_REF.tar.gz" ||
-                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/51/74/3ff3315ee1b654349d652cc717b6e0bed46b0aaf62315fcaa78d0e49d831/nirs4all-1.4.19-py3-none-any.whl" ]]; then
+                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/27/91/34b06476a0c2366ffee68e60ea9f6c1c25f570047f09614ed1ab2d03eee9/nirs4all-1.4.20-py3-none-any.whl" ]]; then
             echo "::error::SDK publication source and wheel URL must match the selected public artifact"
             exit 1
           fi
@@ -226,7 +226,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 526052d13c7903a391ce1898ad99ee96c4c2bfce
+      nirs4all_library_ref: c79932f744502eee745ef0f7f9da666fae45e78e
       dag_ml_ref: d796152c148db3bb3f4398f818e1083f5e3aa816
       dag_ml_data_ref: 854d5bebd88e1de761283139189735c349a6226c
 

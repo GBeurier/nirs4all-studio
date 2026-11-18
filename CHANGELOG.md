@@ -27,8 +27,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 ### Changed
 
 - Python environment: Studio installs nirs4all 1.4.20 and nirs4all-methods
-  1.3.19 (libn4m ABI 2.23 unchanged); nirs4all-core 0.5.1, dag-ml 0.4.3,
-  dag-ml-data 0.2.17 and nirs4all-io 0.3.6 are unchanged. An existing
+  1.3.19 (libn4m ABI 2.23 unchanged), and now pins pls4all 1.3.19 in lockstep
+  with nirs4all-methods instead of taking the newest release; nirs4all-core
+  0.5.1, dag-ml 0.4.3, dag-ml-data 0.2.17 and nirs4all-io 0.3.6 are
+  unchanged. An existing
   environment is kept as long as its nirs4all is at least 1.4.20 (below 1.5);
   an older one is offered the update, so the fixes above reach existing
   environments.

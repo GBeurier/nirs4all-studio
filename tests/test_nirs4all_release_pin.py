@@ -198,8 +198,8 @@ def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
 
 def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None:
     sdk = json.loads((ROOT / "build/runtime-cohort.json").read_text())["sdk"]
-    assert sdk["source_sha"] == "526052d13c7903a391ce1898ad99ee96c4c2bfce"
-    assert sdk["wheel_sha256"] == "94061f9b5379c428fdf15d8b89b72b2c50171ceb871af88c88a694c55e6691c9"
+    assert sdk["source_sha"] == "c79932f744502eee745ef0f7f9da666fae45e78e"
+    assert sdk["wheel_sha256"] == "f5b6304e62d3861c53db5c6dd468a5361d6df6b410855fdd07925b3d8efe49a2"
     assert sdk["version"] == _required_nirs4all()["install"]
     assert sdk["publication_status"] == "published-registry"
     assert sdk["wheel_url"].endswith(f"/nirs4all-{sdk['version']}-py3-none-any.whl")
