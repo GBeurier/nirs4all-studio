@@ -73,6 +73,14 @@ fn remove_test_directory(root: PathBuf) {
             Err(error) if error.raw_os_error() == Some(32) => {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
+            // A retry after a sharing violation can race with an entry (e.g. a SQLite
+            // journal) that its owner deletes meanwhile; only the root's absence matters.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if !root.exists() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
             Err(error) => panic!("could not remove test directory: {error}"),
         }
     }
