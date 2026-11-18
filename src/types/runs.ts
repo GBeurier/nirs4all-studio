@@ -6,7 +6,8 @@
 
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "partial";
 
-export type RunFormat = "v1" | "v2" | "parquet_derived";
+/** "store" marks a workspace store row; live executions carry no format. */
+export type RunFormat = "v1" | "v2" | "parquet_derived" | "store";
 
 export type RunExecutionBackend = "local-python" | "cluster" | "wasm-local";
 

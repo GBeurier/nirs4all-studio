@@ -195,7 +195,9 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!activeRunsData?.runs) return;
 
-    const activeRuns = activeRunsData.runs;
+    // A running workspace store row is the persistence of a live execution,
+    // not an execution: it has no job channel or record and would never settle.
+    const activeRuns = activeRunsData.runs.filter((run) => run.format !== "store");
     const activeRunIds = new Set(activeRuns.map(r => r.id));
 
     // Connection side effects must not run inside a React state updater.
