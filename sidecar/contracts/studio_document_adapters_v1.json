@@ -26,8 +26,8 @@
     },
     {
       "path": "api/library_analysis.py",
-      "size": 21787,
-      "sha256": "076893a5130e4d39e30df046d8ae0c0497ab34253291fccf06e920825621b9a2"
+      "size": 27769,
+      "sha256": "ee874839ab92b0af8acfe5584e39d8135c367cd0f131d09904bfcfa19f3d7b55"
     },
     {
       "path": "api/library_checkpoint.py",
