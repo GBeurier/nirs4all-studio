@@ -11,9 +11,9 @@ const CONTRACT_FILE = "STUDIO_RUNTIME_CONTRACT.json";
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 24;
-const METHODS_SOURCE_COMMIT = "70b631cc36d0fed830bcacd34dd7bc4291a30dc3";
-const METHODS_SOURCE_TREE = "dce95aebf56a12b770826948f252ef45e704b427";
-const METHODS_PROJECT_VERSION = "1.5.0";
+const METHODS_SOURCE_COMMIT = "25041f88bebb21a19748799c1681e138a3d55dfb";
+const METHODS_SOURCE_TREE = "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3";
+const METHODS_PROJECT_VERSION = "1.5.1";
 const WINDOWS_NATIVE_RUNTIME_LINKAGE = Object.freeze({
   profile: "studio-msvc-static-crt-v1",
   methods_cmake_runtime: "MultiThreaded",

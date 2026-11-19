@@ -402,7 +402,7 @@ impl ScientificJobExecutor for ImportExecutor {
             .and_then(|_| cache_directory(&request.workspace_path))
             .map_err(|_| JobExecutorError::PreflightRefused {
                 code: "public_dataset_destination_unavailable",
-                detail: "the workspace import directory cannot be prepared",
+                detail: "the workspace import directory cannot be prepared".into(),
             })?;
         Ok(ScientificExecutorSelection {
             execution_backend: "local-python".into(),

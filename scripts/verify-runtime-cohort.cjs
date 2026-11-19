@@ -7,7 +7,7 @@ const distributions = {
   sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core',
   io: 'nirs4all-io', methods: 'nirs4all-methods',
   // pls4all ships from the Methods repository in exact lockstep with nirs4all-methods.
-  pls4all: 'pls4all',
+  pls4all: 'pls4all', datasets: 'nirs4all-datasets',
 };
 
 function verifyRuntimeCohort(env = process.env, root = path.resolve(__dirname, '..')) {

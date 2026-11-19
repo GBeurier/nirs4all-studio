@@ -70,8 +70,8 @@ describe("inventory evaluation", () => {
     expect(report.required.find((item) => item.name === "nirs4all-core")?.installedVersion).toBeNull();
   });
 
-  it("accepts an editable install that is within the required range, and any version without a range", () => {
-    const value = withPackages({ nirs4all: "1.5.99", "dag-ml": "9.9.9" }, { editable: ["nirs4all", "requests"] });
+  it("accepts an editable install and owner patches within the required ranges", () => {
+    const value = withPackages({ nirs4all: "1.6.99", "dag-ml": "0.5.99" }, { editable: ["nirs4all", "requests"] });
     const report = evaluate(value);
     expect(report.usable).toBe(true);
     expect(report.required.find((item) => item.name === "nirs4all")?.status).toBe("ok");

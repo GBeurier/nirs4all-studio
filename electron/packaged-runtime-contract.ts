@@ -10,10 +10,10 @@ export const PACKAGED_RUNTIME_CONTRACT_FILE =
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
 const MAX_CONTRACT_BYTES = 64 * 1024;
 const METHODS_ABI_MAJOR = 2;
-const METHODS_ABI_MINOR = 23;
-const METHODS_SOURCE_COMMIT = "18dd0b5cece9da5eaac709a0451ce3e884fa1dda";
-const METHODS_SOURCE_TREE = "586b0c555be350a6d5658bbd9c1d843656a2764c";
-const METHODS_PROJECT_VERSION = "1.3.19";
+const METHODS_ABI_MINOR = 24;
+const METHODS_SOURCE_COMMIT = "25041f88bebb21a19748799c1681e138a3d55dfb";
+const METHODS_SOURCE_TREE = "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3";
+const METHODS_PROJECT_VERSION = "1.5.1";
 const WINDOWS_NATIVE_RUNTIME_LINKAGE = {
   profile: "studio-msvc-static-crt-v1",
   methods_cmake_runtime: "MultiThreaded",

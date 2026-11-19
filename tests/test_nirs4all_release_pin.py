@@ -24,7 +24,7 @@ def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
     # Cross-repository owners are minor-level ranges; Cargo.lock holds the cohort.
-    assert dependencies["nirs4all"] == "0.5"
+    assert dependencies["nirs4all"] == "0.6"
     assert dependencies["nirs4all-io"] == "0.3"
     # Core and Studio resolve one public Rust IO cohort without overrides.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
@@ -47,7 +47,7 @@ def test_lock_selects_the_public_registry_owner_cohort() -> None:
         assert matching[0]["source"] == "registry+https://github.com/rust-lang/crates.io-index"
         assert re.fullmatch(r"[0-9a-f]{64}", matching[0]["checksum"])
     # The Rust binding version is independent of the selected libn4m ABI.
-    assert selected["n4m"]["version"] == "0.4.2"
+    assert selected["n4m"]["version"] == "0.5.0"
 
 
 def test_historical_published_registry_cohort_is_unchanged() -> None:
@@ -190,9 +190,9 @@ def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
     assert cohort["sdk_selection"]["requirement"] == _required_nirs4all()["range"]
     assert cohort["sdk_selection"]["publication_status"] == "published-registry"
     assert cohort["packaged_methods_identity"] == {
-        "commit": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
-        "tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
-        "project_version": "1.3.19",
+        "commit": "25041f88bebb21a19748799c1681e138a3d55dfb",
+        "tree": "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3",
+        "project_version": "1.5.1",
     }
 
 

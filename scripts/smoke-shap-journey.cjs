@@ -85,8 +85,8 @@ async function shapJourney({ page, env }, proof, workspace) {
   let linearReference;
   for (const explainer of ['kernel', 'auto', 'linear']) {
     await page.evaluate(({ chainId, datasetName, explainer }) => {
-      sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ version: 1, savedAt: Date.now(),
-        chainId, datasetName, partition: 'test', explainerType: explainer, jobId: null,
+      sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ version: 2, savedAt: Date.now(),
+        chainId, datasetName, partition: 'test', options: { engine: 'python', explainerType: explainer }, jobId: null,
         results: null, rebinnedData: null, isSubmitting: explainer === 'kernel', activeTab: 'spectral', selectedSamples: [] }));
       location.hash = '/lab/shapley';
     }, { chainId: chain.chain_id, datasetName: chain.dataset_name, explainer });
@@ -128,7 +128,7 @@ async function shapJourney({ page, env }, proof, workspace) {
   // selection before submission, and the tree option must be unavailable.
   await page.evaluate(() => {
     const session = JSON.parse(sessionStorage.getItem('nirs4all_shap_session'));
-    sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ ...session, explainerType: 'tree' }));
+    sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ ...session, options: { ...session.options, explainerType: 'tree' } }));
   });
   await page.reload();
   await expect(page.getByText('Tree SHAP is unavailable for PLS models.', { exact: false })).toBeVisible();

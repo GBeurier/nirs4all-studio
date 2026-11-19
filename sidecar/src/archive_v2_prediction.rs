@@ -2045,9 +2045,9 @@ mod tests {
         assert_eq!(
             cohort["packaged_methods_identity"],
             json!({
-                "commit": "70b631cc36d0fed830bcacd34dd7bc4291a30dc3",
-                "tree": "dce95aebf56a12b770826948f252ef45e704b427",
-                "project_version": "1.5.0"
+                "commit": "25041f88bebb21a19748799c1681e138a3d55dfb",
+                "tree": "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3",
+                "project_version": "1.5.1"
             })
         );
         assert!(packaged_methods_library_identity().is_none());

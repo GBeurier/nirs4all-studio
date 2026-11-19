@@ -597,18 +597,18 @@ dependencies = [
 
 [[package]]
 name = "dag-ml"
-version = "0.4.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c397f62aebcfde54b7a4dc824bf56fd56b0ec884c3495658d2d01021d34685f2"
+checksum = "827d41b15c8f3a914f80b501af09bb167932de9e8e6263e539949b7689d95123"
 dependencies = [
  "dag-ml-core",
 ]
 
 [[package]]
 name = "dag-ml-core"
-version = "0.4.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84504f2d231d526f1ccf7880cd5f1718a3e9a5e1d07b940be014d4316185f5d5"
+checksum = "18bbc8e28f1ee9670dc3b017ffb95cd21487ab51391960c178f0cdbf25a77498"
 dependencies = [
  "indexmap",
  "n4m",
@@ -656,9 +656,9 @@ dependencies = [
 
 [[package]]
 name = "dag-ml-results"
-version = "0.4.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cbc6d90d52499206ab3e9fbafc1e1a8fe7766e1173d9faa3a4ccbf0e34074f5"
+checksum = "a46092eae546204d5a781e117d26fa2bae3ccccc4bc41062c032cb9ae48d3196"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -740,7 +740,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1399,9 +1399,9 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "n4m"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfb4564672f8d6c167d3e292d0eeed2e6029f97841efd966accbce4b724d48a8"
+checksum = "9ef0776a28102b3593a3bb5468aa96910bc6e1e10a0ef488ff174157794c3f5a"
 dependencies = [
  "cc",
  "libloading",
@@ -1409,9 +1409,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f978438c90cb721c80a9591a0ebc4bc0b27b31193ba0bb1014b808f1d9b89253"
+checksum = "eb129c891b09f31ecb3080a5f38f4489311f5d67e4802804b3195ac250c73798"
 dependencies = [
  "base64 0.23.1",
  "crc32fast",
@@ -1734,7 +1734,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1948,7 +1948,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2289,10 +2289,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.6",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2584,9 +2584,9 @@ checksum = "3a3b425286980a367278453f3b6d28cdcb134b574e5a35824a6ff5eebad50bb6"
 
 [[package]]
 name = "uuid"
-version = "1.29.2"
+version = "1.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
+checksum = "b5772d71c9be8a8a6ac2117d949c5b224c1b72241bb611d9a3012edcf8af7812"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -2718,7 +2718,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

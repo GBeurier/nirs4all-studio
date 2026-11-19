@@ -7714,7 +7714,7 @@ mod tests {
     fn assert_native_saved_dataset_train_predict(feature_count: usize) {
         let library = PathBuf::from(
             env::var_os("N4M_LIBRARY_PATH")
-                .expect("N4M_LIBRARY_PATH must name the selected ABI 2.23 libn4m"),
+                .expect("N4M_LIBRARY_PATH must name the selected ABI 2.24 libn4m"),
         );
         let library_bytes = fs::read(&library).unwrap();
         let methods = archive_v2_prediction::PackagedMethodsLibraryIdentity {
@@ -7722,7 +7722,7 @@ mod tests {
             size: u64::try_from(library_bytes.len()).unwrap(),
             sha256: format!("{:x}", Sha256::digest(&library_bytes)),
             abi_major: 2,
-            abi_minor: 23,
+            abi_minor: 24,
         };
         let predictor = Arc::new(
             archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(methods.clone())
@@ -8120,7 +8120,7 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256,
                 abi_major: 2,
-                abi_minor: 23,
+                abi_minor: 24,
             },
         )
         .unwrap();
@@ -8256,10 +8256,10 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256.clone(),
                 abi_major: 2,
-                abi_minor: 23,
+                abi_minor: 24,
             },
         )
-        .expect("the selected ABI 2.23 libn4m witness must pass owner compatibility preflight");
+        .expect("the selected ABI 2.24 libn4m witness must pass owner compatibility preflight");
         let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
             Arc::new(executor),
             &config,
@@ -8298,7 +8298,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.5.1+libn4m-abi-2.23:{methods_sha256}")
+            format!("nirs4all-core@0.6.0+libn4m-abi-2.24:{methods_sha256}")
         );
         // Independent affine oracle for the new named fixture, not a
         // reconstruction of the frozen physical ABI 2.0 witness.
