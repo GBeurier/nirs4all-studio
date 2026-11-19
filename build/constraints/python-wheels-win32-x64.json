@@ -10,7 +10,7 @@
   },
   "requirements": {
     "required": [
-      "nirs4all==1.4.21",
+      "nirs4all==1.5.0",
       "nirs4all-core==0.5.1",
       "dag-ml==0.4.3",
       "dag-ml-data==0.2.17",
@@ -199,10 +199,10 @@
     },
     {
       "name": "nirs4all",
-      "version": "1.4.21",
-      "filename": "nirs4all-1.4.21-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/d0/5c/e3999fe445587462cc506a2d3ceb09c5601403c0142ff550a623c23dfa4e/nirs4all-1.4.21-py3-none-any.whl",
-      "sha256": "374e5ad1f4c0a48c1f5a880ca6e534b79dbb0eecafbd9d188b291d5bf55adce1"
+      "version": "1.5.0",
+      "filename": "nirs4all-1.5.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/ff/ff/a583e1ce79ca2ca3a54f4d1b1d47d124ccc83cdd33cf602cfde077ae2ece/nirs4all-1.5.0-py3-none-any.whl",
+      "sha256": "3bbcb78fc1f6992b4e91378edb36ce6bf9f03356b79321d49950196bd94ddaed"
     },
     {
       "name": "nirs4all-core",

@@ -29,7 +29,7 @@ import { installRecommendedPackages, installRequiredPackages, resolveUvPayload }
 
 const COHORT = Object.fromEntries(REQUIRED_PACKAGES.map((spec) => [spec.name, spec.install]));
 // An accepted nirs4all version that is not the one the catalogue installs.
-const OTHER_ACCEPTED_NIRS4ALL = "1.4.99";
+const OTHER_ACCEPTED_NIRS4ALL = "1.5.99";
 let root: string;
 let userDataDir: string;
 let settingsPath: string;
@@ -159,7 +159,7 @@ describe("startup check", () => {
   });
 
   it("is ready when every required package is within range, and hands the interpreter to the sidecar", async () => {
-    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.21", torch: "2.5.0" } });
+    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.5.0", torch: "2.5.0" } });
     select(pythonPath);
     const env = manager();
 
