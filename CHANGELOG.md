@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.18.1] — 2026-11-19
+
+### Fixed
+
+- Correct redundant Rust visibility declarations that prevented the release
+  qualification from passing Clippy. Effective module visibility and scientific
+  results are unchanged. Supersedes the unpublished 0.18.0 installer attempt.
+
 ## [0.18.0] — 2026-11-19
 
 ### Fixed
