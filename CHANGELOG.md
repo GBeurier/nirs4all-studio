@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.17.4] — 2026-11-19
+
+### Changed
+
+- The Playground loads faster: the Python host encodes its answer in one pass
+  with the C JSON encoder instead of a pure-Python incremental loop (identical
+  bytes; the answer is still bounded only by the memory Studio can spare).
+- The Playground accepts an answer that sends an unchanged spectra matrix once
+  (`processed_is_original`, nirs4all 1.4.21) as well as one that sends it twice.
+
+### Removed
+
+- The unused `/api/playground/pca` and `/api/playground/repetitions` routes,
+  which ran a full Playground execution to keep one chart, and their unused
+  renderer functions; the execution answer carries every chart. The unused
+  MessagePack client dependency goes with them.
+
 ## [0.17.3] — 2026-11-18
 
 ### Fixed

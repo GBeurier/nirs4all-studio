@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.17.3",
+  "app_version": "0.17.4",
   "nirs4all": "1.4.20",
   "_note": "Selected public SDK 1.4.20 and owner cohort with Methods 1.3.19. Registry publication alone does not establish installed-host or all-platform qualification. Existing cpu-lite exclusions and package renames remain in force.",
   "required": [
