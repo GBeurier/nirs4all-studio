@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Info, Zap } from 'lucide-react';
@@ -19,6 +20,7 @@ import {
 import { ModelSelector } from './ModelSelector';
 import {
   buildShapPredictHref,
+  isShapPlsModel,
   normalizeShapExplainerType,
   normalizeShapPartition,
   SHAP_EXPLAINER_OPTIONS,
@@ -48,6 +50,13 @@ export function VariableImportanceForm({
   onExplainerTypeChange,
 }: VariableImportanceFormProps) {
   const { t } = useTranslation();
+  const [modelClass, setModelClass] = useState<string | null>(null);
+  const isPls = isShapPlsModel(modelClass);
+
+  useEffect(() => {
+    // A restored tree selection cannot apply when the selected model is PLS.
+    if (isPls && explainerType === 'tree') onExplainerTypeChange('auto');
+  }, [isPls, explainerType, onExplainerTypeChange]);
 
   return (
     <div className="space-y-4">
@@ -68,6 +77,7 @@ export function VariableImportanceForm({
         <ModelSelector
           selectedChainId={chainId}
           onChainSelect={onChainSelect}
+          onModelClassChange={setModelClass}
         />
       </div>
 
@@ -132,7 +142,7 @@ export function VariableImportanceForm({
           </SelectTrigger>
           <SelectContent>
             {SHAP_EXPLAINER_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
+              <SelectItem key={option.value} value={option.value} disabled={isPls && option.value === 'tree'}>
                 {t(option.labelKey)}
               </SelectItem>
             ))}
@@ -140,6 +150,7 @@ export function VariableImportanceForm({
         </Select>
       </div>
       <p className="text-xs text-muted-foreground">
+        {isPls && 'Tree SHAP is unavailable for PLS models. Choose Auto, Linear or Kernel. '}
         Analysis uses up to 50 reproducibly selected samples and 20 background samples. Automatic mode uses exact linear SHAP for supported affine pipelines and permutation SHAP otherwise.
       </p>
     </div>

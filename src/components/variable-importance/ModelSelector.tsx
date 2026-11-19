@@ -32,9 +32,10 @@ import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 interface ModelSelectorProps {
   selectedChainId: string | null;
   onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null, datasetId?: string | null) => void;
+  onModelClassChange?: (modelClass: string | null) => void;
 }
 
-export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorProps) {
+export function ModelSelector({ selectedChainId, onChainSelect, onModelClassChange }: ModelSelectorProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<AvailableModelsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,12 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
       .catch((err) => setError(err.message || t('results.variableImportance.model.loadFailed')))
       .finally(() => setLoading(false));
   }, [t]);
+
+  useEffect(() => {
+    const chain = data?.datasets.flatMap((dataset) => dataset.chains)
+      .find((candidate) => candidate.chain_id === selectedChainId);
+    onModelClassChange?.(chain?.model_class ?? null);
+  }, [data, selectedChainId, onModelClassChange]);
 
   // Flatten all chains for the select with dataset grouping
   const allChains = useMemo(() => {

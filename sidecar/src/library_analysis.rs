@@ -677,9 +677,9 @@ fn validate_shap(value: &Value) -> Result<(), String> {
     }
     if value
         .get("explainer_type")
-        .is_some_and(|value| !matches!(value.as_str(), Some("auto" | "kernel")))
+        .is_some_and(|value| !matches!(value.as_str(), Some("auto" | "kernel" | "linear" | "tree")))
     {
-        return Err("Captured full pipelines support auto or kernel explainers".into());
+        return Err("Invalid SHAP explainer type".into());
     }
     if value.get("bin_aggregation").is_some_and(|value| {
         !matches!(
@@ -1183,6 +1183,17 @@ mod tests {
             let mut input = json!({"chain_id":"corn-pls","dataset_id":"dataset-corn"});
             input[field] = json!("corn");
             assert!(validate_shap(&input).is_err());
+        }
+    }
+    #[test]
+    fn admits_public_shap_explainers_and_leaves_model_compatibility_to_the_sdk() {
+        // The SDK can explain an affine captured PLS pipeline with linear SHAP
+        // and an unchanged tree predictor with tree SHAP. It owns compatibility.
+        for explainer in ["auto", "kernel", "linear", "tree"] {
+            assert!(validate_shap(&json!({"explainer_type":explainer})).is_ok());
+        }
+        for explainer in [Value::Null, json!(1), json!("unknown"), json!("deep")] {
+            assert!(validate_shap(&json!({"explainer_type":explainer})).is_err());
         }
     }
     #[test]

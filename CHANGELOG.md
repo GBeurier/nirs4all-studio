@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Admit the SDK's explicit Linear and Tree SHAP selectors through the Rust
+  analysis route. A stale auto/kernel-only filter rejected both before the
+  scientific host could check model compatibility. Affine PLS pipelines now
+  run explicit Linear SHAP; incompatible models retain the SDK's precise refusal.
+- Disable Tree SHAP for PLS models and visibly restore a stale Tree selection
+  to Auto. The application smoke now trains a PLS pipeline and checks Auto,
+  Kernel and Linear explanations, prediction additivity on every test sample,
+  result restoration, and the disabled Tree option.
+
 ## [0.18.1] — 2026-11-19
 
 ### Fixed
