@@ -8,6 +8,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ## [Unreleased]
 
+### Added
+
+- The Variable Importance (SHAP) screen offers two engines: Python SHAP (the
+  `shap` package, unchanged default) and native SHAP (the nirs4all-methods
+  kernels shared with nirs4all Web), with permutation, exact, kernel, LIME,
+  occlusion, linear and tree explainers, a background baseline (rows or
+  mean), feature-group width, permutation count and seed. Native attributions
+  of feature groups are shown at the centre of each group's spectral span;
+  the sample breakdown is hidden for non-additive LIME and occlusion results.
+- The number of samples explained and the background size are now settable
+  (formerly fixed at 50 and 20).
+- An advanced, collapsed "Sample subsets" section, inactive unless checked,
+  replaces the partition by metadata subsets: the background candidates and
+  the explained samples, each a partition narrowed by metadata values. The
+  SHAP engine draws its background among all passed samples. The
+  Playground metadata-columns route accepts an optional `partition` query to
+  list values across partitions.
+
 ### Fixed
 
 - Admit the SDK's explicit Linear and Tree SHAP selectors through the Rust

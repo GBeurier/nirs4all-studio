@@ -3,6 +3,7 @@
  */
 
 import { act } from 'react';
+import { DEFAULT_SHAP_OPTIONS } from '@/lib/shapVariableImportanceFormData';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -128,7 +129,7 @@ describe('useShapAnalysisJob', () => {
     expect(apiMocks.getShapStatus).not.toHaveBeenCalled();
     await act(async () => {
       await mounted.result.current?.runAnalysis({
-        chainId: 'chain-1', datasetId: 'corn', partition: 'test', explainerType: 'auto',
+        chainId: 'chain-1', datasetId: 'corn', partition: 'test', options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' },
       });
     });
     expect(mounted.result.current?.results?.job_id).toBe('job-1');
@@ -157,7 +158,7 @@ describe('useShapAnalysisJob', () => {
 
     await act(async () => {
       await mounted.result.current?.runAnalysis({
-        chainId: 'chain-1', datasetId: 'corn', partition: 'test', explainerType: 'auto',
+        chainId: 'chain-1', datasetId: 'corn', partition: 'test', options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' },
       });
     });
     expect(mounted.result.current?.progress).toBe(25);
@@ -193,7 +194,7 @@ describe('useShapAnalysisJob', () => {
     const mounted = await renderHook(() => useShapAnalysisJob());
     await act(async () => {
       await mounted.result.current?.runAnalysis({
-        chainId: 'chain-1', datasetId: 'corn', partition: 'test', explainerType: 'auto',
+        chainId: 'chain-1', datasetId: 'corn', partition: 'test', options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' },
       });
     });
     expect(mounted.result.current?.isRunning).toBe(true);
@@ -220,7 +221,7 @@ describe('useShapAnalysisJob', () => {
         chainId: 'chain-1',
         datasetId: 'dataset-corn',
         partition: 'test',
-        explainerType: 'auto',
+        options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' },
       });
     });
 
@@ -262,7 +263,7 @@ describe('useShapAnalysisJob', () => {
         modelRef: { modelSource: 'bundle', bundlePath: 'bundle-without-path-shape' },
         datasetId: 'dataset-corn',
         partition: 'train',
-        explainerType: 'kernel',
+        options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'kernel' },
       });
     });
 
@@ -285,7 +286,7 @@ describe('useShapAnalysisJob', () => {
         chainId: null,
         datasetId: 'dataset-corn',
         partition: 'test',
-        explainerType: 'auto',
+        options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' },
       });
     });
 
@@ -298,7 +299,7 @@ describe('useShapAnalysisJob', () => {
   it('refuses an unresolved dataset identity before submitting a science job', async () => {
     const mounted = await renderHook(() => useShapAnalysisJob());
     await act(async () => {
-      await mounted.result.current?.runAnalysis({ chainId: 'corn-pls', datasetId: null, partition: 'test', explainerType: 'auto' });
+      await mounted.result.current?.runAnalysis({ chainId: 'corn-pls', datasetId: null, partition: 'test', options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' } });
     });
     expect(apiMocks.computeShapExplanation).not.toHaveBeenCalled();
     expect(mounted.result.current?.error).toContain('no authorized dataset link');

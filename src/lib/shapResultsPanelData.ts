@@ -9,7 +9,14 @@ export interface ShapInitialBinningParams {
 export interface ShapResultsHeaderSummary {
   sampleCount: number;
   explainerType: string;
+  /** Native (nirs4all-methods) engine; absent for the Python `shap` engine. */
+  native: boolean;
   executionTimeLabel: string;
+}
+
+/** The sample breakdown decomposes a prediction additively; LIME and occlusion are not additive. */
+export function isShapWaterfallAvailable(results: Pick<ShapResultsResponse, 'additive'>): boolean {
+  return results.additive !== false;
 }
 
 export function getShapWaterfallSampleIndex(selectedSamples: number[]): number {
@@ -44,11 +51,12 @@ export function getShapInitialBinningParams(
 }
 
 export function getShapResultsHeaderSummary(
-  results: Pick<ShapResultsResponse, 'n_samples' | 'explainer_type' | 'execution_time_ms'>,
+  results: Pick<ShapResultsResponse, 'n_samples' | 'explainer_type' | 'explainer_backend' | 'execution_time_ms'>,
 ): ShapResultsHeaderSummary {
   return {
     sampleCount: results.n_samples,
     explainerType: results.explainer_type,
+    native: results.explainer_backend === 'methods',
     executionTimeLabel: `${results.execution_time_ms.toFixed(0)}ms`,
   };
 }

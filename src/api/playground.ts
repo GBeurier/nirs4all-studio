@@ -598,7 +598,10 @@ export interface MetadataColumnsResponse {
  */
 export async function fetchMetadataColumns(
   datasetId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  partition?: 'train' | 'test' | 'all',
 ): Promise<MetadataColumnsResponse> {
-  return api.get<MetadataColumnsResponse>(`/playground/metadata-columns/${datasetId}`, { signal });
+  // Without a partition the backend lists the train partition's values.
+  const query = partition ? `?partition=${partition}` : '';
+  return api.get<MetadataColumnsResponse>(`/playground/metadata-columns/${datasetId}${query}`, { signal });
 }

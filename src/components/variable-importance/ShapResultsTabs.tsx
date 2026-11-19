@@ -9,6 +9,7 @@ import { PredictionScatter } from './visualizations/PredictionScatter';
 import { SpectralImportanceChart } from './visualizations/SpectralImportanceChart';
 import { WaterfallChart } from './visualizations/WaterfallChart';
 import type { BinnedImportanceData, ShapResultsResponse, ShapTab } from '@/types/shap';
+import { isShapWaterfallAvailable } from '@/lib/shapResultsPanelData';
 
 interface ShapResultsTabsProps {
   jobId: string;
@@ -36,6 +37,8 @@ export function ShapResultsTabs({
   onBeeswarmSampleSelect,
 }: ShapResultsTabsProps) {
   const { t } = useTranslation();
+  const waterfall = isShapWaterfallAvailable(results);
+  const tab = !waterfall && activeTab === 'waterfall' ? 'spectral' : activeTab;
 
   return (
     <CardContent className="space-y-4">
@@ -48,10 +51,10 @@ export function ShapResultsTabs({
       </div>
 
       <Tabs
-        value={activeTab}
+        value={tab}
         onValueChange={(value) => onTabChange(value as ShapTab)}
       >
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className={`grid w-full ${waterfall ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <TabsTrigger value="spectral" className="flex items-center gap-1">
             <Activity className="h-4 w-4" />
             <span className="hidden sm:inline">
@@ -64,12 +67,14 @@ export function ShapResultsTabs({
               {t('shap.tabs.beeswarm')}
             </span>
           </TabsTrigger>
-          <TabsTrigger value="waterfall" className="flex items-center gap-1">
-            <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {t('shap.tabs.waterfall')}
-            </span>
-          </TabsTrigger>
+          {waterfall && (
+            <TabsTrigger value="waterfall" className="flex items-center gap-1">
+              <BarChart3 className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t('shap.tabs.waterfall')}
+              </span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="ranking" className="flex items-center gap-1">
             <List className="h-4 w-4" />
             <span className="hidden sm:inline">
@@ -99,16 +104,18 @@ export function ShapResultsTabs({
           </div>
         </TabsContent>
 
-        <TabsContent value="waterfall" className="mt-4">
-          <div className="h-[500px]">
-            <WaterfallChart
-              jobId={jobId}
-              sampleIdx={waterfallSampleIdx}
-              totalSamples={results.n_samples}
-              onSampleChange={onWaterfallSampleChange}
-            />
-          </div>
-        </TabsContent>
+        {waterfall && (
+          <TabsContent value="waterfall" className="mt-4">
+            <div className="h-[500px]">
+              <WaterfallChart
+                jobId={jobId}
+                sampleIdx={waterfallSampleIdx}
+                totalSamples={results.n_samples}
+                onSampleChange={onWaterfallSampleChange}
+              />
+            </div>
+          </TabsContent>
+        )}
 
         <TabsContent value="ranking" className="mt-4">
           <div className="h-[500px]">

@@ -374,14 +374,39 @@ struct Prepared {
     projection: Projection,
 }
 
+/// The partition whose metadata values the metadata-columns route lists:
+/// `train` by default (Playground filters), or `test` / `all` (SHAP subsets).
+fn metadata_columns_partition(request: &HttpRequest) -> Result<&'static str, (u16, String)> {
+    let Some(query) = request.query.as_deref() else {
+        return Ok("train");
+    };
+    let refused = || {
+        (
+            400,
+            "Playground route does not accept query fields".to_string(),
+        )
+    };
+    if !request
+        .path
+        .starts_with("/api/playground/metadata-columns/")
+    {
+        return Err(refused());
+    }
+    match query {
+        "partition=train" => Ok("train"),
+        "partition=test" => Ok("test"),
+        "partition=all" => Ok("all"),
+        _ => Err(refused()),
+    }
+}
+
 fn prepare(
     settings: &AppSettingsStore,
     request: &HttpRequest,
     adapt: &impl Fn(&str, &Value) -> Result<Value, (u16, String)>,
 ) -> Result<Prepared, (u16, String)> {
-    if request.query.is_some() {
-        return Err((400, "Playground route does not accept query fields".into()));
-    }
+    // Only the metadata-columns route reads a query: its optional partition.
+    let metadata_partition = metadata_columns_partition(request)?;
     let request_id = request_id()?;
     let (operation, payload, projection) = match request.path.as_str() {
         "/api/playground/capabilities" => ("capabilities", json!({}), Projection::Capabilities),
@@ -427,7 +452,7 @@ fn prepare(
             let dataset = confined_dataset(settings, id, adapt)?;
             (
                 "metadata_columns",
-                json!({"dataset":{"config":dataset},"partition":"train","max_unique_values":200}),
+                json!({"dataset":{"config":dataset},"partition":metadata_partition,"max_unique_values":200}),
                 Projection::Result,
             )
         }
@@ -780,6 +805,27 @@ mod tests {
             headers: BTreeMap::new(),
             body: body.to_string().into_bytes(),
         }
+    }
+
+    #[test]
+    fn metadata_columns_partition_query_is_closed() {
+        let mut request = request("/api/playground/metadata-columns/corn", "GET", &json!({}));
+        assert_eq!(metadata_columns_partition(&request), Ok("train"));
+        for (query, partition) in [
+            ("partition=train", "train"),
+            ("partition=test", "test"),
+            ("partition=all", "all"),
+        ] {
+            request.query = Some(query.into());
+            assert_eq!(metadata_columns_partition(&request), Ok(partition));
+        }
+        for query in ["partition=val", "partition=all&x=1", "x=1"] {
+            request.query = Some(query.into());
+            assert!(metadata_columns_partition(&request).is_err(), "{query}");
+        }
+        let mut execute = super::tests::request("/api/playground/execute", "POST", &json!({}));
+        execute.query = Some("partition=all".into());
+        assert!(metadata_columns_partition(&execute).is_err());
     }
 
     #[test]

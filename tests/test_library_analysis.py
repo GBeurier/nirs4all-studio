@@ -112,3 +112,83 @@ def test_multi_source_preview_exposes_feature_axis_without_fabricated_wavelength
     assert len(preview["spectra"][0]) == len(preview["wavelengths"])
     assert preview["axis_unit"] == "index"
     assert preview["wavelengths"] == list(range(len(preview["spectra"][0])))
+
+
+def test_engine_options_select_native_kernels_only_on_request():
+    from api.library_analysis import shap_engine_options
+
+    assert shap_engine_options({"explainer_backend": "shap", "seed": 3}) == {}
+    assert shap_engine_options({}) == {}
+    assert shap_engine_options({"explainer_backend": "methods", "baseline": "mean", "seed": 3, "group_width": None}) == {
+        "explainer_backend": "methods", "baseline": "mean", "seed": 3}
+
+
+def test_grouped_attributions_read_group_means_at_group_centres():
+    from types import SimpleNamespace
+
+    from api.library_analysis import grouped_display
+
+    X = np.arange(12, dtype=float).reshape(2, 6)
+    wavelengths = [1000., 1002., 1004., 1006., 1008., 1010.]
+    names = [f"{value:.1f} nm" for value in wavelengths]
+    per_feature = SimpleNamespace(explanation={"groups": [{"feature_start": i, "feature_end": i + 1, "label": names[i]} for i in range(6)]})
+    assert grouped_display(per_feature, X, wavelengths, names) == (X, wavelengths, names)
+    grouped = SimpleNamespace(explanation={"groups": [{"feature_start": 0, "feature_end": 4, "label": "1000-1006 nm"},
+                                                      {"feature_start": 4, "feature_end": 6, "label": "1008-1010 nm"}]})
+    values, axis, labels = grouped_display(grouped, X, wavelengths, names)
+    assert values.tolist() == [[1.5, 4.5], [7.5, 10.5]]
+    assert axis == [1003.0, 1009.0]
+    assert labels == ["1000-1006 nm", "1008-1010 nm"]
+
+
+class _SubsetDataset:
+    """Two partitions with aligned features, targets and metadata."""
+
+    def __init__(self):
+        import polars as pl
+
+        self.rows = {"train": (np.array([[1., 1.], [2., 2.], [3., 3.]]), np.array([10., 20., 30.]), {"site": ["A", "B", "A"]}),
+                     "test": (np.array([[4., 4.], [2., 2.]]), np.array([40., 50.]), {"site": ["B", "B"]})}
+        self.pl = pl
+
+    def _part(self, selector):
+        if selector:
+            return self.rows[selector["partition"]]
+        X, y, meta = zip(*self.rows.values())
+        return np.vstack(X), np.concatenate(y), {"site": sum((m["site"] for m in meta), [])}
+
+    def x(self, selector, layout="2d"):
+        return self._part(selector)[0]
+
+    def y(self, selector):
+        return self._part(selector)[1]
+
+    def metadata(self, selector):
+        return self.pl.DataFrame(self._part(selector)[2])
+
+
+def test_subsets_pass_background_candidates_and_explained_samples_once():
+    from api.library_analysis import subset_data
+
+    subsets = {"background": {"partition": "train", "filters": [{"column": "site", "values": ["A"]}]},
+               "explained": {"partition": "test", "filters": [{"column": "site", "values": ["B"]}]}}
+    passed, positions, targets, rows = subset_data(_SubsetDataset(), subsets)
+    assert passed.tolist() == [[1., 1.], [3., 3.], [4., 4.], [2., 2.]]
+    assert positions == [2, 3]
+    assert targets.tolist() == [40., 50.]
+    assert rows.tolist() == [0, 1]
+    # Explained samples already among the background candidates are not passed again.
+    subsets["background"] = {"partition": "all", "filters": []}
+    passed, positions, _, _ = subset_data(_SubsetDataset(), subsets)
+    assert len(passed) == 5 and positions == [3, 4]
+
+
+def test_subsets_refuse_empty_selections_and_unknown_columns():
+    from api.library_analysis import subset_data
+
+    empty = {"background": {"partition": "train", "filters": [{"column": "site", "values": ["Z"]}]}, "explained": {"partition": "test"}}
+    with pytest.raises(ValueError, match="background subset"):
+        subset_data(_SubsetDataset(), empty)
+    unknown = {"background": {"partition": "train"}, "explained": {"partition": "test", "filters": [{"column": "batch", "values": [1]}]}}
+    with pytest.raises(ValueError, match="Unknown metadata column"):
+        subset_data(_SubsetDataset(), unknown)

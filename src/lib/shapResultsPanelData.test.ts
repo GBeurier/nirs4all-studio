@@ -4,6 +4,7 @@ import type { BinnedImportanceData, ShapResultsResponse } from '@/types/shap';
 import {
   getShapInitialBinningParams,
   getShapResultsHeaderSummary,
+  isShapWaterfallAvailable,
   getShapWaterfallSampleIndex,
   getShapWaterfallSelection,
   toggleShapSelectedSample,
@@ -88,7 +89,15 @@ describe('shapResultsPanelData', () => {
     }))).toEqual({
       sampleCount: 42,
       explainerType: 'kernel',
+      native: false,
       executionTimeLabel: '100ms',
     });
+    expect(getShapResultsHeaderSummary(shapResults({ explainer_backend: 'methods' })).native).toBe(true);
+  });
+
+  it('offers the sample breakdown only for additive attributions', () => {
+    expect(isShapWaterfallAvailable({})).toBe(true);
+    expect(isShapWaterfallAvailable({ additive: true })).toBe(true);
+    expect(isShapWaterfallAvailable({ additive: false })).toBe(false);
   });
 });

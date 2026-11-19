@@ -41,6 +41,9 @@ export function ShapResultsHeader({
             <Target className="h-3 w-3" />
             {summary.explainerType}
           </Badge>
+          {summary.native && (
+            <Badge variant="outline">{t('shap.form.engines.native')}</Badge>
+          )}
           <Badge variant="outline" className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
             {summary.executionTimeLabel}

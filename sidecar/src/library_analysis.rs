@@ -338,6 +338,12 @@ impl Context<'_> {
             "bin_size",
             "bin_stride",
             "bin_aggregation",
+            "explainer_backend",
+            "baseline",
+            "group_width",
+            "n_permutations",
+            "seed",
+            "subsets",
         ] {
             if let Some(value) = raw.get(key) {
                 payload[key] = value.clone();
@@ -653,6 +659,12 @@ fn validate_shap(value: &Value) -> Result<(), String> {
         "bin_size",
         "bin_stride",
         "bin_aggregation",
+        "explainer_backend",
+        "baseline",
+        "group_width",
+        "n_permutations",
+        "seed",
+        "subsets",
     ];
     if value
         .as_object()
@@ -665,6 +677,10 @@ fn validate_shap(value: &Value) -> Result<(), String> {
         ("n_background", 10, 500),
         ("bin_size", 5, 100),
         ("bin_stride", 1, 50),
+        ("group_width", 1, 4096),
+        ("n_permutations", 1, 1000),
+        // Seeds reproduce across Python and JavaScript hosts below 2^53.
+        ("seed", 0, (1_u64 << 53) - 1),
     ] {
         if value.get(key).is_some_and(|value| {
             !value.is_null()
@@ -675,11 +691,42 @@ fn validate_shap(value: &Value) -> Result<(), String> {
             return Err(format!("Invalid {key}"));
         }
     }
-    if value
-        .get("explainer_type")
-        .is_some_and(|value| !matches!(value.as_str(), Some("auto" | "kernel" | "linear" | "tree")))
-    {
+    // The native (nirs4all-methods) engine adds model-agnostic explainers and
+    // its own options; the Python `shap` engine keeps its four selectors.
+    let native = match value.get("explainer_backend") {
+        None => false,
+        Some(backend) => match backend.as_str() {
+            Some("shap") => false,
+            Some("methods") => true,
+            _ => return Err("Invalid SHAP engine".into()),
+        },
+    };
+    if value.get("explainer_type").is_some_and(|value| {
+        !matches!(
+            (native, value.as_str()),
+            (_, Some("auto" | "kernel" | "linear" | "tree"))
+                | (true, Some("permutation" | "exact" | "lime" | "occlusion"))
+        )
+    }) {
         return Err("Invalid SHAP explainer type".into());
+    }
+    if !native
+        && ["baseline", "group_width", "n_permutations", "seed"]
+            .iter()
+            .any(|key| value.get(*key).is_some())
+    {
+        return Err("Native SHAP options require the native engine".into());
+    }
+    if let Some(subsets) = value.get("subsets") {
+        validate_shap_subsets(subsets)?;
+    }
+    // One expected value per analysis: the per-row `interpolate` baseline
+    // cannot feed the additive waterfall and summary views.
+    if value
+        .get("baseline")
+        .is_some_and(|value| !matches!(value.as_str(), Some("background" | "mean")))
+    {
+        return Err("Invalid SHAP baseline".into());
     }
     if value.get("bin_aggregation").is_some_and(|value| {
         !matches!(
@@ -688,6 +735,57 @@ fn validate_shap(value: &Value) -> Result<(), String> {
         )
     }) {
         return Err("Invalid bin aggregation".into());
+    }
+    Ok(())
+}
+
+/// Metadata subsets replacing the single partition: the background candidates
+/// and the explained samples, each a partition narrowed by metadata filters
+/// (a row matches a filter when its column value is one of the values; filters
+/// combine with AND).
+fn validate_shap_subsets(subsets: &Value) -> Result<(), String> {
+    let invalid = || "Invalid SHAP subsets".to_string();
+    let object = subsets.as_object().ok_or_else(invalid)?;
+    if object.len() != 2 || !object.contains_key("background") || !object.contains_key("explained")
+    {
+        return Err(invalid());
+    }
+    for subset in object.values() {
+        let subset = subset.as_object().ok_or_else(invalid)?;
+        if subset
+            .keys()
+            .any(|key| key != "partition" && key != "filters")
+            || !matches!(
+                subset.get("partition").and_then(Value::as_str),
+                Some("train" | "test" | "all")
+            )
+        {
+            return Err(invalid());
+        }
+        let filters = match subset.get("filters") {
+            None => continue,
+            Some(filters) => filters.as_array().ok_or_else(invalid)?,
+        };
+        if filters.len() > 16 {
+            return Err(invalid());
+        }
+        for filter in filters {
+            let filter = filter.as_object().ok_or_else(invalid)?;
+            let column = filter.get("column").and_then(Value::as_str);
+            let values = filter.get("values").and_then(Value::as_array);
+            if filter.len() != 2
+                || column.is_none_or(|column| column.is_empty() || column.len() > 256)
+                || values.is_none_or(|values| {
+                    values.is_empty()
+                        || values.len() > 1000
+                        || values
+                            .iter()
+                            .any(|value| value.is_array() || value.is_object())
+                })
+            {
+                return Err(invalid());
+            }
+        }
     }
     Ok(())
 }
@@ -1194,6 +1292,77 @@ mod tests {
         }
         for explainer in [Value::Null, json!(1), json!("unknown"), json!("deep")] {
             assert!(validate_shap(&json!({"explainer_type":explainer})).is_err());
+        }
+    }
+    #[test]
+    fn subsets_are_two_bounded_partition_filters() {
+        let subsets = json!({
+            "background": {"partition": "all"},
+            "explained": {"partition": "test", "filters": [{"column": "variety", "values": ["A", 2, null, true]}]}
+        });
+        assert!(validate_shap(&json!({"subsets": subsets})).is_ok());
+        for invalid in [
+            json!({"background": {"partition": "all"}}),
+            json!({"background": {"partition": "all"}, "explained": {"partition": "val"}}),
+            json!({"background": {"partition": "all"}, "explained": {"partition": "test", "filters": [{"column": "", "values": ["A"]}]}}),
+            json!({"background": {"partition": "all"}, "explained": {"partition": "test", "filters": [{"column": "a", "values": []}]}}),
+            json!({"background": {"partition": "all"}, "explained": {"partition": "test", "filters": [{"column": "a", "values": [["A"]]}]}}),
+            json!({"background": {"partition": "all", "rows": [1]}, "explained": {"partition": "test"}}),
+            json!({"background": {"partition": "all"}, "explained": {"partition": "test"}, "extra": {}}),
+        ] {
+            assert!(
+                validate_shap(&json!({"subsets": invalid})).is_err(),
+                "{invalid}"
+            );
+        }
+    }
+    #[test]
+    fn native_engine_admits_its_explainers_and_options_only() {
+        for explainer in [
+            "auto",
+            "permutation",
+            "exact",
+            "kernel",
+            "lime",
+            "occlusion",
+            "linear",
+            "tree",
+        ] {
+            let request = json!({"explainer_backend":"methods","explainer_type":explainer});
+            assert!(validate_shap(&request).is_ok(), "{explainer}");
+        }
+        for explainer in ["permutation", "exact", "lime", "occlusion"] {
+            assert!(validate_shap(&json!({"explainer_type":explainer})).is_err());
+            assert!(
+                validate_shap(&json!({"explainer_backend":"shap","explainer_type":explainer}))
+                    .is_err()
+            );
+        }
+        let native = json!({"explainer_backend":"methods","explainer_type":"permutation",
+            "baseline":"mean","group_width":20,"n_permutations":8,"seed":7});
+        assert!(validate_shap(&native).is_ok());
+        for (key, value) in [
+            ("baseline", json!("background")),
+            ("group_width", json!(5)),
+            ("n_permutations", json!(2)),
+            ("seed", json!(0)),
+        ] {
+            let mut request = json!({"explainer_type":"kernel"});
+            request[key] = value;
+            assert!(
+                validate_shap(&request).is_err(),
+                "{key} without the native engine"
+            );
+        }
+        for invalid in [
+            json!({"explainer_backend":"rust"}),
+            json!({"explainer_backend":"methods","baseline":"interpolate"}),
+            json!({"explainer_backend":"methods","group_width":0}),
+            json!({"explainer_backend":"methods","n_permutations":1001}),
+            json!({"explainer_backend":"methods","seed":9_007_199_254_740_992_u64}),
+            json!({"explainer_backend":"methods","seed":-1}),
+        ] {
+            assert!(validate_shap(&invalid).is_err(), "{invalid}");
         }
     }
     #[test]
