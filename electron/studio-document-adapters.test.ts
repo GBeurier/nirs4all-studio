@@ -35,6 +35,7 @@ describe("pure document adapter closure", () => {
     expect(adapters.verifyAdapters(root, directory)).toEqual(adapters.buildManifest(root));
     const members = adapters.buildManifest(root).files.map((entry) => entry.path);
     expect(members).toContain("api/library_documents.py");
+    expect(members).toContain("api/library_checkpoint.py");
     expect(members.some((name) => /(^|\/)(jobs|datasets|pipelines|app_config)\.py$/.test(name))).toBe(false);
     expect(fs.readFileSync(path.join(directory, "studio_document_adapters/api/__init__.py"), "utf8")).not.toContain("import");
   });

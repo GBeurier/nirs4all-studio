@@ -30,14 +30,19 @@
       "sha256": "076893a5130e4d39e30df046d8ae0c0497ab34253291fccf06e920825621b9a2"
     },
     {
+      "path": "api/library_checkpoint.py",
+      "size": 4374,
+      "sha256": "1086afd09e1d0bcd9214041b23e5a923bd7a049f1aef9139ff37820b5a1db95a"
+    },
+    {
       "path": "api/library_dataset_inspection.py",
       "size": 4505,
       "sha256": "f745eb750858448dc02015815c8a420b2111f9f94c76223b1a8fe9915aff65bc"
     },
     {
       "path": "api/library_documents.py",
-      "size": 24016,
-      "sha256": "62ff71fca71e5bbdb3b10c4b28998b7958cfb3c59ca23315573bd8a3fd47b394"
+      "size": 24159,
+      "sha256": "d31c172602224083e43288f50e89a8eb708b4599937a8ccac465a157740c7391"
     },
     {
       "path": "api/library_inspector.py",
@@ -141,8 +146,8 @@
     },
     {
       "path": "src/data/nodes/definitions/augmentation/transforms.json",
-      "size": 85431,
-      "sha256": "0027634e1cefc6c1b6af87ce9e6672013a6fa8b231aebae42323b89cd705dfbb"
+      "size": 73371,
+      "sha256": "eda06ddd5df4486936e57e5af134f24383ab75c552b39b957fe6960dc5e366bc"
     },
     {
       "path": "src/data/nodes/definitions/branching/branches.json",
