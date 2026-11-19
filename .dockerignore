@@ -15,6 +15,7 @@ api/
 !api/
 api/*
 !api/library_documents.py
+!api/library_checkpoint.py
 !api/library_operator_availability.py
 !api/library_inspector.py
 !api/library_prediction_export.py

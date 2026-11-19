@@ -27,6 +27,7 @@ use serde_json::{json, Value};
 use python_probe_cache::{ProbeKind, PythonProbeCache};
 
 mod archive_v2_prediction;
+mod checkpoint_export;
 pub mod conformal_store;
 mod dataset_import;
 mod dataset_inspection;
@@ -3943,6 +3944,7 @@ fn route_result_and_upgrade(
     operator_availability::route(state, request)
         .or_else(|| workspace_views::route(state, request))
         .or_else(|| prediction_export::route(state, request))
+        .or_else(|| checkpoint_export::route(state, request))
         .or_else(|| inspector_views::route(state, request))
         .or_else(|| library_analysis::route(state, request))
         .or_else(|| workspace_metadata::route(state, request))

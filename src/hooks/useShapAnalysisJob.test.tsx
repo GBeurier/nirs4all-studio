@@ -111,6 +111,15 @@ afterEach(() => {
 });
 
 describe('useShapAnalysisJob', () => {
+  it('releases a restored job with an interrupted status instead of spinning forever', async () => {
+    apiMocks.getShapStatus.mockResolvedValue({ status: 'interrupted' });
+    const mounted = await renderHook(() => useShapAnalysisJob({ jobId: 'old-job' }));
+    await flushAsyncEffects();
+    expect(mounted.result.current?.isRunning).toBe(false);
+    expect(mounted.result.current?.error).toContain('interrupted');
+    await mounted.unmount();
+  });
+
   it('allows a new analysis after restoring an interrupted submission without a job id', async () => {
     apiMocks.computeShapExplanation.mockResolvedValue({ job_id: 'job-1', status: 'completed' });
     apiMocks.getShapResults.mockResolvedValue(shapResults());
@@ -221,8 +230,8 @@ describe('useShapAnalysisJob', () => {
       dataset_id: 'dataset-corn',
       partition: 'test',
       explainer_type: 'auto',
-      n_samples: null,
-      n_background: 100,
+      n_samples: 50,
+      n_background: 20,
       bin_size: 20,
       bin_stride: 10,
       bin_aggregation: 'sum',

@@ -317,6 +317,7 @@ function classifyExploration(method: string, path: string): NativeSurface | null
   if (["/workspace/stats", "/workspace/storage-status"].includes(route) && method === "GET" && !url.search) return surface("workspace_discovery_routes", false);
   const workspace = new RegExp(`^/workspaces/(${IDENTIFIER})/(scan|datasets/discovered|predictions|exports|templates)$`).exec(route);
   if (workspace && isValidIdentifier(workspace[1]) && !url.search && method === (workspace[2] === "scan" ? "POST" : "GET")) return surface("workspace_discovery_routes", false);
+  if (route === "/exports/n4a" && method === "POST" && !url.search) return surface("prediction_export_routes");
   if (route === "/aggregated-predictions/export" && method === "POST" && !url.search) return surface("prediction_export_routes");
   if (method === "GET" && /^\/aggregated-predictions\/export\/[^/]+\.parquet$/.test(route) && accepts(["partition", "model_name"])) return surface("prediction_export_routes");
   const inspector = route.replace(/^\/inspector\//, "");

@@ -71,6 +71,7 @@ describe("renderer transport preselection", () => {
       ["GET", "/aggregated-predictions/export/chain-1.parquet?partition=test"],
       ["GET", "/inspector/data?run_id=run-1&run_id=run-2&metric=rmse"],
       ["POST", "/inspector/confusion"], ["POST", "/synthesis/preview"],
+      ["POST", "/exports/n4a"],
       ["POST", "/analysis/shap/compute"], ["GET", "/analysis/shap/results/job-1/sample/0?top_n=20"],
       ["POST", "/analysis/shap/results/job-1/rebin"],
       ["GET", "/aggregated-predictions/chain-1/robustness-evidence"],

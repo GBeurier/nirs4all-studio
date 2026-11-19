@@ -1,3 +1,4 @@
+import { N4aExportButton } from '@/components/exports/N4aExportButton';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { motion } from '@/lib/motion';
@@ -144,6 +145,9 @@ export default function VariableImportance() {
         variants={itemVariants}
         className="flex-1 min-w-0 lg:overflow-y-auto lg:max-h-[calc(100vh-8rem)]"
       >
+        {results && <N4aExportButton filename="shap-analysis" shapJobId={jobId ?? undefined} sections={[
+          { id: 'shap', label: 'SHAP analysis', description: 'Full stored contributions, input values, axes and analyzed sample identities', payload: results },
+        ]} />}
         {results && jobId ? (
           <ResultsPanel
             results={results}

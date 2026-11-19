@@ -149,7 +149,7 @@ pub fn catalogue_payload(workspace: &Path) -> Result<Value, String> {
     Ok(json!({"workspace_path":workspace,"exports":exports}))
 }
 
-fn model_payload(workspace: &Path, request: &Value) -> Result<Value, String> {
+pub(crate) fn model_payload(workspace: &Path, request: &Value) -> Result<Value, String> {
     if request
         .get("engine")
         .is_some_and(|value| !value.is_null() && value != "dag-ml")

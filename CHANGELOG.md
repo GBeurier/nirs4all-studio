@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.18.0] — 2026-11-19
+
+### Fixed
+
+- Captured-model SHAP uses SDK 1.5.0: Auto selects exact affine explanations or
+  seeded permutation over the complete predictor. Interrupted jobs stop polling.
+  Default analysis size is 50 explained samples and 20 background samples.
+- Playground and pipeline export share canonical constructor parameters: range
+  bounds are paired, runtime controls stay outside constructors, natural-log
+  bases are normalized, and unsupported augmentation scope defaults are removed.
+- Moving Average retains its palette label and intended smoothing parameters.
+- Playground operators and PCA exclude incomplete spectra with aligned sample,
+  target, metadata and partition data, leaving the source dataset unchanged.
+
+### Added
+
+- Selectable `.n4a` exports at dataset, pipeline, Playground, model-result and
+  SHAP stages. The shared UI 0.3.1 checklist lets the user choose included content;
+  Core writes the container, source files preserve exact bytes, and selected model
+  archives retain their prediction entrypoints. Analysis snapshots are not
+  advertised as executable models.
+
 ## [0.17.4] — 2026-11-19
 
 ### Changed

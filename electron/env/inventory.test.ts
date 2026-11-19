@@ -71,7 +71,7 @@ describe("inventory evaluation", () => {
   });
 
   it("accepts an editable install that is within the required range, and any version without a range", () => {
-    const value = withPackages({ nirs4all: "1.4.99", "dag-ml": "9.9.9" }, { editable: ["nirs4all", "requests"] });
+    const value = withPackages({ nirs4all: "1.5.99", "dag-ml": "9.9.9" }, { editable: ["nirs4all", "requests"] });
     const report = evaluate(value);
     expect(report.usable).toBe(true);
     expect(report.required.find((item) => item.name === "nirs4all")?.status).toBe("ok");
