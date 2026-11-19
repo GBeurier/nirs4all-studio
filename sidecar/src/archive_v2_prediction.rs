@@ -54,7 +54,7 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.6.0";
+const CORE_PROJECT_VERSION: &str = "0.6.1";
 const METHODS_ABI_MAJOR: u32 = 2;
 const METHODS_ABI_MINOR: u32 = 24;
 const NATIVE_SOURCE_COHORT: &str = include_str!("../contracts/studio_native_source_cohort_v2.json");
@@ -2018,7 +2018,7 @@ mod tests {
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.6.0+libn4m-abi-2.24:{methods_sha256}")
+            format!("nirs4all-core@0.6.1+libn4m-abi-2.24:{methods_sha256}")
         );
         // Independent affine oracle for the new named fixture; the old ABI 2.0
         // witness and its numerical oracle remain historical provenance.
@@ -2090,6 +2090,11 @@ mod tests {
 
     #[test]
     fn executor_provenance_names_the_exact_packaged_core_and_methods_contract() {
+        let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).unwrap();
+        assert_eq!(
+            cohort["packages"]["nirs4all"]["version"],
+            CORE_PROJECT_VERSION
+        );
         let methods = PackagedMethodsLibraryIdentity {
             path: PathBuf::from("unused-by-identity"),
             size: 1,
@@ -2099,7 +2104,7 @@ mod tests {
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.6.0+libn4m-abi-2.24:{}", "b".repeat(64))
+            format!("nirs4all-core@0.6.1+libn4m-abi-2.24:{}", "b".repeat(64))
         );
     }
 
@@ -2219,7 +2224,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "published nirs4all 0.6.0 crates.io cohort; ordinary registry lock and exact selected Methods source required"
+            "published nirs4all 0.6.1 crates.io cohort; ordinary registry lock and exact selected Methods source required"
         );
     }
 }

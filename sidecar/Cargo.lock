@@ -1409,9 +1409,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb129c891b09f31ecb3080a5f38f4489311f5d67e4802804b3195ac250c73798"
+checksum = "ce9412566750639216e16ce17b46258dad4d24efdb75015d7f17b006592f88b3"
 dependencies = [
  "base64 0.23.1",
  "crc32fast",

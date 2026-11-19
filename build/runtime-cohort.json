@@ -17,11 +17,11 @@
     "source_sha": "854d5bebd88e1de761283139189735c349a6226c"
   },
   "core": {
-    "version": "0.6.0",
-    "source_sha": "ef74d999b48e8eb4b8cce46355598673c0fc08b8",
-    "native_version": "0.6.0",
+    "version": "0.6.1",
+    "source_sha": "d82bea70cbe5d66ac8ff46c5b66cc64c3b90498b",
+    "native_version": "0.6.1",
     "native_source_status": "published-registry",
-    "native_source_sha": "ef74d999b48e8eb4b8cce46355598673c0fc08b8"
+    "native_source_sha": "d82bea70cbe5d66ac8ff46c5b66cc64c3b90498b"
   },
   "io": {
     "version": "0.3.6",

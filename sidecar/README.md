@@ -6,7 +6,7 @@ The only executable is `studio-sidecar`.
 
 ## Public backend owner cohort (2026-11-19)
 
-`contracts/studio_native_source_cohort_v2.json` selects Core 0.6.0, DAG 0.5.0,
+`contracts/studio_native_source_cohort_v2.json` selects Core 0.6.1, DAG 0.5.0,
 DMD 0.2.17, IO 0.3.6, Formats 0.2.17 and Rust n4m 0.5.0 from crates.io.
 `Cargo.toml` depends on one tested minor series of each owner crate (`nirs4all =
 "0.6"`, `nirs4all-io = "0.3"`; see [version constraints](../docs/PACKAGING.md#version-constraints)), and `Cargo.lock` selects the exact cohort shared
@@ -18,7 +18,7 @@ crate release that pins them. Browser npm and
 owner-built browser artifacts have separate provenance and are not this graph.
 
 Packaged Methods has two explicit identity paths at ABI 2.24. The default
-`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.5.0 (pending the actual 1.5.1 public wheel update)
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.5.1
 artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
 installed library size/hash, wheel reference and unknown source. It does not
 infer a source commit from the package version, ABI, public tag or Rust crate.

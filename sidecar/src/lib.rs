@@ -8298,7 +8298,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.6.0+libn4m-abi-2.24:{methods_sha256}")
+            format!("nirs4all-core@0.6.1+libn4m-abi-2.24:{methods_sha256}")
         );
         // Independent affine oracle for the new named fixture, not a
         // reconstruction of the frozen physical ABI 2.0 witness.
