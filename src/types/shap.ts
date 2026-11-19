@@ -91,7 +91,10 @@ export interface ShapResultsResponse {
   n_features: number;
   /** Input features of the explained model, when attributions are grouped. */
   n_input_features?: number;
-  base_value: number;
+  /** Shared expected value; null for non-additive explainers (one local intercept per row). */
+  base_value: number | null;
+  /** Rows passed to the SHAP engine with metadata subsets; the background is drawn among all of them. */
+  background_pool?: { background_candidates: number; explained_outside_background: number } | null;
   execution_time_ms: number;
   feature_importance: FeatureImportance[];
   wavelengths: number[];

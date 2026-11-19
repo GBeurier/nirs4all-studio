@@ -91,8 +91,12 @@ describe('shapResultsPanelData', () => {
       explainerType: 'kernel',
       native: false,
       executionTimeLabel: '100ms',
+      explainedOutsideBackground: 0,
+      backgroundCandidates: null,
     });
     expect(getShapResultsHeaderSummary(shapResults({ explainer_backend: 'methods' })).native).toBe(true);
+    expect(getShapResultsHeaderSummary(shapResults({ background_pool: { background_candidates: 30, explained_outside_background: 5 } })))
+      .toMatchObject({ explainedOutsideBackground: 5, backgroundCandidates: 30 });
   });
 
   it('offers the sample breakdown only for additive attributions', () => {

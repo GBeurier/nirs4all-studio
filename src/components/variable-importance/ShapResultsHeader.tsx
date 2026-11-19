@@ -51,6 +51,12 @@ export function ShapResultsHeader({
         </div>
       </div>
 
+      {summary.explainedOutsideBackground > 0 && (
+        <p className="mt-2 text-xs text-amber-600">
+          {t('shap.subsets.leakWarning', { outside: summary.explainedOutsideBackground, candidates: summary.backgroundCandidates })}
+        </p>
+      )}
+
       <div className="pt-2 border-t mt-2">
         <BinningControls
           jobId={jobId}

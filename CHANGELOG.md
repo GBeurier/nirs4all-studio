@@ -21,8 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   (formerly fixed at 50 and 20).
 - An advanced, collapsed "Sample subsets" section, inactive unless checked,
   replaces the partition by metadata subsets: the background candidates and
-  the explained samples, each a partition narrowed by metadata values. The
-  SHAP engine draws its background among all passed samples. The
+  the explained samples, each a partition narrowed by metadata values. Only
+  the chosen explained samples are passed with the background candidates; as
+  the SHAP engine draws its background among all passed samples, the results
+  warn when explained samples lie outside the background subset. The
   Playground metadata-columns route accepts an optional `partition` query to
   list values across partitions.
 

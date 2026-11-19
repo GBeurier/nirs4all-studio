@@ -14,7 +14,7 @@ import type {
   ShapTab,
   Partition,
 } from '@/types/shap';
-import { normalizeShapOptions, type ShapAnalysisOptions } from '@/lib/shapVariableImportanceFormData';
+import { DEFAULT_SHAP_SUBSETS, normalizeShapOptions, type ShapAnalysisOptions } from '@/lib/shapVariableImportanceFormData';
 import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 const containerVariants = {
@@ -98,11 +98,16 @@ export default function VariableImportance() {
     newModelRef: ShapExplicitModelRef | null = null,
     newDatasetId: string | null = null,
   ) => {
+    // Metadata subsets name columns and values of one dataset: drop them when
+    // another dataset is selected (a restored selection keeps its dataset name).
+    if (datasetName !== null && newDatasetName !== datasetName) {
+      setOptions((current) => ({ ...current, subsets: DEFAULT_SHAP_SUBSETS }));
+    }
     setChainId(newChainId);
     setModelRef(newModelRef);
     setDatasetName(newDatasetName);
     setDatasetId(newDatasetId);
-  }, []);
+  }, [datasetName]);
 
   const handleRunAnalysis = useCallback(async () => {
     await runAnalysis({ chainId, modelRef, datasetId, partition, options });

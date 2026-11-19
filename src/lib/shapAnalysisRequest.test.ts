@@ -85,6 +85,8 @@ describe('shapAnalysisRequest', () => {
     expect(tree).not.toHaveProperty('baseline');
     expect(tree).not.toHaveProperty('n_permutations');
     expect(tree).not.toHaveProperty('group_width');
+    // The engine's default background-rows baseline is left unset (native auto may then pick TreeSHAP).
+    expect(buildShapComputeRequest({ ...base, options: { ...DEFAULT_SHAP_OPTIONS, engine: 'native' } })).not.toHaveProperty('baseline');
   });
 
   it('replaces the partition by metadata subsets only when they are enabled', () => {

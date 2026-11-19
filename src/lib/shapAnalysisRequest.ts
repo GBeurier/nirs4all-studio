@@ -91,7 +91,9 @@ export function buildShapComputeRequest({
     ...(options.engine === 'native' ? {
       explainer_backend: 'methods' as const,
       seed: options.seed,
-      ...(usesShapBaseline(options) ? { baseline: options.baseline } : {}),
+      // The engine default is the background-rows baseline; leaving it unset
+      // keeps native auto free to choose path-dependent TreeSHAP for trees.
+      ...(usesShapBaseline(options) && options.baseline !== 'background' ? { baseline: options.baseline } : {}),
       ...(options.groupWidth !== null ? { group_width: options.groupWidth } : {}),
       ...(usesShapPermutations(options) && options.nPermutations !== null ? { n_permutations: options.nPermutations } : {}),
     } : {}),

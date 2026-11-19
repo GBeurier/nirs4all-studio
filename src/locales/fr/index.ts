@@ -9318,6 +9318,7 @@ transferAnalysis: {
       selectModelFirst: "Sélectionnez un modèle pour lister les métadonnées de son jeu de données.",
       noMetadata: "Ce jeu de données n'a pas de métadonnées d'échantillons ; seules les partitions peuvent être choisies.",
       metadataUnavailable: "Les métadonnées du jeu de données n'ont pas pu être chargées.",
+      leakWarning: "Le background a été tiré parmi {{candidates}} candidats au background et {{outside}} échantillons expliqués hors du subset de background : le moteur le tire parmi tous les échantillons transmis.",
     },
     results: {
       title: "Résultats de l'analyse SHAP",

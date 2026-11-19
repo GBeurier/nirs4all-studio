@@ -172,15 +172,21 @@ def test_subsets_pass_background_candidates_and_explained_samples_once():
 
     subsets = {"background": {"partition": "train", "filters": [{"column": "site", "values": ["A"]}]},
                "explained": {"partition": "test", "filters": [{"column": "site", "values": ["B"]}]}}
-    passed, positions, targets, rows = subset_data(_SubsetDataset(), subsets)
+    passed, positions, targets, rows, counts = subset_data(_SubsetDataset(), subsets, None)
     assert passed.tolist() == [[1., 1.], [3., 3.], [4., 4.], [2., 2.]]
     assert positions == [2, 3]
     assert targets.tolist() == [40., 50.]
     assert rows.tolist() == [0, 1]
+    assert counts == {"background_candidates": 2, "explained_outside_background": 2}
+    # Only the chosen explained samples are passed, aligned with their targets.
+    passed, positions, targets, rows, counts = subset_data(_SubsetDataset(), subsets, 1)
+    assert len(passed) == 3 and len(positions) == 1 and counts["explained_outside_background"] == 1
+    assert targets.tolist() == [[40., 50.][rows[0]]]
     # Explained samples already among the background candidates are not passed again.
     subsets["background"] = {"partition": "all", "filters": []}
-    passed, positions, _, _ = subset_data(_SubsetDataset(), subsets)
+    passed, positions, _, _, counts = subset_data(_SubsetDataset(), subsets, None)
     assert len(passed) == 5 and positions == [3, 4]
+    assert counts == {"background_candidates": 5, "explained_outside_background": 0}
 
 
 def test_subsets_refuse_empty_selections_and_unknown_columns():
@@ -188,7 +194,24 @@ def test_subsets_refuse_empty_selections_and_unknown_columns():
 
     empty = {"background": {"partition": "train", "filters": [{"column": "site", "values": ["Z"]}]}, "explained": {"partition": "test"}}
     with pytest.raises(ValueError, match="background subset"):
-        subset_data(_SubsetDataset(), empty)
+        subset_data(_SubsetDataset(), empty, None)
     unknown = {"background": {"partition": "train"}, "explained": {"partition": "test", "filters": [{"column": "batch", "values": [1]}]}}
     with pytest.raises(ValueError, match="Unknown metadata column"):
-        subset_data(_SubsetDataset(), unknown)
+        subset_data(_SubsetDataset(), unknown, None)
+
+
+def test_temporal_metadata_matches_its_listed_iso_value():
+    import datetime
+
+    from api.library_analysis import subset_rows
+
+    dataset = _SubsetDataset()
+    dataset.rows["test"] = (dataset.rows["test"][0], dataset.rows["test"][1], {"site": [datetime.date(2026, 1, 2), datetime.date(2026, 3, 4)]})
+    _, _, keep = subset_rows(dataset, {"partition": "test", "filters": [{"column": "site", "values": ["2026-03-04"]}]})
+    assert keep.tolist() == [False, True]
+
+
+def test_sample_breakdown_refuses_non_additive_results(result):
+    result["additive"] = False
+    with pytest.raises(ValueError, match="not additive"):
+        shap_view({"result": result, "view": "sample", "sample_idx": 0})

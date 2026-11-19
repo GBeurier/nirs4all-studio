@@ -12,6 +12,9 @@ export interface ShapResultsHeaderSummary {
   /** Native (nirs4all-methods) engine; absent for the Python `shap` engine. */
   native: boolean;
   executionTimeLabel: string;
+  /** Explained samples outside the background subset that the engine could draw as background. */
+  explainedOutsideBackground: number;
+  backgroundCandidates: number | null;
 }
 
 /** The sample breakdown decomposes a prediction additively; LIME and occlusion are not additive. */
@@ -51,9 +54,11 @@ export function getShapInitialBinningParams(
 }
 
 export function getShapResultsHeaderSummary(
-  results: Pick<ShapResultsResponse, 'n_samples' | 'explainer_type' | 'explainer_backend' | 'execution_time_ms'>,
+  results: Pick<ShapResultsResponse, 'n_samples' | 'explainer_type' | 'explainer_backend' | 'execution_time_ms' | 'background_pool'>,
 ): ShapResultsHeaderSummary {
   return {
+    explainedOutsideBackground: results.background_pool?.explained_outside_background ?? 0,
+    backgroundCandidates: results.background_pool?.background_candidates ?? null,
     sampleCount: results.n_samples,
     explainerType: results.explainer_type,
     native: results.explainer_backend === 'methods',

@@ -9318,6 +9318,7 @@ transferAnalysis: {
       selectModelFirst: "Select a model to list its dataset metadata.",
       noMetadata: "This dataset has no sample metadata; only partitions can be chosen.",
       metadataUnavailable: "The dataset metadata could not be loaded.",
+      leakWarning: "The background was drawn among {{candidates}} background candidates and {{outside}} explained samples outside the background subset: the engine draws it among every passed sample.",
     },
     results: {
       title: "SHAP Analysis Results",
