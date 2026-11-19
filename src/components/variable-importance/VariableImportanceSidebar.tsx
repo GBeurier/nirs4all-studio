@@ -6,16 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { VariableImportanceForm } from './VariableImportanceForm';
-import type { ExplainerType, Partition } from '@/types/shap';
+import type { Partition } from '@/types/shap';
+import type { ShapAnalysisOptions } from '@/lib/shapVariableImportanceFormData';
 import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 interface VariableImportanceSidebarProps {
   chainId: string | null;
+  datasetId: string | null;
   onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null, datasetId?: string | null) => void;
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
-  explainerType: ExplainerType;
-  onExplainerTypeChange: (type: ExplainerType) => void;
+  options: ShapAnalysisOptions;
+  onOptionsChange: (options: ShapAnalysisOptions) => void;
   error: string | null;
   isRunning: boolean;
   canRun: boolean;
@@ -27,11 +29,12 @@ interface VariableImportanceSidebarProps {
 
 export function VariableImportanceSidebar({
   chainId,
+  datasetId,
   onChainSelect,
   partition,
   onPartitionChange,
-  explainerType,
-  onExplainerTypeChange,
+  options,
+  onOptionsChange,
   error,
   isRunning,
   canRun,
@@ -57,11 +60,12 @@ export function VariableImportanceSidebar({
       <CardContent className="space-y-4">
         <VariableImportanceForm
           chainId={chainId}
+          datasetId={datasetId}
           onChainSelect={onChainSelect}
           partition={partition}
           onPartitionChange={onPartitionChange}
-          explainerType={explainerType}
-          onExplainerTypeChange={onExplainerTypeChange}
+          options={options}
+          onOptionsChange={onOptionsChange}
         />
 
         {error && (

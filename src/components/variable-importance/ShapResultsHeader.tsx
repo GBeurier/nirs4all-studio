@@ -41,12 +41,21 @@ export function ShapResultsHeader({
             <Target className="h-3 w-3" />
             {summary.explainerType}
           </Badge>
+          {summary.native && (
+            <Badge variant="outline">{t('shap.form.engines.native')}</Badge>
+          )}
           <Badge variant="outline" className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
             {summary.executionTimeLabel}
           </Badge>
         </div>
       </div>
+
+      {summary.explainedOutsideBackground > 0 && (
+        <p className="mt-2 text-xs text-amber-600">
+          {t('shap.subsets.leakWarning', { outside: summary.explainedOutsideBackground, candidates: summary.backgroundCandidates })}
+        </p>
+      )}
 
       <div className="pt-2 border-t mt-2">
         <BinningControls

@@ -7,10 +7,10 @@ import { useJobUpdates } from '@/hooks/useWebSocket';
 import type { ShapModelRequestRef } from '@/lib/shapAnalysisRequest';
 import type {
   BinnedImportanceData,
-  ExplainerType,
   Partition,
   ShapResultsResponse,
 } from '@/types/shap';
+import type { ShapAnalysisOptions } from '@/lib/shapVariableImportanceFormData';
 
 export interface UseShapAnalysisJobInitialState {
   jobId?: string | null;
@@ -25,7 +25,7 @@ export interface RunShapAnalysisInput {
   modelRef?: ShapModelRequestRef | null;
   datasetId: string | null;
   partition: Partition;
-  explainerType: ExplainerType;
+  options: ShapAnalysisOptions;
 }
 
 function getUnknownErrorMessage(error: unknown, fallback: string): string {
@@ -138,7 +138,7 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
     modelRef,
     datasetId,
     partition,
-    explainerType,
+    options,
   }: RunShapAnalysisInput) => {
     const selectedModelRef = modelRef ?? chainId;
     if (!selectedModelRef) {
@@ -157,7 +157,7 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
         modelRef: selectedModelRef,
         datasetId,
         partition,
-        explainerType,
+        options,
       });
 
       const response = await computeShapExplanation(request);

@@ -12,9 +12,9 @@ import {
 import { useShapAnalysisJob } from '@/hooks/useShapAnalysisJob';
 import type {
   ShapTab,
-  ExplainerType,
   Partition,
 } from '@/types/shap';
+import { DEFAULT_SHAP_SUBSETS, normalizeShapOptions, type ShapAnalysisOptions } from '@/lib/shapVariableImportanceFormData';
 import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 const containerVariants = {
@@ -41,7 +41,7 @@ export default function VariableImportance() {
   const [partition, setPartition] = useState<Partition>(() => persistedSession?.partition ?? 'test');
 
   // Configuration state
-  const [explainerType, setExplainerType] = useState<ExplainerType>(() => persistedSession?.explainerType ?? 'auto');
+  const [options, setOptions] = useState<ShapAnalysisOptions>(() => normalizeShapOptions(persistedSession?.options));
 
   // UI state
   const [activeTab, setActiveTab] = useState<ShapTab>(() => persistedSession?.activeTab ?? 'spectral');
@@ -71,7 +71,7 @@ export default function VariableImportance() {
       chainId,
       datasetName,
       partition,
-      explainerType,
+      options,
       jobId,
       results,
       rebinnedData,
@@ -83,7 +83,7 @@ export default function VariableImportance() {
     activeTab,
     chainId,
     datasetName,
-    explainerType,
+    options,
     isSubmitting,
     jobId,
     partition,
@@ -98,15 +98,20 @@ export default function VariableImportance() {
     newModelRef: ShapExplicitModelRef | null = null,
     newDatasetId: string | null = null,
   ) => {
+    // Metadata subsets name columns and values of one dataset: drop them when
+    // another dataset is selected (a restored selection keeps its dataset name).
+    if (datasetName !== null && newDatasetName !== datasetName) {
+      setOptions((current) => ({ ...current, subsets: DEFAULT_SHAP_SUBSETS }));
+    }
     setChainId(newChainId);
     setModelRef(newModelRef);
     setDatasetName(newDatasetName);
     setDatasetId(newDatasetId);
-  }, []);
+  }, [datasetName]);
 
   const handleRunAnalysis = useCallback(async () => {
-    await runAnalysis({ chainId, modelRef, datasetId, partition, explainerType });
-  }, [chainId, datasetId, explainerType, modelRef, partition, runAnalysis]);
+    await runAnalysis({ chainId, modelRef, datasetId, partition, options });
+  }, [chainId, datasetId, modelRef, options, partition, runAnalysis]);
 
   const canRun = Boolean(chainId && datasetId && !isRunning);
 
@@ -125,11 +130,12 @@ export default function VariableImportance() {
       >
         <VariableImportanceSidebar
           chainId={chainId}
+          datasetId={datasetId}
           onChainSelect={handleChainSelect}
           partition={partition}
           onPartitionChange={setPartition}
-          explainerType={explainerType}
-          onExplainerTypeChange={setExplainerType}
+          options={options}
+          onOptionsChange={setOptions}
           error={error}
           isRunning={isRunning}
           canRun={canRun}
