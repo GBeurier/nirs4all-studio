@@ -32,7 +32,7 @@ env:
   VITE_SENTRY_DSN: ""
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
-  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'c79932f744502eee745ef0f7f9da666fae45e78e' || 'main') }}
+  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '3408cb08047e9dcbcc77ec2b242de32ee223d789' || 'main') }}
   DAG_ML_REF: ${{ inputs.dag_ml_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'd796152c148db3bb3f4398f818e1083f5e3aa816' || 'main') }}
   DAG_ML_DATA_REF: ${{ inputs.dag_ml_data_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '854d5bebd88e1de761283139189735c349a6226c' || 'main') }}
 
