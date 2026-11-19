@@ -42,7 +42,7 @@ fn error(status: u16, detail: impl Into<String>) -> HttpResponse {
     HttpResponse::json(status, json!({"detail": detail.into()}).to_string())
 }
 
-pub(crate) fn identifier(raw: &str) -> Result<String, String> {
+pub fn identifier(raw: &str) -> Result<String, String> {
     let id = percent_encoding::percent_decode_str(raw)
         .decode_utf8()
         .map_err(|_| "Invalid identifier")?;
@@ -89,7 +89,7 @@ fn result_dir(workspace: &Path, create: bool) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-pub(crate) fn load_result(workspace: &Path, id: &str) -> Result<Value, String> {
+pub fn load_result(workspace: &Path, id: &str) -> Result<Value, String> {
     let path = result_dir(workspace, false)?.join(format!("{id}.native.json"));
     let meta = fs::symlink_metadata(&path).map_err(|_| "not_found: SHAP result does not exist")?;
     if !meta.is_file() || meta.file_type().is_symlink() {
