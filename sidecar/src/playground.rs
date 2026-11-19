@@ -27,8 +27,6 @@ pub fn owns_path(path: &str) -> bool {
         "/api/playground/execute"
             | "/api/playground/execute-dataset"
             | "/api/playground/capabilities"
-            | "/api/playground/pca"
-            | "/api/playground/repetitions"
             | "/api/playground/validate"
             | "/api/playground/diff/compute"
             | "/api/playground/diff/repetition-variance"
@@ -367,7 +365,6 @@ fn project_complete_samples(
 enum Projection {
     Result,
     Capabilities,
-    Chart(&'static str),
 }
 
 struct Prepared {
@@ -398,33 +395,6 @@ fn prepare(
             prepare_dataset_execute(settings, parse_object(&request.body)?, adapt)?,
             Projection::Result,
         ),
-        "/api/playground/pca" | "/api/playground/repetitions" => {
-            let mut body = parse_object(&request.body)?;
-            body.entry("partition").or_insert_with(|| json!("train"));
-            let mut payload = prepare_dataset_execute(settings, body, adapt)?;
-            let field = if request.path.ends_with("/pca") {
-                "pca"
-            } else {
-                "repetitions"
-            };
-            let options = payload
-                .as_object_mut()
-                .unwrap()
-                .entry("options")
-                .or_insert_with(|| json!({}))
-                .as_object_mut()
-                .ok_or_else(|| (400, "Chart options must be an object".into()))?;
-            for option in [
-                "compute_pca",
-                "compute_repetitions",
-                "compute_umap",
-                "compute_statistics",
-                "compute_metrics",
-            ] {
-                options.insert(option.into(), json!(option == format!("compute_{field}")));
-            }
-            ("execute", payload, Projection::Chart(field))
-        }
         "/api/playground/validate" => (
             "validate",
             json!({"steps":serde_json::from_slice::<Value>(&request.body).map_err(|_| (400, "Expected a JSON step array".into()))?}),
@@ -654,15 +624,6 @@ fn project_response(
         return Err("Playground library returned the wrong response identity".into());
     }
     let result = root.remove("result").unwrap_or_default();
-    if let Projection::Chart(field) = projection {
-        if result.get("success") == Some(&json!(false)) {
-            return Ok(result);
-        }
-        let chart = result
-            .get(field)
-            .ok_or_else(|| format!("Playground result is missing {field}"))?;
-        return Ok(json!({"success":true,field:chart}));
-    }
     if matches!(projection, Projection::Capabilities) {
         return Ok(json!({
             "umap_available":false,
@@ -815,35 +776,6 @@ mod tests {
             headers: BTreeMap::new(),
             body: body.to_string().into_bytes(),
         }
-    }
-
-    #[test]
-    fn chart_projection_returns_actual_owner_values_and_errors() {
-        let response = json!({"schema":RESPONSE_SCHEMA,"request_id":"chart","operation":"execute","result":{"success":true,"pca":{"coordinates":[[1.0,2.0]]}}});
-        let result = project_response(
-            response.clone(),
-            "chart",
-            "execute",
-            Projection::Chart("pca"),
-        )
-        .unwrap();
-        assert_eq!(
-            result,
-            json!({"success":true,"pca":{"coordinates":[[1.0,2.0]]}})
-        );
-        assert!(project_response(
-            response,
-            "chart",
-            "execute",
-            Projection::Chart("repetitions")
-        )
-        .is_err());
-        let failed = json!({"schema":RESPONSE_SCHEMA,"request_id":"chart","operation":"execute","result":{"success":false,"error":"invalid source"}});
-        assert_eq!(
-            project_response(failed, "chart", "execute", Projection::Chart("pca")).unwrap()
-                ["error"],
-            "invalid source"
-        );
     }
 
     #[test]
@@ -1135,14 +1067,19 @@ mod tests {
                 .0,
             503
         );
-        for path in [
-            "/api/playground/execute-dataset",
-            "/api/playground/pca",
-            "/api/playground/repetitions",
-        ] {
-            let response =
-                route(&state, &request(path, "POST", &json!({"dataset_id":id}))).unwrap();
-            assert_eq!(response.status, 503, "{path}: {}", response.body);
+        let response = route(
+            &state,
+            &request(
+                "/api/playground/execute-dataset",
+                "POST",
+                &json!({"dataset_id":id}),
+            ),
+        )
+        .unwrap();
+        assert_eq!(response.status, 503, "{}", response.body);
+        // The chart-only routes are gone: the execute response carries every chart.
+        for path in ["/api/playground/pca", "/api/playground/repetitions"] {
+            assert!(route(&state, &request(path, "POST", &json!({"dataset_id":id}))).is_none());
         }
         let response = route(
             &state,

@@ -295,9 +295,10 @@ describe("renderer transport preselection", () => {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
         .resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
     }
+    // The chart-only routes were removed: the execute response carries every chart.
     for (const path of ["/playground/pca", "/playground/repetitions"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "POST", path }, running, request))
-        .resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
+        .resolves.toMatchObject({ target: "reject" });
     }
     for (const path of ["/spectra/dataset_1?source=-1", "/spectra/dataset_1?source=1&source=2", "/spectra/dataset_1?include_y=yes", "/spectra/dataset_1/stats?start=2", "/spectra/dataset_1?max_wavelengths_returned=0"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))

@@ -362,8 +362,6 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   const playgroundPosts = [
     "/playground/execute",
     "/playground/execute-dataset",
-    "/playground/pca",
-    "/playground/repetitions",
     "/playground/validate",
     "/playground/diff/compute",
     "/playground/diff/repetition-variance",

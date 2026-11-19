@@ -271,12 +271,12 @@ with contextlib.redirect_stdout(sys.stderr):
             raise RuntimeError("scientific V1 request exceeds stdin budget")
         response=target(request)
         response_limit=8192
-encoded=bytearray()
-for text_chunk in json.JSONEncoder(allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).iterencode(response):
-    chunk=text_chunk.encode("utf-8")
-    if response_limit is not None and len(chunk)>response_limit-len(encoded):
-        raise RuntimeError("scientific response exceeds stdout budget")
-    encoded.extend(chunk)
+# One-shot C encoding, the same bytes as incremental encoding. The host bounds
+# the frame by the memory it can spare; facades with a fixed budget keep it.
+encoded=json.dumps(response,allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).encode("utf-8")
+response=None
+if response_limit is not None and len(encoded)>response_limit:
+    raise RuntimeError("scientific response exceeds stdout budget")
 sys.stdout.buffer.write(encoded)
 "#
 );
@@ -2406,11 +2406,13 @@ progress_tick()
             // Far above the former fixed 2/8/32 MiB budgets.
             assert!(input > 256 * 1024 * 1024, "{operation}");
         }
-        assert!(EXECUTION_SCRIPT.contains("JSONEncoder(allow_nan=False"));
+        assert!(EXECUTION_SCRIPT.contains("encoded=json.dumps(response,allow_nan=False"));
+        assert!(!EXECUTION_SCRIPT.contains("iterencode"));
         assert!(EXECUTION_SCRIPT.contains("raw=sys.stdin.buffer.read()\n"));
         assert!(!EXECUTION_SCRIPT.contains("document_limit"));
-        assert!(EXECUTION_SCRIPT
-            .contains("response_limit is not None and len(chunk)>response_limit-len(encoded)"));
+        assert!(
+            EXECUTION_SCRIPT.contains("response_limit is not None and len(encoded)>response_limit")
+        );
     }
 
     #[test]

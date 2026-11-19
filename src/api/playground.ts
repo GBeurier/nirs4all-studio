@@ -84,11 +84,17 @@ function readFoldYStats(stats: WireYStats | undefined): YStats | undefined {
 }
 
 /**
- * Drop fold target statistics the backend could not compute (it sends `null`
- * fields, e.g. when a fold holds samples without a target value), so that
- * consumers see "no statistics" instead of `null` numbers.
+ * Give the processed section its spectra when the backend sent an unchanged
+ * matrix once (`processed_is_original`, nirs4all >= 1.4.21); an older backend
+ * sends both matrices. Drop fold target statistics the backend could not
+ * compute (it sends `null` fields, e.g. when a fold holds samples without a
+ * target value), so that consumers see "no statistics" instead of `null`
+ * numbers.
  */
-function readExecuteResponse(response: ExecuteResponse): ExecuteResponse {
+function readExecuteResponse(wire: ExecuteResponse): ExecuteResponse {
+  const response = wire.processed_is_original
+    ? { ...wire, processed: { ...wire.processed, spectra: wire.original.spectra } }
+    : wire;
   if (!response.folds) return response;
   return {
     ...response,
@@ -302,43 +308,6 @@ export function buildExecuteRequest(params: {
       max_samples_displayed: params.maxSamplesDisplayed,
     },
   };
-}
-
-// ============= Parallel Chart Endpoints =============
-
-/**
- * Request model for computing individual chart data independently.
- */
-export interface ChartComputeRequest {
-  dataset_id?: string;
-  source_index?: number;
-  source?: number;
-  target_index?: number;
-  steps: PlaygroundStep[];
-  sampling?: { method: string; n_samples: number; seed: number };
-  options?: Record<string, unknown>;
-}
-
-/**
- * Compute PCA chart independently from the main execute response.
- * Uses step cache for efficient retrieval of processed data.
- */
-export async function computePcaChart(
-  request: ChartComputeRequest,
-  signal?: AbortSignal
-): Promise<{ success: boolean; pca?: Record<string, unknown>; error?: string }> {
-  return api.postMsgpack('/playground/pca', request, { signal });
-}
-
-/**
- * Compute repetitions chart independently from the main execute response.
- * Uses step cache for efficient retrieval of processed data.
- */
-export async function computeRepetitionsChart(
-  request: ChartComputeRequest,
-  signal?: AbortSignal
-): Promise<{ success: boolean; repetitions?: Record<string, unknown>; error?: string }> {
-  return api.postMsgpack('/playground/repetitions', request, { signal });
 }
 
 /**

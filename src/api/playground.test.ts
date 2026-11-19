@@ -59,6 +59,22 @@ describe('executeDatasetPlayground', () => {
     expect(result.folds?.folds[0].y_test_stats).toBeUndefined();
   });
 
+  it('reads unchanged spectra sent once and spectra sent twice alike', async () => {
+    const spectra = [[1, 2], [3, 4]];
+    const section = { wavelengths: [1100, 1200], shape: [2, 2], y: [1, 2] };
+    const once = { success: true, original: { ...section, spectra }, processed: section, processed_is_original: true };
+    const twice = { success: true, original: { ...section, spectra }, processed: { ...section, spectra } };
+    for (const response of [once, twice]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })));
+      const result = await executeDatasetPlayground({ dataset_id: 'dataset-1', steps: [] });
+      expect(result.processed).toEqual({ ...section, spectra });
+      expect(result.original.spectra).toEqual(spectra);
+    }
+  });
+
   it('sends missing target values back to the backend as null, never as 0', () => {
     const request = buildExecuteRequest({ spectra: [[1, 2], [3, 4]], y: [11.2, null], steps: [] });
 

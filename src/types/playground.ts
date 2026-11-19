@@ -526,6 +526,8 @@ export interface ExecuteResponse {
   step_errors: StepError[];
   warnings?: string[];
   is_raw_data?: boolean;
+  /** The processed spectra equal the original ones and were sent once, as `original.spectra`. */
+  processed_is_original?: boolean;
   source_partitions?: SourcePartitions;
 }
 
