@@ -471,6 +471,10 @@ fn raise_library_admission(operation: &str, payload: &mut Value) {
         for key in ["max_response_cells", "max_covariance_cells"] {
             options.entry(key).or_insert(json!(LIBRARY_ADMISSION_BOUND));
         }
+        // Spectra that no step changed are sent once; the renderer reads both forms.
+        options
+            .entry("omit_unchanged_processed_spectra")
+            .or_insert(json!(true));
     }
 }
 
@@ -801,6 +805,10 @@ mod tests {
                 assert_eq!(document["payload"]["data"]["x"][0][1], 2.0);
                 assert_eq!(document["payload"]["sampling"]["n_samples"], 1);
                 assert_eq!(document["payload"]["options"]["compute_pca"], false);
+                assert_eq!(
+                    document["payload"]["options"]["omit_unchanged_processed_spectra"],
+                    true
+                );
                 assert_eq!(document["payload"]["limits"]["max_samples"], 1);
                 Ok(json!({
                     "schema":RESPONSE_SCHEMA,"request_id":document["request_id"],
