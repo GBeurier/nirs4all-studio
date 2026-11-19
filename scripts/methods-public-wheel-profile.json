@@ -3,22 +3,22 @@
   "arch": "x64",
   "abi": {
     "major": 2,
-    "minor": 23
+    "minor": 24
   },
   "library": {
-    "size": 7112712,
-    "sha256": "ce120aabd17f923e3147bf9712b45de9f28b58ee0de90098b7c65f176f3198bf"
+    "size": 7182344,
+    "sha256": "215c57f294f43dc61c6b1ca9c2635758ce03fa15646834f01b134caa6869f042"
   },
   "artifact": {
     "kind": "public-wheel",
     "distribution": {
       "name": "nirs4all-methods",
-      "version": "1.3.19"
+      "version": "1.5.0"
     },
     "wheel": {
-      "filename": "nirs4all_methods-1.3.19-py3-none-manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/23/bf/fde881e8cf30a16c625bc50bd9d4e6bbf3d38cc183a6cd0f399a42db096f/nirs4all_methods-1.3.19-py3-none-manylinux_2_28_x86_64.whl",
-      "sha256": "e768df650663f918e80bf0339b471a5edb0df023e1cc70fc4b0d867a3210127c",
+      "filename": "nirs4all_methods-1.5.0-py3-none-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/76/d5/b13f199d9de70e259ae1d3aca7bc25888e8634cd28d61b5acdc0cf8ff4bb/nirs4all_methods-1.5.0-py3-none-manylinux_2_28_x86_64.whl",
+      "sha256": "520bcbeed49f3217350fc83c5cfb691fc7b0549d5698e94ff91ce4480dd0d718",
       "member": "n4m/lib/libn4m.so"
     },
     "source": null
