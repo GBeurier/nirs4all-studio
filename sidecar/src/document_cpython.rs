@@ -207,6 +207,8 @@ fn is_supported_operation(operation: &str) -> bool {
             | "synthesis.status"
             | "synthesis.validate"
             | "synthesis.generate"
+            | "datasets.public_catalogue"
+            | "datasets.public_import"
     )
 }
 

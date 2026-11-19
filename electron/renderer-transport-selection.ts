@@ -65,6 +65,8 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /pipelines/count-variants", { name: "pipeline-library", capability: "pipeline_library_routes", requiresPythonHost: true }],
   ["GET /datasets", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
   ["POST /datasets/link", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
+  ["GET /datasets/public", { name: "public-datasets", capability: "dataset_public_routes", requiresPythonHost: true }],
+  ["POST /datasets/public/import", { name: "public-datasets", capability: "dataset_public_routes", requiresPythonHost: true }],
   ["GET /workspace/format-status", { name: "workspace-format-status", capability: "workspace_format_status_route" }],
   ["GET /system/network", { name: "system-network", capability: "system_network_route" }],
   ["GET /updates/status", { name: "updates-status", capability: "updates_status_route" }],
@@ -243,7 +245,7 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
   if (workflow) return workflow;
   const dataset = identifierPath("/datasets/").exec(path);
   if (["GET", "PUT", "DELETE"].includes(method) && dataset && isValidIdentifier(dataset[1]) &&
-      !["link", "preview", "detect-unified", "detect-files", "detect-format", "detect-files-list", "scan-folder", "auto-detect", "validate-files", "synthetic-presets", "generate-synthetic"].includes(dataset[1])) {
+      !["link", "public", "preview", "detect-unified", "detect-files", "detect-format", "detect-files-list", "scan-folder", "auto-detect", "validate-files", "synthetic-presets", "generate-synthetic"].includes(dataset[1])) {
     return { name: "dataset-catalogue", capability: "dataset_catalogue_routes" };
   }
   const pipeline = identifierPath("/pipelines/").exec(path);
@@ -288,11 +290,19 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     if (identifierPath("/automl/").test(path) && !path.endsWith("/jobs")) {
       return { name: "job-status", capability: "native_job_status_routes" };
     }
+    const publicImport = identifierPath("/datasets/public/imports/").exec(path);
+    if (publicImport && isValidIdentifier(publicImport[1])) {
+      return { name: "public-dataset-import-status", capability: "native_job_status_routes" };
+    }
     if (identifierPath("/runs/execution-job-records/").test(path) || identifierPath("/runs/", "/execution-job-record").test(path)) {
       return { name: "durable-job-record", capability: "durable_execution_job_record_reads" };
     }
   }
   if (method === "POST") {
+    const publicCancel = identifierPath("/datasets/public/imports/", "/cancel").exec(path);
+    if (publicCancel && isValidIdentifier(publicCancel[1])) {
+      return { name: "public-dataset-import-cancellation", capability: "native_job_cancellation_routes" };
+    }
     if (
       identifierPath("/training/", "/stop").test(path) ||
       identifierPath("/automl/", "/stop").test(path) ||
@@ -459,6 +469,7 @@ function isNativeShapedCandidate(request: RendererTransportRequest): boolean {
     /^\/training\/(?!start$|jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
     /^\/automl\/(?!jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
     /^\/runs\/run-groups\/?$/.test(pathname) ||
+    /^\/datasets\/public(?:\/.*)?$/.test(pathname) ||
     /^\/runs\/execution-job-records\/[^/]+(?:\/cancel)?$/.test(pathname) ||
     /^\/runs\/[^/]+\/(?:execution-job-record|stop)$/.test(pathname);
 }

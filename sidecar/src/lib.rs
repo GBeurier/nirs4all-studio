@@ -55,6 +55,7 @@ mod playground_views;
 mod prediction_export;
 mod prediction_results;
 mod prediction_upload;
+mod public_datasets;
 mod python_probe_cache;
 mod recommended_config;
 mod results_summary;
@@ -621,6 +622,7 @@ impl CapabilitiesSnapshot {
             "inspector_view_routes",
             "prediction_export_routes",
             "library_analysis_routes",
+            "dataset_public_routes",
         ];
         let available = self.scientific_host.as_deref().is_some_and(
             scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
@@ -3946,6 +3948,7 @@ fn route_result_and_upgrade(
         .or_else(|| prediction_export::route(state, request))
         .or_else(|| checkpoint_export::route(state, request))
         .or_else(|| inspector_views::route(state, request))
+        .or_else(|| public_datasets::route(state, request))
         .or_else(|| library_analysis::route(state, request))
         .or_else(|| workspace_metadata::route(state, request))
         .or_else(|| prediction_results::route(state, request))

@@ -9,9 +9,11 @@ import {
   FlaskConical,
   FolderOpen,
   FileJson,
+  Globe,
   Grid3x3,
   HardDrive,
   Layers,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -62,6 +64,8 @@ interface DatasetsHeaderProps {
   onOpenSynthetic: () => void;
   onOpenWizard: () => void;
   onOpenMultimodalImport: () => void;
+  onOpenPublicDatasets: () => void;
+  publicImportActive: boolean;
   hasWorkspace: boolean;
 }
 
@@ -71,6 +75,8 @@ export function DatasetsHeader({
   onOpenSynthetic,
   onOpenWizard,
   onOpenMultimodalImport,
+  onOpenPublicDatasets,
+  publicImportActive,
   hasWorkspace,
 }: DatasetsHeaderProps) {
   const { t } = useTranslation();
@@ -84,6 +90,25 @@ export function DatasetsHeader({
         </p>
       </div>
       <div className="flex gap-2">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={publicImportActive ? "Public datasets (import running)" : "Public datasets"}
+                onClick={onOpenPublicDatasets}
+              >
+                {publicImportActive ? (
+                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                ) : (
+                  <Globe className="h-4 w-4" aria-hidden />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Public datasets</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Button variant="outline" disabled={!hasWorkspace} onClick={onOpenMultimodalImport}>
           <FileJson className="mr-2 h-4 w-4" />
           {t("datasets.multimodalImport.button")}

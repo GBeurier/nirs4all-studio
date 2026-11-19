@@ -795,4 +795,46 @@ describe("renderer transport preselection", () => {
     });
     expect(request).not.toHaveBeenCalled();
   });
+
+  it("routes public dataset browse/import through the host and job polling without it", async () => {
+    const request = vi.fn(async () => capabilityResponse({ dataset_public_routes: true, python_plugin_preflight: true }));
+    const noPython = () => ({ ...running(), pythonPluginHostConfigured: false });
+    for (const [method, path] of [["GET", "/datasets/public"], ["POST", "/datasets/public/import"]]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "public-datasets" });
+      await expect(preselectRendererTransport({ kind: "http", method, path }, noPython, request))
+        .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, async () => capabilityResponse()))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+    expect(request).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/sidecar/v1/capabilities?capability=dataset_public_routes",
+      expect.anything(),
+    );
+    for (const [method, path, capability] of [
+      ["GET", "/datasets/public/imports/run_native_1_2_3", "native_job_status_routes"],
+      ["POST", "/datasets/public/imports/run_native_1_2_3/cancel", "native_job_cancellation_routes"],
+    ]) {
+      const jobs = vi.fn(async () => capabilityResponse());
+      await expect(preselectRendererTransport({ kind: "http", method, path }, noPython, jobs))
+        .resolves.toMatchObject({ target: "native-sidecar" });
+      expect(jobs).toHaveBeenCalledWith(
+        `http://127.0.0.1:43123/sidecar/v1/capabilities?capability=${capability}`,
+        expect.anything(),
+      );
+    }
+    for (const [method, path] of [
+      ["GET", "/datasets/public?tier=private"],
+      ["PUT", "/datasets/public"],
+      ["DELETE", "/datasets/public"],
+      ["GET", "/datasets/public/import"],
+      ["GET", "/datasets/public/imports/.."],
+      ["GET", "/datasets/public/imports/a/b"],
+      ["GET", "/datasets/public/imports/job-1?view=all"],
+      ["POST", "/datasets/public/imports/job-1"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "reject", status: 400 });
+    }
+  });
 });

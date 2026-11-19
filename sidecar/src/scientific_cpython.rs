@@ -505,6 +505,7 @@ impl CpythonScientificJobExecutor {
                 | "predictions.file"
                 | "runs.delete"
                 | "analysis.shap_compute"
+                | "datasets.public_import"
         );
         let response = if dedicated {
             // Heavy operations must not occupy either interactive worker.
@@ -512,7 +513,10 @@ impl CpythonScientificJobExecutor {
                 host,
                 &bytes,
                 cancelled,
-                if operation == "analysis.shap_compute" {
+                if matches!(
+                    operation,
+                    "analysis.shap_compute" | "datasets.public_import"
+                ) {
                     SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT
                 } else {
                     SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT

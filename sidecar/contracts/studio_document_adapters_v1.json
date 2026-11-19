@@ -41,8 +41,8 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 24159,
-      "sha256": "d31c172602224083e43288f50e89a8eb708b4599937a8ccac465a157740c7391"
+      "size": 24417,
+      "sha256": "2b3c146d31b984c46f260b51392180dc84872cec674d3fcc928bfa3eb379de97"
     },
     {
       "path": "api/library_inspector.py",
@@ -73,6 +73,11 @@
       "path": "api/library_predictions.py",
       "size": 12979,
       "sha256": "bc728bf303aac1baf53e0462229ebd89063b386a8f10a7101722d039f6a9f7f2"
+    },
+    {
+      "path": "api/library_public_datasets.py",
+      "size": 17623,
+      "sha256": "4c33b63579f177c21e3b2a823459f67a08343b5c8f8ddbed5ffb97b3a7a67017"
     },
     {
       "path": "api/node_registry_loader.py",

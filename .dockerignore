@@ -22,6 +22,7 @@ api/*
 !api/library_analysis.py
 !api/robustness_contract.py
 !api/library_dataset_inspection.py
+!api/library_public_datasets.py
 !api/library_predictions.py
 !api/library_prediction_results.py
 !api/library_aggregated_results.py
