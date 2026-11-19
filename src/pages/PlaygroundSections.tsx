@@ -62,6 +62,7 @@ export interface PlaygroundContentProps {
   exportToPipelineEditor?: () => void;
   exportPipelineJson?: () => void;
   exportDataCsv?: () => void;
+  exportControl?: ReactNode;
   importPipeline: () => void;
   filterToSelection: (indices: number[]) => void;
   addOperatorByName: ReturnType<typeof usePlaygroundPipeline>['addOperatorByName'];
@@ -127,6 +128,7 @@ interface PlaygroundSidebarSectionProps {
   onExportToPipelineEditor?: () => void;
   onExportPipelineJson?: () => void;
   onExportDataCsv?: () => void;
+  exportControl?: ReactNode;
   onImportPipeline: () => void;
 }
 
@@ -161,6 +163,7 @@ function PlaygroundSidebarSection({
   onExportToPipelineEditor,
   onExportPipelineJson,
   onExportDataCsv,
+  exportControl,
   onImportPipeline,
 }: PlaygroundSidebarSectionProps) {
   return (
@@ -210,6 +213,7 @@ function PlaygroundSidebarSection({
       // Export handlers
       onExportToPipelineEditor={onExportToPipelineEditor}
       onExportPipelineJson={onExportPipelineJson}
+      exportControl={exportControl}
       onExportDataCsv={onExportDataCsv}
       onImportPipeline={onImportPipeline}
     />
@@ -346,6 +350,7 @@ export function PlaygroundContent({
   exportToPipelineEditor,
   exportPipelineJson,
   exportDataCsv,
+  exportControl,
   importPipeline,
   filterToSelection,
   showShortcutsHelp,
@@ -484,6 +489,7 @@ export function PlaygroundContent({
           onRedo={redo}
           onExportToPipelineEditor={exportToPipelineEditor}
           onExportPipelineJson={exportPipelineJson}
+          exportControl={exportControl}
           onExportDataCsv={exportDataCsv}
           onImportPipeline={importPipeline}
         />

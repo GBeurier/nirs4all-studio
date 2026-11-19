@@ -109,7 +109,11 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
           if (!results) {
             setError(statusError || t('results.variableImportance.job.failed'));
           }
+          return;
         }
+        setIsSubmitting(false);
+        setJobId(null);
+        setError(statusError || `SHAP job cannot continue (status: ${status ?? 'unknown'}). Start a new analysis.`);
       } catch (err) {
         if (cancelled) return;
 

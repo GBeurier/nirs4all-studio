@@ -99,7 +99,8 @@ export function nodeToOperatorDefinition(
   return {
     registryId: node.id,
     classPath: node.classPath,
-    name: node.classPath?.split('.').pop() ?? node.name,
+    // Recipes may share a constructor while retaining distinct names/defaults.
+    name: node.name,
     display_name: displayName,
     description: node.description,
     category: node.category ?? 'Other',

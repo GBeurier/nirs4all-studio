@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 /**
  * PlaygroundSidebar - Sidebar with operator palette, pipeline builder, and execution status
  *
@@ -38,6 +39,7 @@ import type { PartitionKey } from '@/types/datasets';
 import { useTranslation } from 'react-i18next';
 
 interface PlaygroundSidebarProps {
+  exportControl?: ReactNode;
   // Data
   data: SpectralData | null;
   isLoading: boolean;
@@ -127,6 +129,7 @@ export function PlaygroundSidebar({
   onExportToPipelineEditor,
   onExportPipelineJson,
   onExportDataCsv,
+  exportControl,
   onImportPipeline,
 }: PlaygroundSidebarProps) {
   const { t } = useTranslation();
@@ -327,6 +330,7 @@ export function PlaygroundSidebar({
               </DropdownMenu>
             )}
 
+            {exportControl}
             {/* Import button */}
             {onImportPipeline && (
               <Tooltip>

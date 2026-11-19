@@ -1,3 +1,5 @@
+import { N4aExportButton } from '@/components/exports/N4aExportButton';
+import { buildPipelineRunArtifactRefs } from '@/lib/resultArtifacts';
 import { useTranslation } from "react-i18next";
 import { TabsContent } from "@/components/ui/tabs";
 import { RuntimeDiagnosticsList } from "@/components/runtime";
@@ -7,7 +9,6 @@ import {
   buildResultConformalSummary,
   buildResultExecutionTimeRows,
   buildResultMetricCards,
-  buildResultNativeResultsSummary,
   buildResultRelatedLinks,
   buildResultRobustnessLaunchPlan,
   buildResultRobustnessSummary,
@@ -21,7 +22,6 @@ import { ResultMetricsConformalSummary } from "./ResultMetricsConformalSummary";
 import { ResultMetricsEmptyState } from "./ResultMetricsEmptyState";
 import { ResultMetricsErrorState } from "./ResultMetricsErrorState";
 import { ResultMetricsExecutionTimes } from "./ResultMetricsExecutionTimes";
-import { ResultMetricsExportAction } from "./ResultMetricsExportAction";
 import { ResultMetricsRefitNotice } from "./ResultMetricsRefitNotice";
 import { ResultMetricsRobustnessLaunchPlan } from "./ResultMetricsRobustnessLaunchPlan";
 import { ResultMetricsRobustnessSummary } from "./ResultMetricsRobustnessSummary";
@@ -41,7 +41,6 @@ export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: Re
   const executionTimeRows = buildResultExecutionTimeRows(pipeline, t);
   const relatedLinks = buildResultRelatedLinks(pipeline, datasetName, t);
   const artifactSummary = buildResultArtifactSummary(pipeline);
-  const nativeResultsSummary = buildResultNativeResultsSummary(pipeline);
   const conformalSummary = buildResultConformalSummary(pipeline);
   const robustnessSummary = buildResultRobustnessSummary(pipeline);
   const robustnessLaunchPlan = buildResultRobustnessLaunchPlan(pipeline, t);
@@ -72,12 +71,12 @@ export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: Re
           <ResultMetricsRobustnessSummary summary={robustnessSummary} />
 
           {pipeline.status === "completed" && (
-            <ResultMetricsExportAction
-              hasRefit={pipeline.has_refit}
-              hasNativeResults={nativeResultsSummary.hasNativeResults}
-              nativeArtifactCount={nativeResultsSummary.artifactCount}
-            />
+            <N4aExportButton label={pipeline.has_refit ? "Export Final Model (.n4a)" : "Export .n4a"} filename={pipeline.pipeline_name} bundlePath={buildPipelineRunArtifactRefs(pipeline).find(ref => ref.bundlePath)?.bundlePath ?? undefined} sections={[
+              { id: 'results', label: 'Run results', description: 'Stored metrics, configuration and result references', payload: pipeline },
+              { id: 'model', label: 'Trained model', description: 'Preserve the existing fitted archive and prediction entrypoint', payload: true, disabled: !buildPipelineRunArtifactRefs(pipeline).some(ref => ref.bundlePath) },
+            ]} />
           )}
+
 
           <ResultMetricsRelatedLinks links={relatedLinks} />
         </>

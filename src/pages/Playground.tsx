@@ -51,6 +51,7 @@ import {
 import type { OperatorDefinition } from '@/types/playground';
 import { PlaygroundProviders } from './PlaygroundProviders';
 import { PlaygroundContent } from './PlaygroundSections';
+import { N4aExportButton } from '@/components/exports/N4aExportButton';
 import { useTranslation } from 'react-i18next';
 
 export default function Playground() {
@@ -512,6 +513,11 @@ export default function Playground() {
     <MlLoadingOverlay>
       <PlaygroundProviders primaryData={rawData} operators={operators}>
         <PlaygroundContent
+          exportControl={<N4aExportButton datasetId={currentDatasetInfo?.datasetId} filename="playground" sections={[
+            { id: 'recipe', label: 'Playground operators', description: 'Current operators and parameters', payload: operators },
+            { id: 'dataset', label: currentDatasetInfo ? 'Dataset source files' : 'Input data', description: currentDatasetInfo ? 'Complete linked source files and dataset configuration' : 'Current input snapshot', payload: rawData, disabled: !rawData },
+            { id: 'processed', label: 'Processed data and analysis', description: 'Current analysis snapshot, including its sample subset and row identities', payload: result, disabled: !result || isProcessing },
+          ]} />}
           // Data
           rawData={rawData}
           dataLoading={dataLoading}

@@ -139,6 +139,9 @@ export function VariableImportanceForm({
           </SelectContent>
         </Select>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Analysis uses up to 50 reproducibly selected samples and 20 background samples. Automatic mode uses exact linear SHAP for supported affine pipelines and permutation SHAP otherwise.
+      </p>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import type {
 } from "./nirs4allPipelineTypes";
 import { castParamRecord } from "./pipelineValueUtils";
 import { normalizeYProcessingParams } from "./pipelineYProcessing";
+import { normalizeOperatorParameters } from "./operatorParameters";
 
 type EditorToNirs4allStepConverter = (step: EditorPipelineStep) => Nirs4allStep;
 
@@ -49,7 +50,7 @@ export function getExportableStepParams(step: EditorPipelineStep): Record<string
 }
 
 export function buildClassStep(step: EditorPipelineStep, classPath: string): Nirs4allStep {
-  const params = getExportableStepParams(step);
+  const params = normalizeOperatorParameters(classPath, getExportableStepParams(step));
   const cleanParams: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params || {})) {
     if (!key.startsWith("_")) {

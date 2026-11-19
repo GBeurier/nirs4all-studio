@@ -32,7 +32,6 @@ describe('operatorFormat runtime-only split params', () => {
         class: 'sklearn.model_selection.KFold',
         params: {
           n_splits: 4,
-          group_by: 'batch',
         },
       },
     });

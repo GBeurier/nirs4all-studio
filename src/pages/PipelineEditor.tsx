@@ -1,3 +1,5 @@
+import { N4aExportButton } from '@/components/exports/N4aExportButton';
+import { exportToNirs4all } from '@/utils/pipelineCanonicalConversion';
 import { useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -285,6 +287,9 @@ export default function PipelineEditor() {
 
           {/* Navigation Status Bar */}
           <footer className="border-t border-border bg-card/50 px-4 py-2 flex-shrink-0">
+            <N4aExportButton filename={pipelineName} sections={[
+              { id: 'recipe', label: 'Pipeline recipe', description: 'Canonical pipeline configuration', payload: () => exportToNirs4all(steps, { name: pipelineName, includeWrapper: true }) },
+            ]} />
             <NavigationStatusBar
               focusedPanel={focusedPanel}
               selectedStepName={selectedStep?.name}

@@ -181,6 +181,7 @@ fn is_supported_operation(operation: &str) -> bool {
             | "operators.availability"
             | "dataset.fingerprint"
             | "results.export"
+            | "results.export_n4a"
             | "inspector.data"
             | "inspector.histogram"
             | "inspector.rankings"

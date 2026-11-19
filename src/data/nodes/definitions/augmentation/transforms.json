@@ -184,22 +184,6 @@
         "finetuneRange": [0.0001, 0.01]
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -237,22 +221,6 @@
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [1, 5]
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -303,22 +271,6 @@
         "finetuneRange": [0.5, 5.0]
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -367,22 +319,6 @@
         "finetuneRange": [1.001, 1.1]
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -429,22 +365,6 @@
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [0.1, 3.0]
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -502,22 +422,6 @@
         "max": 1.5,
         "step": 0.01,
         "description": "Maximum gain factor at control points"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -684,22 +588,6 @@
         "finetuneRange": [3, 21]
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -764,22 +652,6 @@
         "max": 51,
         "step": 2,
         "description": "Width of the Gaussian kernel (must be odd)"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -857,22 +729,6 @@
         "description": "How to fill masked regions: interpolate between edges or set to zero"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -926,22 +782,6 @@
           }
         ],
         "description": "How to fill dropped channels: interpolate from neighbors or set to zero"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -1076,22 +916,6 @@
         "description": "Maximum width of clipped region (in wavelength points)"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -1129,22 +953,6 @@
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [0.1, 0.5]
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -1196,22 +1004,6 @@
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [3, 15]
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -1290,22 +1082,6 @@
         "max": 1.5,
         "step": 0.01,
         "description": "Maximum multiplicative scatter coefficient"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -1402,22 +1178,6 @@
         "default": true,
         "description": "Apply region-specific effects (recommended). If false, applies uniform average effects.",
         "isAdvanced": true
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -1534,22 +1294,6 @@
         "description": "Apply water band intensity changes"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -1664,22 +1408,6 @@
         "isAdvanced": true
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -1775,22 +1503,6 @@
         "isAdvanced": true
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -1876,22 +1588,6 @@
         "description": "Include slight baseline distortion at edges"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -1955,22 +1651,6 @@
         "type": "bool",
         "default": true,
         "description": "Simulate peak height reduction at high absorbance"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -2056,22 +1736,6 @@
         "max": 1,
         "step": 0.1,
         "description": "How concentrated the curvature is at edges (higher = sharper)"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -2161,22 +1825,6 @@
         "type": "bool",
         "default": true,
         "description": "Add truncated peaks at right (high wavelength) edge"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -2270,22 +1918,6 @@
           }
         ],
         "description": "Detector model for roll-off simulation"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -2662,22 +2294,6 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -2740,22 +2356,6 @@
         "description": "Maximum perturbation value"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -2800,22 +2400,6 @@
         "description": "Perturbation intensity relative to max value"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -2856,22 +2440,6 @@
         "description": "If true, use uniformly spaced points. If false, use random points."
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -2910,22 +2478,6 @@
         "type": "bool",
         "default": false,
         "description": "If true, use uniformly spaced points. If false, use random points."
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
@@ -2972,22 +2524,6 @@
         "description": "Maximum value for the random operator"
       },
       {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
-      },
-      {
         "name": "random_state",
         "type": "int",
         "default": null,
@@ -3028,22 +2564,6 @@
         "min": 1,
         "max": 20,
         "description": "Scaling factor for the initial offset value"
-      },
-      {
-        "name": "variation_scope",
-        "type": "select",
-        "default": "sample",
-        "options": [
-          {
-            "value": "sample",
-            "label": "Per sample"
-          },
-          {
-            "value": "batch",
-            "label": "Per batch"
-          }
-        ],
-        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",

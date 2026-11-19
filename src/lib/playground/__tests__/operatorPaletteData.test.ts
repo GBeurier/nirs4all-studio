@@ -12,6 +12,8 @@ import {
   type OperatorPaletteNodeType,
 } from '../operatorPaletteData';
 import type { OperatorDefinition } from '@/types/playground';
+import smoothingNodes from '@/data/nodes/definitions/preprocessing/smoothing.json';
+import { createOperatorFromDefinition, unifiedToPlaygroundStep } from '../operatorFormat';
 
 function makeNode(overrides: Partial<OperatorPaletteNode> = {}): OperatorPaletteNode {
   return {
@@ -37,6 +39,15 @@ function makeOperator(overrides: Partial<OperatorDefinition> = {}): OperatorDefi
 }
 
 describe('operatorPaletteData', () => {
+  it('keeps Moving Average distinct from Savitzky-Golay through selection', () => {
+    const node = smoothingNodes.find(node => node.id === 'preprocessing.moving_average')!;
+    const selected = createOperatorFromDefinition(nodeToOperatorDefinition(node as OperatorPaletteNode, 'preprocessing'));
+    expect(selected.name).toBe('MovingAverage');
+    expect(selected.classPath).toBe('nirs4all.operators.transforms.SavitzkyGolay');
+    expect(selected.params).toMatchObject({ window_length: 5, polyorder: 1, deriv: 0 });
+    expect(unifiedToPlaygroundStep(selected).name).toBe('SavitzkyGolay');
+  });
+
   it('filters nodes by visibility tier while preserving legacy advanced flags', () => {
     expect(passesOperatorTierFilter(makeNode({ tier: 'core' }), 'core')).toBe(true);
     expect(passesOperatorTierFilter(makeNode({ tier: 'standard' }), 'core')).toBe(false);
@@ -71,7 +82,7 @@ describe('operatorPaletteData', () => {
     expect(operator).toMatchObject({
       registryId: 'preprocessing.snv',
       classPath: 'nirs4all.preprocessing.SNV',
-      name: 'SNV',
+      name: 'SavitzkyGolay',
       display_name: 'Savitzky Golay',
       category: 'nirs core',
       source: 'nirs4all',

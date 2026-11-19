@@ -258,6 +258,9 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     if operation == "results.export":
         from .library_prediction_export import prediction_export
         return prediction_export(document)
+    if operation == "results.export_n4a":
+        from .library_checkpoint import checkpoint_export
+        return checkpoint_export(document)
     if operation.startswith("inspector."):
         from .library_inspector import inspector_view
         return inspector_view(operation, document)

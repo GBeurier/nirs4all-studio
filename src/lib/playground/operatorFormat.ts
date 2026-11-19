@@ -9,6 +9,7 @@ import type {
   PlaygroundStep,
   OperatorDefinition,
 } from '@/types/playground';
+import { normalizeOperatorParameters } from '@/utils/operatorParameters';
 import {
   clientStorageKeys,
   isClientStorageAvailable,
@@ -26,13 +27,12 @@ const PLAYGROUND_RUNTIME_ONLY_SPLITTER_PARAMS = new Set([
 ]);
 
 function stripRuntimeOnlyExportParams(operator: UnifiedOperator): Record<string, unknown> {
-  if (operator.type !== 'splitting') {
-    return { ...operator.params };
-  }
-
-  return Object.fromEntries(
-    Object.entries(operator.params).filter(([key]) => !PLAYGROUND_RUNTIME_ONLY_SPLITTER_PARAMS.has(key))
-  );
+  return normalizeOperatorParameters(operator.classPath ?? '', Object.fromEntries(
+    Object.entries(operator.params).filter(([key]) =>
+      !(operator.type === 'splitting' && PLAYGROUND_RUNTIME_ONLY_SPLITTER_PARAMS.has(key))
+      && !(operator.type === 'augmentation' && key === 'n_augmented_copies')
+      && !(operator.type === 'filter' && key === 'filter_mode'))
+  ));
 }
 
 // ============= Unified to API Conversion =============
@@ -47,11 +47,15 @@ export function unifiedToPlaygroundStep(operator: UnifiedOperator): PlaygroundSt
   return {
     id: operator.id,
     type: operator.type,
-    name: operator.name,
+    // The request validates the constructor identity; the card keeps the
+    // selected recipe name (e.g. MovingAverage) separately in host state.
+    name: operator.classPath && !operator.classPath.startsWith('n4m:')
+      ? operator.classPath.split('.').pop()!
+      : operator.name,
     params: operator.params,
     enabled: operator.enabled,
     ...(operator.classPath
-      ? { operator: { class: operator.classPath, params: operator.params } }
+      ? { operator: { class: operator.classPath, params: stripRuntimeOnlyExportParams(operator) } }
       : {}),
   };
 }

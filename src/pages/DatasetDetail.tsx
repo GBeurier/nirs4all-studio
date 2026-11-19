@@ -1,3 +1,4 @@
+import { N4aExportButton } from '@/components/exports/N4aExportButton';
 /**
  * DatasetDetail - Full page view for a single dataset
  *
@@ -264,6 +265,10 @@ export default function DatasetDetail() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                {!hasMultimodalDocument && <N4aExportButton filename={dataset.name} datasetId={dataset.id} sections={[
+                  { id: 'dataset', label: 'Dataset source files and configuration', description: 'Complete source files with their original bytes', payload: { id: dataset.id, name: dataset.name } },
+                ]} />}
+
                 {!hasMultimodalDocument && <Button variant="outline" onClick={loadPreview} disabled={previewLoading}>
                   <RefreshCw className={`mr-2 h-4 w-4 ${previewLoading ? "animate-spin" : ""}`} />
                   {t("datasets.detailPage.refreshPreview")}
