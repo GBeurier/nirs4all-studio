@@ -26,6 +26,11 @@ export function normalizeShapExplainerType(value: string): ExplainerType {
   return isShapExplainerType(value) ? value : 'auto';
 }
 
+export function isShapPlsModel(modelClass: string | null): boolean {
+  const name = modelClass?.split('.').pop();
+  return name === 'PLSRegression' || name === 'PLS';
+}
+
 export function buildShapPredictHref(chainId: string): string {
   return `/predict?model_id=${encodeURIComponent(chainId)}&source=chain`;
 }

@@ -56,10 +56,10 @@ async function shapJourney({ page, env }, proof, workspace) {
     }))),
   } });
   const dataset = linked.dataset.id;
-  const imported = await api(env, '/pipelines/import', { payload: { name: 'SHAP smoke Ridge', pipeline: [
+  const imported = await api(env, '/pipelines/import', { payload: { name: 'SHAP smoke PLS', pipeline: [
     { class: 'sklearn.preprocessing.StandardScaler' },
     { class: 'sklearn.model_selection.KFold', params: { n_splits: 3 } },
-    { class: 'sklearn.linear_model.Ridge', params: { alpha: 0.1 } },
+    { class: 'sklearn.cross_decomposition.PLSRegression', params: { n_components: 2 } },
   ] } });
   const pipeline = imported.pipeline.id;
   const pair = `${dataset}::${pipeline}`;
@@ -71,7 +71,7 @@ async function shapJourney({ page, env }, proof, workspace) {
     strictCampaignSpecs: { splitSpecs: [{ id: `single-pair:${pair}`, sourceRunId: pair, sourceDatasetId: dataset,
       sourcePipelineId: pipeline, campaign: { name, mode: 'paired_by_index', executionBackend: 'local-python',
         datasets: [{ id: dataset, name: 'SHAP fixture', splitGroupBy: null }],
-        pipelines: [{ id: pipeline, name: 'SHAP smoke Ridge', source: 'saved' }],
+        pipelines: [{ id: pipeline, name: 'SHAP smoke PLS', source: 'saved' }],
         runMatrix: [{ id: pair, datasetId: dataset, pipelineId: pipeline, datasetIndex: 0, pipelineIndex: 0, splitGroupBy: null }] } }], skippedRunIds: [] },
   });
   await waitForJob(env, `/training/${submitted.job_id || submitted.run_id}`);
@@ -81,37 +81,64 @@ async function shapJourney({ page, env }, proof, workspace) {
 
   let blockedSockets = 0;
   await page.routeWebSocket(/\/ws\/job\//, socket => { blockedSockets += 1; socket.close(); });
-  await page.evaluate(({ chainId, datasetName }) => {
-    sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ version: 1, savedAt: Date.now(),
-      chainId, datasetName, partition: 'test', explainerType: 'kernel', jobId: null,
-      results: null, rebinnedData: null, isSubmitting: true, activeTab: 'spectral', selectedSamples: [] }));
-    location.hash = '/lab/shapley';
-  }, { chainId: chain.chain_id, datasetName: chain.dataset_name });
+  const explainers = [];
+  let linearReference;
+  for (const explainer of ['kernel', 'auto', 'linear']) {
+    await page.evaluate(({ chainId, datasetName, explainer }) => {
+      sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ version: 1, savedAt: Date.now(),
+        chainId, datasetName, partition: 'test', explainerType: explainer, jobId: null,
+        results: null, rebinnedData: null, isSubmitting: explainer === 'kernel', activeTab: 'spectral', selectedSamples: [] }));
+      location.hash = '/lab/shapley';
+    }, { chainId: chain.chain_id, datasetName: chain.dataset_name, explainer });
+    await page.reload();
+    const compute = page.getByRole('button', { name: 'Compute Explanations', exact: true });
+    await expect(compute).toBeEnabled({ timeout: 30000 });
+    const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/analysis/shap/compute') && response.request().method() === 'POST');
+    await compute.click();
+    const response = await responsePromise;
+    assert(response.ok(), `Installed PLS ${explainer} SHAP submission returned HTTP ${response.status()}`);
+    const receipt = await response.json();
+    await waitForJob(env, `/analysis/shap/status/${receipt.job_id}`);
+    await expect(page.getByText('SHAP Analysis Results', { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(compute).toBeEnabled();
+    assert(blockedSockets > 0, 'The installed SHAP regression must run with its job WebSocket blocked');
+    const result = await api(env, `/analysis/shap/results/${receipt.job_id}`);
+    assert.equal(result.n_samples, 8);
+    assert.equal(result.n_features, 4);
+    assert(result.mean_abs_shap.every(Number.isFinite));
+    if (explainer !== 'kernel') {
+      assert.equal(result.explainer_type, 'LinearExplainer', 'PLS linear SHAP must use the exact affine explainer');
+      if (linearReference) assert.deepEqual(result.mean_abs_shap, linearReference);
+      linearReference = result.mean_abs_shap;
+    }
+    const scatter = await api(env, `/analysis/shap/results/${receipt.job_id}/scatter`);
+    let maximumAdditivityError = 0;
+    for (let index = 0; index < result.n_samples; index += 1) {
+      const sample = await api(env, `/analysis/shap/results/${receipt.job_id}/sample/${index}?top_n=4`);
+      const additive = sample.base_value + sample.contributions.reduce((sum, item) => sum + item.shap_value, 0);
+      maximumAdditivityError = Math.max(maximumAdditivityError, Math.abs(additive - scatter.y_pred[index]));
+    }
+    assert(maximumAdditivityError < 1e-5, 'SHAP contributions must explain every captured test prediction');
+    await page.reload();
+    await expect(page.getByText('SHAP Analysis Results', { exact: true })).toBeVisible({ timeout: 30000 });
+    explainers.push({ explainer, actual_explainer: result.explainer_type, job_id: receipt.job_id,
+      samples: result.n_samples, features: result.n_features, maximum_additivity_error: maximumAdditivityError });
+  }
+  // PLS is not a tree. A stale tree selection must become a visible valid
+  // selection before submission, and the tree option must be unavailable.
+  await page.evaluate(() => {
+    const session = JSON.parse(sessionStorage.getItem('nirs4all_shap_session'));
+    sessionStorage.setItem('nirs4all_shap_session', JSON.stringify({ ...session, explainerType: 'tree' }));
+  });
   await page.reload();
-  const compute = page.getByRole('button', { name: 'Compute Explanations', exact: true });
-  await expect(compute).toBeEnabled({ timeout: 30000 });
-  const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/analysis/shap/compute') && response.request().method() === 'POST');
-  await compute.click();
-  const response = await responsePromise;
-  assert(response.ok(), `Installed SHAP submission returned HTTP ${response.status()}`);
-  const receipt = await response.json();
-  await waitForJob(env, `/analysis/shap/status/${receipt.job_id}`);
-  await expect(page.getByText('SHAP Analysis Results', { exact: true })).toBeVisible({ timeout: 30000 });
-  await expect(compute).toBeEnabled();
-  assert(blockedSockets > 0, 'The installed SHAP regression must run with its job WebSocket blocked');
-  const result = await api(env, `/analysis/shap/results/${receipt.job_id}`);
-  assert.equal(result.n_samples, 8);
-  assert.equal(result.n_features, 4);
-  assert(result.mean_abs_shap.every(Number.isFinite));
-  const scatter = await api(env, `/analysis/shap/results/${receipt.job_id}/scatter`);
-  const sample = await api(env, `/analysis/shap/results/${receipt.job_id}/sample/0?top_n=4`);
-  const additive = sample.base_value + sample.contributions.reduce((sum, item) => sum + item.shap_value, 0);
-  assert(Math.abs(additive - scatter.y_pred[0]) < 1e-5, 'SHAP contributions must explain the captured prediction');
-  await page.reload();
-  await expect(page.getByText('SHAP Analysis Results', { exact: true })).toBeVisible({ timeout: 30000 });
-  proof.shap = { success: true, job_id: receipt.job_id, samples: result.n_samples, features: result.n_features,
+  await expect(page.getByText('Tree SHAP is unavailable for PLS models.', { exact: false })).toBeVisible();
+  await page.getByRole('combobox').filter({ hasText: /Auto/ }).click();
+  await expect(page.getByRole('option', { name: /Tree/ })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  proof.shap = { success: true, job_id: explainers.at(-1).job_id, samples: 8, features: 4,
+    model: 'PLSRegression', explainers, tree_unavailable_for_pls: true, restored_tree_selection: 'auto',
     blocked_job_websockets: blockedSockets, restored_results: true, captured_prediction_additivity: true };
-  console.log('PACKAGED_SHAP_OK captured predictor, missed WebSocket events, interrupted submission and restored results');
+  console.log('PACKAGED_SHAP_OK PLS auto/kernel/linear, tree compatibility, missed WebSocket events and restored results');
 }
 
 module.exports = { api, waitForJob, shapJourney };

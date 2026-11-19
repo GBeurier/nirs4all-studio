@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildShapPredictHref,
+  isShapPlsModel,
   normalizeShapExplainerType,
   normalizeShapPartition,
   SHAP_EXPLAINER_OPTIONS,
@@ -9,6 +10,13 @@ import {
 } from './shapVariableImportanceFormData';
 
 describe('shapVariableImportanceFormData', () => {
+  it('identifies PLS models for the tree-explainer compatibility hint', () => {
+    expect(isShapPlsModel('sklearn.cross_decomposition.PLSRegression')).toBe(true);
+    expect(isShapPlsModel('n4m.PLSRegression')).toBe(true);
+    expect(isShapPlsModel('PLS')).toBe(true);
+    expect(isShapPlsModel('RandomForestRegressor')).toBe(false);
+    expect(isShapPlsModel(null)).toBe(false);
+  });
   it('exposes the existing partition and explainer option order', () => {
     expect(SHAP_PARTITION_OPTIONS).toEqual([
       { value: 'test', labelKey: 'results.variableImportance.partitionOptions.test' },
