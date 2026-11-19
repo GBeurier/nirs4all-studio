@@ -98,7 +98,7 @@ export function initSentry(): boolean {
     beforeSend: sanitizeSentryEvent,
     maxBreadcrumbs: 50,
     // Crash reporting only: local dataset executions can legitimately move
-    // large msgpack payloads and should not create performance issues.
+    // large payloads and should not create performance issues.
     tracesSampleRate: 0,
   });
 

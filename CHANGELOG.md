@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.17.4] — 2026-11-19
+
+### Changed
+
+- The Playground loads faster: the Python host encodes its answer in one pass
+  with the C JSON encoder instead of a pure-Python incremental loop (identical
+  bytes; the answer is still bounded only by the memory Studio can spare).
+- A Playground target switch takes about a second instead of about five
+  (898 x 1557 dataset): nirs4all 1.4.21 keeps the loaded dataset in the warm
+  Python host until its files or configuration change, and spectra that no
+  step changed are sent once (`processed_is_original`) instead of twice. The
+  first load is about 40 % faster and the answer half as large.
+- Python environment: Studio installs nirs4all 1.4.21; nirs4all-methods and
+  pls4all 1.3.19, nirs4all-core 0.5.1, dag-ml 0.4.3, dag-ml-data 0.2.17 and
+  nirs4all-io 0.3.6 are unchanged. An existing environment is kept as long as
+  its nirs4all is at least 1.4.21 (below 1.5); an older one is offered the
+  update.
+
+### Removed
+
+- The unused `/api/playground/pca` and `/api/playground/repetitions` routes,
+  which ran a full Playground execution to keep one chart, and their unused
+  renderer functions; the execution answer carries every chart. The unused
+  MessagePack client dependency goes with them.
+
 ## [0.17.3] — 2026-11-18
 
 ### Fixed

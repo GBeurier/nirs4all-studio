@@ -378,7 +378,7 @@ range accepts any version, and the 1.x `nirs4all-methods`/`pls4all` ranges
 `>=1.3,<2` are narrowed to one series at the next release. These ranges are Studio's environment-admission
 ranges: Studio reinstalls the required cohort at its `install` versions only
 when an environment falls outside them, so the SDK range floor
-(`>=1.4.20,<1.5`) is how a Studio release delivers an SDK fix to existing
+(`>=1.4.21,<1.5`) is how a Studio release delivers an SDK fix to existing
 environments, and its minor cap is where Studio qualifies its Python host.
 Exact versions are not constraints: the `install` versions, the hash-pinned
 wheel locks above, `sidecar/Cargo.lock`, `build/runtime-cohort.json` and the

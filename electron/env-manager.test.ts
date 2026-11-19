@@ -159,7 +159,7 @@ describe("startup check", () => {
   });
 
   it("is ready when every required package is within range, and hands the interpreter to the sidecar", async () => {
-    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.20", torch: "2.5.0" } });
+    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.21", torch: "2.5.0" } });
     select(pythonPath);
     const env = manager();
 

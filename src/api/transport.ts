@@ -649,50 +649,6 @@ class ApiClient {
   async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE", ...options });
   }
-
-  // POST with MessagePack content negotiation (binary response when backend supports it)
-  async postMsgpack<T>(
-    endpoint: string,
-    data?: unknown,
-    options?: RequestOptions,
-  ): Promise<T> {
-    const { body: _ignored, ...restOptions } = options || {};
-
-    const config: RequestInit = {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/x-msgpack, application/json;q=0.9",
-        ...options?.headers,
-      },
-      ...restOptions,
-      body: data ? JSON.stringify(data) : undefined,
-    };
-
-    try {
-      const response = await fetchWithRetry(endpoint, config);
-
-      if (!response.ok) {
-        const error = await parseResponseError(response);
-        logger.error(
-          `[postMsgpack] ${response.status} ${endpoint}:`,
-          error.detail,
-        );
-        throw error;
-      }
-
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/x-msgpack")) {
-        const { decode } = await import("@msgpack/msgpack");
-        const buffer = await response.arrayBuffer();
-        return decode(new Uint8Array(buffer)) as T;
-      }
-
-      return await response.json();
-    } catch (error) {
-      throw toApiError(error);
-    }
-  }
 }
 
 export const api = new ApiClient();
