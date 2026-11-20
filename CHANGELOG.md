@@ -35,7 +35,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 ### Changed
 
 - Add nirs4all-datasets 0.3.22 to the required environment packages. Select the
-  published SDK 1.6.0, Core 0.6.1, DAG 0.5.0, Python IO 0.3.8 and
+  published SDK 1.6.1, Core 0.6.1, DAG 0.5.0, Python IO 0.3.8 and
   Methods/pls4all 1.5.1 cohort at Methods ABI 2.24, with generated public wheel
   locks for Linux, Windows and macOS. The separate Rust graph retains its
   selected IO 0.3.6 and Formats 0.2.17 dependencies.

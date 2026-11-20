@@ -40,9 +40,9 @@ The retained injected HTTP test alone does not qualify that startup path.
 The ignored `public_methods_wheel_startup` integration test launches the real
 binary and replays the same owner-produced fixture, then checks typed refusal
 for absent, incompatible or altered selections without acquiring Python.
-SDK 1.6.0 is published; `build/runtime-cohort.json` records its verified public
-wheel URL/hash and publication source `ed0180ec`. Its runtime/build source
-`6bd7df88` is a separate identity, and all three target locks select the actual
+SDK 1.6.1 is published; `build/runtime-cohort.json` records its verified public
+wheel URL/hash and publication source `fd5db4af`. Its runtime/build source
+`cf283f41` is a separate identity, and all three target locks select the actual
 public wheel. Installed-host and packaged-host qualification remain separate
 evidence; source identity and historical shipping receipts alone do not qualify
 that closure.
