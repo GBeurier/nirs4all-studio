@@ -138,9 +138,12 @@ const python311 = [process.env.PYTHON, "python3.11", "python3.12", "python3.13",
   .filter((candidate): candidate is string => Boolean(candidate))
   .find((candidate) => spawnSync(candidate, ["-I", "-c", "import sys; assert sys.version_info >= (3, 11)"], { timeout: 10_000, windowsHide: true }).status === 0);
 const isWindows = process.platform === "win32";
+const basePython = python311
+  ? spawnSync(python311, ["-I", "-c", "import sys; print(sys._base_executable)"], { encoding: "utf8", timeout: 10_000 }).stdout.trim()
+  : undefined;
 /** Distributions of the base installation, which a virtual environment can be given access to. */
-const baseDistributions: string[] = python311
-  ? JSON.parse(spawnSync(python311, ["-I", "-c", "import json; from importlib import metadata; print(json.dumps(sorted({d.metadata['Name'].lower() for d in metadata.distributions() if d.metadata and d.metadata['Name']})))"], { encoding: "utf8", timeout: 20_000 }).stdout || "[]")
+const baseDistributions: string[] = basePython
+  ? JSON.parse(spawnSync(basePython, ["-I", "-c", "import json; from importlib import metadata; print(json.dumps(sorted({d.metadata['Name'].lower() for d in metadata.distributions() if d.metadata and d.metadata['Name']})))"], { encoding: "utf8", timeout: 20_000 }).stdout || "[]")
   : [];
 
 describe("package inventory subprocess", () => {

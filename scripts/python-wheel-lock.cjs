@@ -213,8 +213,11 @@ async function generateLock(key, uv = process.env[UV_ENV]?.trim() || "uv") {
   const inputs = lockInputs(key);
   const { required, recommended, offline_extras: offlineExtras, image_extras: imageExtras } = inputs.requirements;
   // Without embedded wheels only the required cohort itself is locked.
+  // Image extras can also be transitive offline dependencies. Select their
+  // declared versions in the first solve so both closures share one cohort.
   const packages = await resolveClosure(
-    key, [...required, ...(recommended ?? []), ...(offlineExtras ?? [])], { closure: recommended !== undefined }, uv,
+    key, [...required, ...(recommended ?? []), ...(offlineExtras ?? [])],
+    { constraints: imageExtras ?? [], closure: recommended !== undefined }, uv,
   );
   const lock = { schema: LOCK_SCHEMA, target: key, ...inputs, packages };
   if (imageExtras) {

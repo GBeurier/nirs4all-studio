@@ -11,22 +11,23 @@
   },
   "requirements": {
     "required": [
-      "nirs4all==1.5.0",
-      "nirs4all-core==0.5.1",
-      "dag-ml==0.4.3",
+      "nirs4all==1.6.0",
+      "nirs4all-core==0.6.1",
+      "dag-ml==0.5.0",
       "dag-ml-data==0.2.17",
-      "nirs4all-io==0.3.6",
-      "nirs4all-methods==1.3.19",
-      "pls4all==1.3.19"
+      "nirs4all-io==0.3.8",
+      "nirs4all-methods==1.5.1",
+      "pls4all==1.5.1",
+      "nirs4all-datasets==0.3.22"
     ]
   },
   "packages": [
     {
       "name": "dag-ml",
-      "version": "0.4.3",
-      "filename": "dag_ml-0.4.3-cp311-abi3-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/bd/79/6f328b997bc20843c00248379ad0a35b2eaacd31acda4c9ca6ae3a474c7e/dag_ml-0.4.3-cp311-abi3-macosx_11_0_arm64.whl",
-      "sha256": "074842c71d096b7b581cf917402efcf81c7cc3c1ab57f682bc3c7803ceb65903"
+      "version": "0.5.0",
+      "filename": "dag_ml-0.5.0-cp311-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/af/2e/3eaed8f32804c9234d7a1d907b0e6110a3b64a44240338216d8c4efe4519/dag_ml-0.5.0-cp311-abi3-macosx_11_0_arm64.whl",
+      "sha256": "08b519813a86396a14d39843f00742aab901c0045d3005e4bb6a862c1d3b64c2"
     },
     {
       "name": "dag-ml-data",
@@ -37,38 +38,45 @@
     },
     {
       "name": "nirs4all",
-      "version": "1.5.0",
-      "filename": "nirs4all-1.5.0-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/ff/ff/a583e1ce79ca2ca3a54f4d1b1d47d124ccc83cdd33cf602cfde077ae2ece/nirs4all-1.5.0-py3-none-any.whl",
-      "sha256": "3bbcb78fc1f6992b4e91378edb36ce6bf9f03356b79321d49950196bd94ddaed"
+      "version": "1.6.0",
+      "filename": "nirs4all-1.6.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/e7/33/05dc8b13cfa28f71c6f52d257ccc23f6da6b3b01ba459f6d02fd4e736f23/nirs4all-1.6.0-py3-none-any.whl",
+      "sha256": "ac5df977e1af055ffd93410a7b64d4885d971dcce611ba1966c4843c35d33a9d"
     },
     {
       "name": "nirs4all-core",
-      "version": "0.5.1",
-      "filename": "nirs4all_core-0.5.1-cp311-abi3-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/80/cb/04b68f12c5d6c14b2e5ceaf847f56294c3b20418a30d698163acfcb8081a/nirs4all_core-0.5.1-cp311-abi3-macosx_11_0_arm64.whl",
-      "sha256": "48663a916d02ab0760047a89ec843aa44132da2c6d4bc972996ffe9e5368f4a1"
+      "version": "0.6.1",
+      "filename": "nirs4all_core-0.6.1-cp311-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/d9/86/cec8aafa650a02b83e4fc53762cc6689bfa8e0df9907dfbeaac2b9360f16/nirs4all_core-0.6.1-cp311-abi3-macosx_11_0_arm64.whl",
+      "sha256": "ebcf48579491399e4ac47cce8a886967481d207bbfa4ec4c9bda72768cd2a3c1"
+    },
+    {
+      "name": "nirs4all-datasets",
+      "version": "0.3.22",
+      "filename": "nirs4all_datasets-0.3.22-cp311-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/9e/bb/75ed39dbbaca4e1771fe4494d868c9c9130545429d79496ba6b3f84b0e90/nirs4all_datasets-0.3.22-cp311-abi3-macosx_11_0_arm64.whl",
+      "sha256": "681aa2eae672e3d0741a58251dfd0bba5a64b1fc206df855d4a864f995995e95"
     },
     {
       "name": "nirs4all-io",
-      "version": "0.3.6",
-      "filename": "nirs4all_io-0.3.6-cp311-abi3-macosx_11_0_arm64.whl",
-      "url": "https://files.pythonhosted.org/packages/61/bc/43a77f3ac5fc7c47580e2191344420bb0d66debc129a1fa3b2f161ea7450/nirs4all_io-0.3.6-cp311-abi3-macosx_11_0_arm64.whl",
-      "sha256": "5c86e1ac13f883a7e2105fd18038343f01a43e393732443e79f91882524feae8"
+      "version": "0.3.8",
+      "filename": "nirs4all_io-0.3.8-cp311-abi3-macosx_11_0_arm64.whl",
+      "url": "https://files.pythonhosted.org/packages/e3/da/401013cdf96548f38d15eb274bb176bc6e11dc10ff5953f20992e133c182/nirs4all_io-0.3.8-cp311-abi3-macosx_11_0_arm64.whl",
+      "sha256": "d5ba8deb2c78ea0193c26af6f650346b9ea8623e38953514c5dbfca926ca644f"
     },
     {
       "name": "nirs4all-methods",
-      "version": "1.3.19",
-      "filename": "nirs4all_methods-1.3.19-py3-none-macosx_11_0_universal2.whl",
-      "url": "https://files.pythonhosted.org/packages/69/cf/d1755b7e6e9c2b5fe5e96d5c430aa2911c40c876fd8bd316c50fa5e2e6ca/nirs4all_methods-1.3.19-py3-none-macosx_11_0_universal2.whl",
-      "sha256": "14e467f346590dbb3e195d66b8e6136f8e7f5e39233daee0825588ba52676541"
+      "version": "1.5.1",
+      "filename": "nirs4all_methods-1.5.1-py3-none-macosx_11_0_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/60/84/141e00a9fd41b21bc3ef4df32c4f9089cc19217cfb9249a6a439e0c682cf/nirs4all_methods-1.5.1-py3-none-macosx_11_0_universal2.whl",
+      "sha256": "d85ddd3e98b24ba8d8e50904f8526603bb0fb01d4df902d7b00ecc276a9dec34"
     },
     {
       "name": "pls4all",
-      "version": "1.3.19",
-      "filename": "pls4all-1.3.19-py3-none-macosx_11_0_universal2.whl",
-      "url": "https://files.pythonhosted.org/packages/05/73/b922764e2a77743793c3eccc91929e20834bcb46790baaa85cffc2227455/pls4all-1.3.19-py3-none-macosx_11_0_universal2.whl",
-      "sha256": "ad9e1f64088889681e548fef8a2ffe69e59e412a7a1746bb0b7e53f9ef0ab868"
+      "version": "1.5.1",
+      "filename": "pls4all-1.5.1-py3-none-macosx_11_0_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/be/98/2d5ecd42be51b9e621dbeb49fc61ae17a9e72fc492aedf092c6cbd3fc190/pls4all-1.5.1-py3-none-macosx_11_0_universal2.whl",
+      "sha256": "69e2bc77a4469bce3def4d36427058900a8e3ee85d52a2b86b53e48e68b523a8"
     }
   ]
 }
