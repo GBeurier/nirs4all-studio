@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { verifyReadback } = require('../smoke-public-dataset-journey.cjs');
+const { EventEmitter } = require('node:events');
+const { spawnSync } = require('node:child_process');
+const { publicDatasetJourney, verifyReadback, responseForAction } = require('../smoke-public-dataset-journey.cjs');
 const { datasets: selectedOwner } = require('../../build/runtime-cohort.json');
 
 const profiles = [
@@ -76,4 +78,79 @@ test('an unknown or omitted smoke fixture is refused rather than selecting anoth
       assert.throws(() => verifyReadback(dataset, provenance, preview, workspace, id), /explicit declared/);
     }
   });
+});
+
+test('an early response timeout remains an ordinary smoke failure while its action is pending', () => {
+  const legacy = `
+    (async () => {
+      const response = new Promise((_, reject) => setTimeout(() => reject(new Error('preview-response-timeout')), 5));
+      await new Promise(resolve => setTimeout(resolve, 50));
+      await response;
+    })().catch(() => { process.stdout.write('caught'); });
+  `;
+  const old = spawnSync(process.execPath, ['--unhandled-rejections=strict', '-e', legacy], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(old.status, 1);
+  assert.match(old.stderr, /preview-response-timeout/);
+  assert.equal(old.stdout, '');
+
+  const owned = `
+    const { responseForAction } = require(${JSON.stringify(require.resolve('../smoke-public-dataset-journey.cjs'))});
+    const page = { waitForResponse: () => new Promise((_, reject) => setTimeout(() => reject(new Error('preview-response-timeout')), 5)) };
+    responseForAction(page, () => true, () => new Promise(resolve => setTimeout(resolve, 50)))
+      .catch(error => { process.stdout.write(error.message); });
+  `;
+  const current = spawnSync(process.execPath, ['--unhandled-rejections=strict', '-e', owned], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(current.status, 0, current.stderr);
+  assert.equal(current.stdout, 'preview-response-timeout');
+  assert.equal(current.stderr, '');
+});
+
+test('response/action pairing keeps the exact response and propagates action failures', async () => {
+  const expected = { status: 200 };
+  let calls = 0;
+  const page = { waitForResponse: predicate => {
+    assert.equal(predicate(expected), true);
+    return Promise.resolve(expected);
+  } };
+  assert.equal(await responseForAction(page, response => response.status === 200, () => { calls += 1; }), expected);
+  assert.equal(calls, 1);
+  const failure = new Error('heading could not be clicked');
+  await assert.rejects(responseForAction(page, () => true, () => { throw failure; }), error => error === failure);
+});
+
+test('a failed journey retains its phase, redacted API transport and screenshot without replacing the error', async () => {
+  const page = new EventEmitter();
+  const failure = new Error('navigation failed');
+  const image = Buffer.from('synthetic PNG fixture');
+  page.evaluate = async () => {
+    page.emit('response', { request: () => ({ method: () => 'GET' }), status: () => 503,
+      url: () => 'http://user:password@127.0.0.1:2345/api/datasets/public?token=private' });
+    page.emit('requestfailed', { method: () => 'GET', failure: () => ({ errorText: 'connection refused' }),
+      url: () => 'http://127.0.0.1:2345/api/datasets/example/preview?token=private' });
+    throw failure;
+  };
+  page.url = () => 'file:///studio/index.html#/datasets';
+  page.locator = selector => {
+    assert.equal(selector, 'body');
+    return { innerText: async () => 'Public datasets: authorization=secret-value' };
+  };
+  page.screenshot = async options => { assert.equal(options.timeout, 1000); return image; };
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-public-diagnostics-'));
+  const proof = {};
+  try {
+    await assert.rejects(publicDatasetJourney({ page, env: {} }, proof, workspace, profiles[0].id), error => error === failure);
+    assert.equal(proof.public_dataset.success, false);
+    assert.equal(proof.public_dataset.phase, 'open-datasets');
+    assert.deepEqual(proof.public_dataset.transport, [
+      { kind: 'response', method: 'GET', status: 503, url: 'http://127.0.0.1:2345/api/datasets/public' },
+      { kind: 'request-failed', method: 'GET', error: 'connection refused', url: 'http://127.0.0.1:2345/api/datasets/example/preview' },
+    ]);
+    assert.equal(proof.public_dataset.page_url, 'file:///studio/index.html');
+    assert.doesNotMatch(proof.public_dataset.body_text, /secret-value/);
+    assert.deepEqual(Buffer.from(proof.public_dataset.screenshot_png_base64, 'base64'), image);
+    assert.equal(page.listenerCount('response'), 0);
+    assert.equal(page.listenerCount('requestfailed'), 0);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
 });

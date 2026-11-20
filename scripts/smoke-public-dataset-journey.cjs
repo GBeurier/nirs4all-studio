@@ -5,6 +5,7 @@ const path = require('node:path');
 const { expect } = require('@playwright/test');
 const { api, waitForJob } = require('./smoke-shap-journey.cjs');
 const { contained } = require('./smoke-owned-profile.cjs');
+const { diagnosticUrl, sanitizeDiagnostic } = require('./smoke-first-launch-ui.cjs');
 const { datasets: selectedOwner } = require('../build/runtime-cohort.json');
 
 // External-network fixtures are declared choices, never an automatic fallback
@@ -25,6 +26,15 @@ const PUBLIC_DATASETS = Object.freeze({
 function selectedDataset(datasetId) {
   assert(Object.hasOwn(PUBLIC_DATASETS, datasetId), 'Choose an explicit declared public-dataset smoke fixture');
   return PUBLIC_DATASETS[datasetId];
+}
+
+// Own both promises immediately: a response timeout must reach the smoke's
+// catch/finally even if the corresponding renderer action is still pending.
+async function responseForAction(page, predicate, action) {
+  const [response] = await Promise.all([
+    page.waitForResponse(predicate), Promise.resolve().then(action),
+  ]);
+  return response;
 }
 
 function verifyReadback(dataset, provenance, preview, workspace, datasetId) {
@@ -53,58 +63,98 @@ function verifyReadback(dataset, provenance, preview, workspace, datasetId) {
 
 async function publicDatasetJourney({ page, env }, proof, workspace, datasetId) {
   const selected = selectedDataset(datasetId);
-  proof.public_dataset = { success: false, dataset_id: datasetId, source_id: selected.sourceId };
-  const cache = path.join(workspace, '.nirs4all', 'cache', 'public-datasets');
-  assert(!fs.existsSync(cache), 'The original-source journey requires a fresh owner cache');
-  await page.evaluate(() => { location.hash = '/datasets'; });
-  const catalogueResponse = page.waitForResponse(response =>
-    new URL(response.url()).pathname === '/api/datasets/public' && response.request().method() === 'GET');
-  await page.getByRole('button', { name: 'Public datasets', exact: true }).click();
-  const response = await catalogueResponse;
-  assert(response.ok(), `Public catalogue returned HTTP ${response.status()}`);
-  const catalogue = await response.json();
-  assert.equal(catalogue.version, selectedOwner.version);
-  const entry = catalogue.datasets.find(dataset => dataset.id === datasetId);
-  assert(entry && entry.source_ids.includes(selected.sourceId), 'The real public catalogue must expose the selected source');
-  assert.equal(entry.n_features_total, selected.features);
-  assert.equal(entry.n_targets, selected.targets.length);
-  assert.deepEqual(entry.targets, selected.targets);
-  const dialog = page.getByRole('dialog', { name: 'Public datasets', exact: true });
-  await dialog.getByRole('textbox', { name: 'Search public datasets', exact: true }).fill(datasetId);
-  await dialog.getByRole('listitem').filter({ hasText: datasetId }).getByRole('button').click();
-  if (entry.n_sources > 1) await dialog.getByRole('radio', { name: selected.sourceId, exact: true }).check();
-  const submittedResponse = page.waitForResponse(candidate =>
-    new URL(candidate.url()).pathname === '/api/datasets/public/import' && candidate.request().method() === 'POST');
-  await dialog.getByRole('button', { name: 'Download and add', exact: true }).click();
-  const submitted = await submittedResponse;
-  assert(submitted.ok(), `Public import returned HTTP ${submitted.status()}`);
-  assert.deepEqual(submitted.request().postDataJSON(), { dataset_id: datasetId, source_id: selected.sourceId });
-  const receipt = await submitted.json();
-  assert(receipt.job_id, 'The renderer must submit a real Rust import job');
-  const job = await waitForJob(env, `/datasets/public/imports/${encodeURIComponent(receipt.job_id)}`);
-  assert.equal(job.result?.success, true);
-  assert.equal(job.result.already_imported, false, 'A fresh journey must acquire the original public source');
-  const dataset = job.result.dataset;
-  await expect(dialog.getByRole('status').filter({ hasText: 'Added' })).toBeVisible({ timeout: 30000 });
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  const previewResponse = page.waitForResponse(candidate =>
-    new URL(candidate.url()).pathname === `/api/datasets/${dataset.id}/preview` && candidate.request().method() === 'GET');
-  await page.getByRole('heading', { level: 3, name: dataset.name, exact: true }).click();
-  const previewed = await previewResponse;
-  assert(previewed.ok(), `Registered dataset preview returned HTTP ${previewed.status()}`);
-  const preview = await previewed.json();
-  const provenance = JSON.parse(fs.readFileSync(path.join(dataset.path, 'provenance.json'), 'utf8'));
-  const readback = verifyReadback(dataset, provenance, preview, workspace, datasetId);
-  assert(fs.existsSync(cache), 'The owner must retain the source acquisition in its workspace cache');
-  // Confirm durable registration survives a new renderer rather than only query-cache publication.
-  await page.reload();
-  await expect(page.getByRole('heading', { level: 3, name: dataset.name, exact: true })).toBeVisible({ timeout: 30000 });
-  proof.public_dataset = { success: true, catalogue_version: catalogue.version, catalogue_count: catalogue.datasets.length,
-    dataset_id: datasetId, source_id: selected.sourceId, linked_dataset_id: dataset.id, import_job_id: receipt.job_id,
-    owner: provenance.provider, empty_workspace_cache_before_import: true, already_imported: false,
-    registered_after_reload: true, preview_from_renderer: true, readback };
-  console.log(`PACKAGED_PUBLIC_DATASET_OK ${datasetId}/${selected.sourceId}: ${readback.samples} samples, ${readback.features} features`);
+  const state = proof.public_dataset = { success: false, dataset_id: datasetId,
+    source_id: selected.sourceId, phase: 'open-datasets', transport: [] };
+  const record = entry => {
+    if (!new URL(entry.url).pathname.startsWith('/api/')) return;
+    state.transport.push({ ...entry, url: diagnosticUrl(entry.url) });
+    if (state.transport.length > 40) state.transport.shift();
+  };
+  const onResponse = response => record({ kind: 'response', method: response.request().method(),
+    status: response.status(), url: response.url() });
+  const onFailed = request => record({ kind: 'request-failed', method: request.method(),
+    error: sanitizeDiagnostic(request.failure()?.errorText), url: request.url() });
+  page.on('response', onResponse);
+  page.on('requestfailed', onFailed);
+  try {
+    const cache = path.join(workspace, '.nirs4all', 'cache', 'public-datasets');
+    assert(!fs.existsSync(cache), 'The original-source journey requires a fresh owner cache');
+    await page.evaluate(() => { location.hash = '/datasets'; });
+    state.phase = 'open-public-catalogue';
+    const response = await responseForAction(page, response =>
+      new URL(response.url()).pathname === '/api/datasets/public' && response.request().method() === 'GET',
+    () => page.getByRole('button', { name: 'Public datasets', exact: true }).click());
+    assert(response.ok(), `Public catalogue returned HTTP ${response.status()}`);
+    const catalogue = await response.json();
+    assert.equal(catalogue.version, selectedOwner.version);
+    const entry = catalogue.datasets.find(dataset => dataset.id === datasetId);
+    assert(entry && entry.source_ids.includes(selected.sourceId), 'The real public catalogue must expose the selected source');
+    assert.equal(entry.n_features_total, selected.features);
+    assert.equal(entry.n_targets, selected.targets.length);
+    assert.deepEqual(entry.targets, selected.targets);
+    state.phase = 'select-public-source';
+    const dialog = page.getByRole('dialog', { name: 'Public datasets', exact: true });
+    await dialog.getByRole('textbox', { name: 'Search public datasets', exact: true }).fill(datasetId);
+    await dialog.getByRole('listitem').filter({ hasText: datasetId }).getByRole('button').click();
+    if (entry.n_sources > 1) await dialog.getByRole('radio', { name: selected.sourceId, exact: true }).check();
+    state.phase = 'submit-public-import';
+    const submitted = await responseForAction(page, candidate =>
+      new URL(candidate.url()).pathname === '/api/datasets/public/import' && candidate.request().method() === 'POST',
+    () => dialog.getByRole('button', { name: 'Download and add', exact: true }).click());
+    assert(submitted.ok(), `Public import returned HTTP ${submitted.status()}`);
+    assert.deepEqual(submitted.request().postDataJSON(), { dataset_id: datasetId, source_id: selected.sourceId });
+    const receipt = await submitted.json();
+    assert(receipt.job_id, 'The renderer must submit a real Rust import job');
+    state.phase = 'wait-public-import';
+    state.import_job_id = receipt.job_id;
+    const job = await waitForJob(env, `/datasets/public/imports/${encodeURIComponent(receipt.job_id)}`);
+    assert.equal(job.result?.success, true);
+    assert.equal(job.result.already_imported, false, 'A fresh journey must acquire the original public source');
+    const dataset = job.result.dataset;
+    state.linked_dataset_id = dataset.id;
+    state.phase = 'wait-added-status';
+    await expect(dialog.getByRole('status').filter({ hasText: 'Added' })).toBeVisible({ timeout: 30000 });
+    state.phase = 'close-public-dialog';
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    state.phase = 'open-registered-preview';
+    state.expected_preview_path = `/api/datasets/${dataset.id}/preview`;
+    state.preview_card_clicked = false;
+    const previewed = await responseForAction(page, candidate =>
+      new URL(candidate.url()).pathname === state.expected_preview_path && candidate.request().method() === 'GET',
+    async () => {
+      await page.getByRole('heading', { level: 3, name: dataset.name, exact: true }).click();
+      state.preview_card_clicked = true;
+    });
+    assert(previewed.ok(), `Registered dataset preview returned HTTP ${previewed.status()}`);
+    const preview = await previewed.json();
+    state.phase = 'verify-preview-readback';
+    const provenance = JSON.parse(fs.readFileSync(path.join(dataset.path, 'provenance.json'), 'utf8'));
+    const readback = verifyReadback(dataset, provenance, preview, workspace, datasetId);
+    assert(fs.existsSync(cache), 'The owner must retain the source acquisition in its workspace cache');
+    // Confirm durable registration survives a new renderer rather than only query-cache publication.
+    state.phase = 'reload-registration';
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 3, name: dataset.name, exact: true })).toBeVisible({ timeout: 30000 });
+    Object.assign(state, { success: true, phase: 'complete', catalogue_version: catalogue.version, catalogue_count: catalogue.datasets.length,
+      dataset_id: datasetId, source_id: selected.sourceId, linked_dataset_id: dataset.id, import_job_id: receipt.job_id,
+      owner: provenance.provider, empty_workspace_cache_before_import: true, already_imported: false,
+      registered_after_reload: true, preview_from_renderer: true, readback });
+    console.log(`PACKAGED_PUBLIC_DATASET_OK ${datasetId}/${selected.sourceId}: ${readback.samples} samples, ${readback.features} features`);
+  } catch (error) {
+    state.error = sanitizeDiagnostic(error.stack || error);
+    state.page_url = diagnosticUrl(page.url());
+    const [body, screenshot] = await Promise.allSettled([
+      page.locator('body').innerText({ timeout: 1000 }), page.screenshot({ timeout: 1000 }),
+    ]);
+    state.body_text = body.status === 'fulfilled' ? sanitizeDiagnostic(body.value, [], 8000) : '[unavailable]';
+    if (screenshot.status === 'fulfilled') state.screenshot_png_base64 = screenshot.value.toString('base64');
+    else state.screenshot_error = sanitizeDiagnostic(screenshot.reason?.message || screenshot.reason);
+    throw error;
+  } finally {
+    page.off('response', onResponse);
+    page.off('requestfailed', onFailed);
+  }
 }
 
-module.exports = { publicDatasetJourney, verifyReadback };
+module.exports = { publicDatasetJourney, verifyReadback, responseForAction };
