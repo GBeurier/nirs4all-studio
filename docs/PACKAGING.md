@@ -470,29 +470,45 @@ The release workflow is `.github/workflows/release-unified.yml`.
 
 ### Manual inputs
 
-- `tag`
-- `publish_existing_tag`
-- `macos_arm64_only`: builds and smokes the macOS installer only. It
-  publishes nothing: the `release` job needs the quality, Linux and Windows
-  jobs, which this input skips.
-- `skip_docker`
+- `tag`: exact immutable source tag.
+- `publish_existing_tag`: explicitly publish a qualified existing-tag retry;
+  false (the default) only builds and smokes.
+- `delivery_channel`: `all`, `linux-standard`, `linux-offline`,
+  `windows-standard`, `windows-offline`, `macos-arm64`, or `docker`.
+- `macos_arm64_only`: legacy macOS-only selection. Diagnostic runs skip the
+  common source gate; publishing still requires that gate and the explicit
+  `publish_existing_tag` input.
+- `skip_docker`: omit Docker when selecting all channels.
 
-### Jobs
+### Jobs and independent deliveries
 
 | Job | Purpose |
 |---|---|
-| `prepare` | Resolve version/tag, prerelease flag, and build switches |
-| `quality` | Qualify the release commit |
-| `installer-linux` | Linux DEB installer and its offline variant |
-| `installer-windows` | Windows NSIS installer and its offline variant |
-| `installer-macos-arm64` | macOS Apple Silicon DMG; signed/notarized when secrets are available |
-| `docker` | Native container image with nginx, the Rust sidecar and its Python environment |
-| `release` | Consolidates the `installer-*` artifacts into the GitHub Release |
+| `prepare` | Resolve the immutable source, version, runtime cohort and selected channels |
+| `quality` | Shared frontend, backend, Rust fmt/clippy/tests and native-session authentication gates |
+| `installer-linux` | Qualify and publish each selected DEB variant independently |
+| `installer-windows` | Windows containment tests, then qualify and publish each selected NSIS variant independently |
+| `installer-macos-arm64` | Qualify and publish the Apple Silicon DMG; signing/notarization rules remain unchanged |
+| `docker` | Qualify and publish the exact tested native container image independently |
+| `delivery-summary` | Report available, pending and failed channels after delivery; no producer depends on it |
 
-The Linux and Windows jobs run once per variant (`standard`, `offline`). Each
-leg stages the [build inputs](#build-inputs) for its target, verifies the
+The Linux and Windows jobs run once per selected variant (`standard`,
+`offline`). Each leg stages the [build inputs](#build-inputs), verifies its
 runtime contract, packages its installer, and runs both smokes described under
-[Verification](#verification) on the unpacked application.
+[Verification](#verification). Only a successful leg may attach its installer
+and checksum. A failed Docker, macOS or sibling variant does not block a
+qualified channel. Shared source gates still block every publication when they
+fail; standalone CI also retains its full Docker and packaging checks.
+
+The first qualified installer makes the GitHub Release public. Later channels
+append their exact installer/checksum pair to the same immutable source tag;
+existing assets are verified and never replaced. Release notes distinguish
+attached assets from pending or failed channels and link the workflow evidence.
+Retry a missing channel by dispatching this workflow with its original `tag`,
+`publish_existing_tag=true` and the specific `delivery_channel`. Changes to
+application source require a new version and tag. Docker retries use
+`delivery_channel=docker`; package-index publication is an upstream owner
+channel and does not wait for Studio delivery.
 
 ### Candidate package lane
 
@@ -560,9 +576,11 @@ published set.
 | macOS Apple Silicon | `nirs4all.Studio-{version}-mac-arm64.dmg` | none |
 | Linux x64 | `nirs4all.Studio-{version}-linux-amd64.deb` | `nirs4all.Studio-{version}-linux-amd64-offline.deb` |
 
-`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` is that
-exact set of five files; a release directory with a missing or an additional
-payload is refused.
+`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` declares that
+exact set of five files. The default full-set mode refuses missing or additional
+payloads. An explicit installer channel requires exactly its one payload and
+checksum; `scripts/stage-release-channel.cjs` verifies that pair before the
+publisher appends it without replacing any existing asset.
 
 The in-app update check always selects the installer, never an `-offline`
 asset. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md#asset-selection-rules).

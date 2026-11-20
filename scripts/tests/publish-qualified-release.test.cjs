@@ -7,12 +7,12 @@ const yaml = require("js-yaml");
 const { expectedPublishedNames, sha256File } = require("../finalize-release-assets.cjs");
 const { ghFailureDiagnostic, publishQualifiedRelease, releaseManifest } = require("../publish-qualified-release.cjs");
 
-function fixture(t) {
+function fixture(t, channel = null) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-publisher-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const releaseRoot = path.join(root, "release");
   fs.mkdirSync(releaseRoot);
-  for (const name of expectedPublishedNames("0.11.7")) {
+  for (const name of expectedPublishedNames("0.11.7", channel)) {
     const file = path.join(releaseRoot, name);
     fs.writeFileSync(file, `qualified product bytes: ${name}\n`);
     fs.writeFileSync(`${file}.sha256`, `${sha256File(file)}  ${name}\n`);
@@ -20,11 +20,11 @@ function fixture(t) {
   const notesPath = path.join(root, "notes.md");
   fs.writeFileSync(notesPath, "Qualified release\n");
   return { repo: "owner/studio", tag: "0.11.7", version: "0.11.7", sha: "b".repeat(40),
-    prerelease: false, releaseRoot, notesPath };
+    prerelease: false, releaseRoot, notesPath, ...(channel ? { channel } : {}) };
 }
 
 function github(options, behavior = {}) {
-  const manifest = releaseManifest(options.releaseRoot, options.version);
+  const manifest = releaseManifest(options.releaseRoot, options.version, options.channel ?? null);
   let nextId = 100;
   const state = {
     release: behavior.absent ? null : { id: 99, tag_name: options.tag, draft: true,
@@ -292,22 +292,43 @@ test("invalid local bytes and missing sidecars fail before GitHub", async (t) =>
   await assert.rejects(publishQualifiedRelease(options, dependencies), /inventory is incomplete/);
 });
 
-test("unified workflow invokes the sequential publisher only for immutable tag releases", () => {
+test("installer deliveries own their qualification and do not wait for other channels", () => {
   const workflow = yaml.load(fs.readFileSync(path.join(__dirname, "../../.github/workflows/release-unified.yml"), "utf8"));
-  const job = workflow.jobs.release;
-  const step = job.steps.find((entry) => entry.run?.includes("scripts/publish-qualified-release.cjs"));
-  assert.equal(step.if, "needs.prepare.outputs.is_tag_release == 'true'");
-  assert.equal(step.env.RELEASE_SHA, "${{ needs.prepare.outputs.checkout_ref }}");
-  assert.equal(step.env.RELEASE_TAG, "${{ needs.prepare.outputs.tag }}");
-  assert.equal(step.env.RELEASE_PRERELEASE, "${{ needs.prepare.outputs.prerelease }}");
-  assert(!job.steps.some((entry) => entry.uses?.startsWith("softprops/action-gh-release")));
-  assert.match(job.if, /needs\.installer-windows\.result == 'success'/);
-  assert.match(job.if, /needs\.installer-linux\.result == 'success'/);
-  // The published set is fixed: both scripts take the release directory and the version only.
-  const call = /\.cjs \\\n\s+release \\\n\s+'\$\{\{ needs\.prepare\.outputs\.version \}\}'\n/;
-  assert.match(step.run, call);
-  const preparation = job.steps.find((entry) => entry.run?.includes("scripts/finalize-release-assets.cjs"));
-  assert.match(preparation.run, call);
+  assert.equal(workflow.jobs.quality.with.delivery_source_only, true);
+  assert.equal(workflow.jobs.release, undefined);
+  for (const id of ["installer-linux", "installer-windows", "installer-macos-arm64"]) {
+    const job = workflow.jobs[id];
+    assert.deepEqual(job.needs, ["prepare", "quality"]);
+    const step = job.steps.find((entry) => entry.uses === "./.github/actions/publish-installer-channel");
+    assert.match(step.if, /success\(\)/);
+    assert.match(step.if, /is_tag_release == 'true'/);
+    assert.match(step.if, /needs\.quality\.result == 'success'/);
+    assert.equal(step.with.source_sha, "${{ needs.prepare.outputs.checkout_ref }}");
+    assert.equal(step.with.tag, "${{ needs.prepare.outputs.tag }}");
+    assert.equal(step.with.prerelease, "${{ needs.prepare.outputs.prerelease }}");
+    const smoke = job.steps.findIndex((entry) => entry.name === "Smoke the packaged payload and the application's first launch");
+    assert(smoke >= 0 && job.steps.indexOf(step) > smoke);
+  }
+  const windows = workflow.jobs['installer-windows'].steps;
+  const containment = windows.findIndex((entry) => entry.name === 'Check and test Windows Job containment');
+  assert(containment >= 0 && containment < windows.findIndex((entry) => entry.name === 'Publish this qualified installer channel'));
+  assert.match(windows[containment].run, /cargo test --manifest-path sidecar\/Cargo.toml/);
+  assert.deepEqual(workflow.jobs.docker.needs, ['prepare', 'quality']);
+  const docker = workflow.jobs.docker.steps;
+  assert(docker.findIndex((entry) => entry.name === 'Publish the tested Docker image') > docker.findIndex((entry) => entry.name === 'Build and smoke native release candidate'));
+  assert(workflow.jobs['delivery-summary'].needs.includes('docker'));
+  assert.match(workflow.jobs['delivery-summary'].if, /always\(\)/);
+  for (const job of Object.values(workflow.jobs)) {
+    if (job === workflow.jobs['delivery-summary']) continue;
+    assert(![].concat(job.needs || []).includes('delivery-summary'));
+  }
+  const ci = yaml.load(fs.readFileSync(path.join(__dirname, '../../.github/workflows/ci.yml'), 'utf8'));
+  assert.equal(ci.on.workflow_call.inputs.delivery_source_only.default, false);
+  assert.match(ci.jobs['docker-native-runtime'].if, /delivery_source_only != true/);
+  assert.match(ci.jobs['sidecar-windows'].if, /delivery_source_only != true/);
+  assert.equal(ci.jobs['electron-build'].steps.find((entry) => entry.name === 'Check native sidecar').if, undefined);
+  assert.match(ci.jobs['electron-build'].steps.find((entry) => entry.name === 'Check native sidecar').run, /cargo clippy/);
+  assert.equal(ci.jobs['electron-build'].steps.find((entry) => entry.name === 'Verify real Electron session authentication').if, undefined);
 });
 
 test("a release publishes the installers and the offline installers, and never another payload", async (t) => {
@@ -609,4 +630,73 @@ test('strict reviewed notes bind publication atomically and support fresh drafts
     assert.equal(state.release.draft, false);
     assert.equal(state.release.body, fs.readFileSync(options.notesPath, 'utf8'));
   }
+});
+
+
+test('a qualified channel publishes without other installers and later channels append immutably', async (t) => {
+  const linux = fixture(t, 'linux-standard');
+  const first = github(linux, { absent: true });
+  const result = await publishQualifiedRelease(linux, first.dependencies);
+  assert.equal(result.assets, 2);
+  assert.equal(result.channel, 'linux-standard');
+  assert.equal(result.otherChannelsAssessed, false);
+  assert.equal(first.state.release.draft, false);
+  const preserved = structuredClone(first.state.assets);
+  const windows = fixture(t, 'windows-offline');
+  const next = github(windows);
+  next.state.release.draft = false;
+  next.state.assets.push(...preserved.map((entry) => ({ ...entry, id: entry.id + 1000 })));
+  const before = structuredClone(next.state.assets);
+  await publishQualifiedRelease(windows, next.dependencies);
+  assert.deepEqual(next.state.assets.slice(0, 2), before);
+  assert.equal(next.state.assets.length, 4);
+  assert(next.state.mutations.every((operation) => operation.startsWith('upload:')));
+  await publishQualifiedRelease(windows, next.dependencies);
+  assert.equal(next.state.assets.length, 4);
+});
+
+test('an explicit channel preserves a failed sibling and refuses its own conflicting bytes', async (t) => {
+  const options = fixture(t, 'macos-arm64');
+  const remote = github(options);
+  remote.state.release.draft = false;
+  const pending = { id: 900, name: expectedPublishedNames(options.version, 'windows-standard')[0], state: 'starter', size: 50, digest: null };
+  remote.state.assets.push(pending);
+  await publishQualifiedRelease(options, remote.dependencies);
+  assert.deepEqual(remote.state.assets[0], pending);
+  assert.equal(remote.state.deletedAssets.length, 0);
+  remote.state.assets.find((entry) => entry.name.endsWith('.dmg')).digest = 'sha256:' + '0'.repeat(64);
+  const mutations = remote.state.mutations.length;
+  await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Refusing to replace/);
+  assert.equal(remote.state.mutations.length, mutations);
+});
+
+test('a concurrent sibling publishing the draft cannot block a complete qualified channel', async (t) => {
+  const options = fixture(t, 'linux-offline');
+  const remote = github(options, { afterUpload: (state) => { state.release.draft = false; } });
+  await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(remote.state.assets.length, 2);
+  assert.equal(remote.state.release.draft, false);
+});
+
+test('explicit channel publication can clean only its own failed 5xx starter on a public release', async (t) => {
+  const options = fixture(t, 'windows-standard');
+  const remote = github(options, { afterUpload: (state, asset) => {
+    if (state.attempts.get(asset.name) === 1) {
+      asset.state = 'starter'; asset.digest = null;
+      throw Object.assign(new Error('upstream'), { stderr: 'HTTP 500: Error saving asset' });
+    }
+  } });
+  remote.state.release.draft = false;
+  await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(remote.state.deletedAssets.length, 2);
+  assert(remote.state.deletedAssets.every((asset) => asset.state === 'starter' && asset.digest === null));
+  assert.equal(remote.state.assets.length, 2);
+});
+
+test('unknown channels and incomplete local channel pairs fail before remote access', async (t) => {
+  const options = fixture(t, 'linux-standard');
+  const gh = async () => assert.fail('local contract must fail first');
+  await assert.rejects(publishQualifiedRelease({ ...options, channel: 'unknown' }, { gh }), /Unknown installer/);
+  fs.unlinkSync(path.join(options.releaseRoot, expectedPublishedNames(options.version, options.channel)[0] + '.sha256'));
+  await assert.rejects(publishQualifiedRelease(options, { gh }), /inventory is incomplete/);
 });

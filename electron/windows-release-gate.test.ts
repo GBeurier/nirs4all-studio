@@ -10,7 +10,7 @@ describe('installer product qualification and publication', () => {
   it('smokes the payload and the first launch of each packaged application on its own runner before uploading it', () => {
     for (const name of installers) {
       const job = release.jobs[name];
-      expect(job.needs).toBe('prepare');
+      expect(job.needs).toEqual(['prepare', 'quality']);
       const gate = job.steps.findIndex((step: { run?: string }) => step.run?.includes('smoke-archive-standalone.cjs'));
       const upload = job.steps.findIndex((step: { name?: string }) => step.name === 'Upload artifacts');
       expect(gate).toBeGreaterThan(0);
@@ -27,25 +27,35 @@ describe('installer product qualification and publication', () => {
   it('has no archive producers or archive prerequisite for stable publication', () => {
     expect(Object.keys(release.jobs).filter(name => name.startsWith('archive-'))).toEqual([]);
     expect(release.on.workflow_dispatch.inputs.skip_all_in_one).toBeUndefined();
-    expect(release.jobs.release.needs).toEqual(['prepare', 'quality', 'installer-linux', 'installer-windows', 'installer-macos-arm64', 'docker']);
+    expect(release.jobs.release).toBeUndefined();
+    for (const producer of [...installers, 'docker']) expect(release.jobs[producer].needs).toEqual(['prepare', 'quality']);
   });
 
-  it('builds Docker concurrently and publishes only the image tested before the join', () => {
-    expect(release.jobs.docker.needs).toBe('prepare');
-    expect(release.jobs.docker.steps.some((step: { run?: string }) => step.run?.includes('docker push'))).toBe(false);
-    const publish = release.jobs.release.steps.find((step: { name?: string }) => step.name === 'Publish the tested Docker image');
-    expect(publish.run).toContain('docker load');
+  it('publishes only the Docker image qualified in its own job', () => {
+    const steps = release.jobs.docker.steps;
+    const publish = steps.find((step: { name?: string }) => step.name === 'Publish the tested Docker image');
     expect(publish.run).toContain('EXPECTED_IMAGE_ID');
     expect(publish.run).not.toContain('docker build');
+    expect(publish.run).not.toContain('docker load');
+    expect(steps.findIndex((step: { run?: string }) => step.run?.includes('smoke-docker-native-runtime.sh')))
+      .toBeLessThan(steps.indexOf(publish));
   });
 
-  it('refuses publication when any product or quality job fails, is cancelled or skipped', () => {
-    for (const failed of ['quality', ...installers, 'docker']) {
-      for (const result of ['failure', 'cancelled', 'skipped']) {
-        const expression = release.jobs.release.if.replace(/always\(\)/g, 'true')
-          .replace(/needs\.prepare\.outputs\.skip_docker/g, '\'false\'')
-          .replace(/needs\.([\w-]+)\.result/g, (_: string, job: string) => JSON.stringify(job === failed ? result : 'success'));
-        expect(runInNewContext(expression), `${failed}: ${result}`).toBe(false);
+  it('requires each producer and shared quality to succeed without inspecting sibling outcomes', () => {
+    for (const name of [...installers, 'docker']) {
+      const job = release.jobs[name];
+      const publish = job.steps.find((step: { name?: string }) => step.name?.startsWith('Publish this qualified') || step.name === 'Publish the tested Docker image');
+      expect(publish.if).toContain('success()');
+      expect(publish.if).toContain("needs.quality.result == 'success'");
+      expect(publish.if).toContain("needs.prepare.outputs.is_tag_release == 'true'");
+      expect(publish['continue-on-error']).not.toBe(true);
+      for (const ownSuccess of [false, true]) {
+        for (const quality of ['success', 'failure', 'cancelled', 'skipped']) {
+          const expression = publish.if.replace(/success\(\)/g, String(ownSuccess))
+            .replace(/needs\.quality\.result/g, JSON.stringify(quality))
+            .replace(/needs\.prepare\.outputs\.is_tag_release/g, "'true'");
+          expect(runInNewContext(expression)).toBe(ownSuccess && quality === 'success');
+        }
       }
     }
   });

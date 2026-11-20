@@ -22,6 +22,11 @@ on:
         type: string
         required: false
         default: ''
+      delivery_source_only:
+        description: Qualify shared source; delivery jobs own packaging, Docker and Windows containment
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main, develop, 'rc/**']
   pull_request:
@@ -101,6 +106,7 @@ jobs:
   # Product container: static renderer + loopback Rust sidecar
   # ═══════════════════════════════════════════════════════════════════════════
   docker-native-runtime:
+    if: inputs.delivery_source_only != true
     name: Native Docker Runtime
     runs-on: ubuntu-latest
     steps:
@@ -316,17 +322,20 @@ jobs:
           NIRS4ALL_NATIVE_SIDECAR_PATH="$PWD/sidecar/target/debug/studio-sidecar" xvfb-run -a npm run test:native-session-auth
 
       - name: Build Electron frontend
+        if: inputs.delivery_source_only != true
         run: npm run build:electron
 
       # Installers ship no Python: uv, the wheels of the required packages and
       # the document adapters let Studio create the user's environment.
       - name: Stage uv, required wheels and document adapters
+        if: inputs.delivery_source_only != true
         run: |
           node scripts/fetch-uv.cjs
           node scripts/build-wheelhouse.cjs
           node scripts/studio-document-adapters.cjs --install backend-dist/adapters
 
       - name: Build and smoke native sidecar
+        if: inputs.delivery_source_only != true
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
@@ -334,6 +343,7 @@ jobs:
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Verify that no Python runtime or backend source is staged
+        if: inputs.delivery_source_only != true
         run: |
           test ! -e backend-dist/python-runtime
           test ! -f backend-dist/main.py
@@ -341,6 +351,7 @@ jobs:
           test ! -d backend-dist/websocket
 
       - name: Test electron-builder (dry-run)
+        if: inputs.delivery_source_only != true
         run: |
           npx electron-builder --config electron-builder.installer.yml --linux --dir
           test -x release/linux-unpacked/resources/backend/native/studio-sidecar
@@ -349,6 +360,7 @@ jobs:
           echo "Electron build test passed"
 
       - name: Configure packaged Chromium sandbox for the Linux runner
+        if: inputs.delivery_source_only != true
         run: |
           test -f release/linux-unpacked/chrome-sandbox
           sudo chown root:root release/linux-unpacked/chrome-sandbox
@@ -360,6 +372,7 @@ jobs:
       # on a fresh profile Studio opens its setup page and creates the
       # environment itself with the packages it preselects.
       - name: Verify the packaged payload and the application's first launch
+        if: inputs.delivery_source_only != true
         timeout-minutes: 45
         run: |
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux
@@ -367,6 +380,7 @@ jobs:
 
   # Windows is the authoritative runtime gate for the converter Job Object.
   sidecar-windows:
+    if: inputs.delivery_source_only != true
     name: Native Sidecar Windows Containment
     # Methods 1.3.2 publishes an explicit Visual Studio 17 2022 preset.
     runs-on: windows-2022
@@ -427,6 +441,11 @@ jobs:
           echo "| Windows Sidecar | $([[ $WINDOWS == 'success' ]] && echo '✅' || echo '❌') $WINDOWS |" >> $GITHUB_STEP_SUMMARY
           echo "| Native Docker Runtime | $([[ $DOCKER == 'success' ]] && echo '✅' || echo '❌') $DOCKER |" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" || "$WINDOWS" != "success" || "$DOCKER" != "success" ]]; then
+          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" ]]; then
+            exit 1
+          fi
+          # Standalone CI remains comprehensive. Release deliveries keep these
+          # platform-specific gates in the corresponding producer instead.
+          if [[ '${{ inputs.delivery_source_only }}' != 'true' && ( "$WINDOWS" != "success" || "$DOCKER" != "success" ) ]]; then
             exit 1
           fi
