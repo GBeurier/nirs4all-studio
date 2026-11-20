@@ -24,8 +24,8 @@
     "native_source_sha": "d82bea70cbe5d66ac8ff46c5b66cc64c3b90498b"
   },
   "io": {
-    "version": "0.3.6",
-    "source_sha": "284f50609212456e3275567f25dc0234e58333f6"
+    "version": "0.3.8",
+    "source_sha": "ce82e0ac074b322d04a276c57cd9bf2b5f8adc91"
   },
   "formats": {
     "version": "0.2.17",
