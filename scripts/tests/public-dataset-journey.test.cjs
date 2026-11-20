@@ -39,6 +39,8 @@ for (const [name, change] of [
   ['an incomplete readback', value => { value.preview.summary.num_samples = 2; }],
   ['a different feature layout', value => { value.preview.summary.num_features = 4; }],
   ['lost target selections', value => { value.dataset.config.target_selection.selected_targets = []; }],
+  ['a path outside the owned workspace', value => { value.dataset.path = path.dirname(value.workspace); }],
+  ['the workspace root as an imported dataset', value => { value.dataset.path = value.workspace; }],
 ]) {
   test(`readback refuses ${name}`, () => {
     fixture(value => { change(value); assert.throws(() => verifyReadback(value.dataset, value.provenance, value.preview, value.workspace)); });

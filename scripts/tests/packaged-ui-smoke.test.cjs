@@ -36,6 +36,9 @@ async function run(change = {}) {
     './smoke-shap-journey.cjs': { shapJourney: async () => {
       calls.push('shap'); if (change.shap) throw new Error('SHAP regression failed');
     } },
+    './smoke-public-dataset-journey.cjs': { publicDatasetJourney: async () => {
+      calls.push('public-dataset'); if (change.publicDataset) throw new Error('Public dataset regression failed');
+    } },
     './smoke-first-launch-ui.cjs': { sanitizeDiagnostic: String, main: async options => {
       calls.push('ui'); assert.equal(typeof options.journeys, 'function'); assert(options.sandboxRoot);
       assert.equal(options.extraPackages.join(), 'shap,matplotlib');
@@ -54,10 +57,10 @@ async function run(change = {}) {
   if (proof.isolated_profile) fs.rmSync(path.dirname(proof.isolated_profile), { recursive: true, force: true });
   return { proof, error, calls };
 }
-test('hosted UI smoke verifies source/contract/bootstrap and the real SHAP regression', async () => {
+test('hosted UI smoke requires source/contract/bootstrap and both SHAP and public-dataset journeys', async () => {
   const result = await run(); assert.equal(result.error, undefined); assert.equal(result.proof.success, true);
   assert.equal(result.proof.installed_cycle, false); assert.equal(result.proof.full_local_qualification, false);
-  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
+  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap', 'public-dataset']);
   assert.equal(result.proof.shipped_sdk.version, '1.4.13');
   assert.match(result.proof.shipped_sdk.wheel_sha256, /^[0-9a-f]{64}$/);
 });
@@ -72,7 +75,7 @@ test('wrong embedded SDK refuses UI despite a valid native contract', async () =
 test('a macOS application embeds no wheels and is qualified on packages from the package index', async () => {
   const result = await run({ macos: true }); assert.equal(result.error, undefined);
   assert.deepEqual(result.proof.shipped_sdk, { source: 'package-index', version: '1.4.13' });
-  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
+  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap', 'public-dataset']);
   const embedded = await run({ macos: true, embedded: true });
   assert.match(embedded.error.message, /must not embed wheels/); assert.deepEqual(embedded.calls, ['contract']);
 });
@@ -87,4 +90,10 @@ test('actual UI assertion failure remains blocking under observational performan
 test('a SHAP regression blocks publication and retains the failing proof', async () => {
   const result = await run({ shap: true }); assert.match(result.error.message, /SHAP regression failed/);
   assert.equal(result.proof.success, false); assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
+});
+test('a public-source import or preview regression blocks publication and retains the failing proof', async () => {
+  const result = await run({ publicDataset: true });
+  assert.match(result.error.message, /Public dataset regression failed/);
+  assert.equal(result.proof.success, false);
+  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap', 'public-dataset']);
 });

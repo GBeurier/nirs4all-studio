@@ -4,14 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { expect } = require('@playwright/test');
 const { api, waitForJob } = require('./smoke-shap-journey.cjs');
+const { contained } = require('./smoke-owned-profile.cjs');
 const { datasets: selectedOwner } = require('../build/runtime-cohort.json');
 
 const DATASET_ID = 'canopy_treatment_2009_2016_to_cedar_ecosis';
 const SOURCE_ID = 'X';
 
 function verifyReadback(dataset, provenance, preview, workspace) {
-  const relative = path.relative(fs.realpathSync(workspace), fs.realpathSync(dataset.path));
-  assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'Imported data must remain inside the owned workspace');
+  contained(workspace, dataset.path);
   assert.deepEqual(dataset.config.public_dataset, {
     dataset_id: DATASET_ID, source_id: SOURCE_ID, requested_source_id: SOURCE_ID,
   });
@@ -63,7 +63,8 @@ async function publicDatasetJourney({ page, env }, proof, workspace) {
   assert.equal(job.result.already_imported, false, 'A fresh journey must acquire the original public source');
   const dataset = job.result.dataset;
   await expect(dialog.getByRole('status').filter({ hasText: 'Added' })).toBeVisible({ timeout: 30000 });
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
   const previewResponse = page.waitForResponse(candidate =>
     new URL(candidate.url()).pathname === `/api/datasets/${dataset.id}/preview` && candidate.request().method() === 'GET');
   await page.getByRole('heading', { level: 3, name: dataset.name, exact: true }).click();
