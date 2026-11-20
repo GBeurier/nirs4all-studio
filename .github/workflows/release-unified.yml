@@ -58,10 +58,10 @@ env:
   # selected immutable releases and update them with the ecosystem release board.
   # Frozen SDK source and candidate bytes; verified public wheel origin is required before release.
   NIRS4ALL_PUBLICATION_STATUS: source-candidate
-  NIRS4ALL_LIBRARY_REF: b0854e1bbce13a5bb66c54e4e466d01264cde36e
+  NIRS4ALL_LIBRARY_REF: d2c3edd323007e31922abb463644dfa4eeb0b727
   DAG_ML_REF: d3608565a5fe27875d4b64e54035eb8b4c05b204
   DAG_ML_DATA_REF: 854d5bebd88e1de761283139189735c349a6226c
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/b0854e1bbce13a5bb66c54e4e466d01264cde36e.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/d2c3edd323007e31922abb463644dfa4eeb0b727.tar.gz
   NIRS4ALL_WHEEL_URL: ""
   NIRS4ALL_WHEEL_SHA256: ac5df977e1af055ffd93410a7b64d4885d971dcce611ba1966c4843c35d33a9d
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/d3608565a5fe27875d4b64e54035eb8b4c05b204.tar.gz
@@ -226,7 +226,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: b0854e1bbce13a5bb66c54e4e466d01264cde36e
+      nirs4all_library_ref: d2c3edd323007e31922abb463644dfa4eeb0b727
       dag_ml_ref: d3608565a5fe27875d4b64e54035eb8b4c05b204
       dag_ml_data_ref: 854d5bebd88e1de761283139189735c349a6226c
 

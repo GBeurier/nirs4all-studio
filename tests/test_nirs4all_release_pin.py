@@ -198,7 +198,7 @@ def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
 
 def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None:
     sdk = json.loads((ROOT / "build/runtime-cohort.json").read_text())["sdk"]
-    assert sdk["source_sha"] == "b0854e1bbce13a5bb66c54e4e466d01264cde36e"
+    assert sdk["source_sha"] == "d2c3edd323007e31922abb463644dfa4eeb0b727"
     assert sdk["wheel_sha256"] == "ac5df977e1af055ffd93410a7b64d4885d971dcce611ba1966c4843c35d33a9d"
     assert sdk["version"] == _required_nirs4all()["install"]
     assert sdk["publication_status"] == "published-registry"

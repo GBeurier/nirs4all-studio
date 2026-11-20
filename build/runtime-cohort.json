@@ -2,8 +2,8 @@
   "schema": "nirs4all.studio.runtime-cohort.v1",
   "sdk": {
     "version": "1.6.0",
-    "source_sha": "b0854e1bbce13a5bb66c54e4e466d01264cde36e",
-    "source_tree": "c583d681e137982b49e44ecb4c1bbca18639d2e6",
+    "source_sha": "d2c3edd323007e31922abb463644dfa4eeb0b727",
+    "source_tree": "deaed3493bc73cad69c49f20199f93eaa6267aa7",
     "wheel_sha256": "ac5df977e1af055ffd93410a7b64d4885d971dcce611ba1966c4843c35d33a9d",
     "publication_status": "source-candidate",
     "wheel_url": "",
