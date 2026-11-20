@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ### Added
 
+- Browse the public Datasets catalogue from the datasets page, select a source,
+  and download it from its original public provider into the active workspace.
+  Acquisition and parsing use nirs4all-datasets and IO; Rust owns the import job
+  and durable registration. Source identities, targets and metadata are retained.
 - The Variable Importance (SHAP) screen offers two engines: Python SHAP (the
   `shap` package, unchanged default) and native SHAP (the nirs4all-methods
   kernels shared with nirs4all Web), with permutation, exact, kernel, LIME,
@@ -28,8 +32,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   Playground metadata-columns route accepts an optional `partition` query to
   list values across partitions.
 
+### Changed
+
+- Add nirs4all-datasets 0.3.22 to the required environment packages. Select the
+  published SDK 1.6.0, Core 0.6.1, DAG 0.5.0, Python IO 0.3.8 and
+  Methods/pls4all 1.5.1 cohort at Methods ABI 2.24, with generated public wheel
+  locks for Linux, Windows and macOS. The separate Rust graph retains its
+  selected IO 0.3.6 and Formats 0.2.17 dependencies.
+
 ### Fixed
 
+- Stage the selected Methods ABI 2.24 library in Docker while retaining its
+  exact content hash check. Resolve shared image/offline dependencies together
+  so declared recommended versions cannot conflict with a prior closure.
 - Admit the SDK's explicit Linear and Tree SHAP selectors through the Rust
   analysis route. A stale auto/kernel-only filter rejected both before the
   scientific host could check model compatibility. Affine PLS pipelines now
