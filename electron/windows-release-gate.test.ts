@@ -10,7 +10,7 @@ describe('installer product qualification and publication', () => {
   it('smokes the payload and the first launch of each packaged application on its own runner before uploading it', () => {
     for (const name of installers) {
       const job = release.jobs[name];
-      expect(job.needs).toEqual(['prepare', 'quality']);
+      expect(job.needs).toEqual(['prepare', 'quality', 'release-draft']);
       const gate = job.steps.findIndex((step: { run?: string }) => step.run?.includes('smoke-archive-standalone.cjs'));
       const upload = job.steps.findIndex((step: { name?: string }) => step.name === 'Upload artifacts');
       expect(gate).toBeGreaterThan(0);
@@ -28,7 +28,8 @@ describe('installer product qualification and publication', () => {
     expect(Object.keys(release.jobs).filter(name => name.startsWith('archive-'))).toEqual([]);
     expect(release.on.workflow_dispatch.inputs.skip_all_in_one).toBeUndefined();
     expect(release.jobs.release).toBeUndefined();
-    for (const producer of [...installers, 'docker']) expect(release.jobs[producer].needs).toEqual(['prepare', 'quality']);
+    for (const producer of installers) expect(release.jobs[producer].needs).toEqual(['prepare', 'quality', 'release-draft']);
+    expect(release.jobs.docker.needs).toEqual(['prepare', 'quality']);
   });
 
   it('publishes only the Docker image qualified in its own job', () => {

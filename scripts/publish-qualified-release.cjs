@@ -124,7 +124,8 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   if (typeof prerelease !== "boolean") {
     throw new Error("An explicit prerelease flag is required");
   }
-  const manifest = releaseManifest(path.resolve(releaseRoot), version, channel);
+  const manifest = options.prepareOnly ? [] : releaseManifest(path.resolve(releaseRoot), version, channel);
+  if (options.prepareOnly && incremental) throw new Error("Draft preparation cannot publish a channel");
   const otherChannelNames = new Set(expectedPublishedNames(version)
     .flatMap((name) => [name, `${name}.sha256`]));
   let reviewedNotes;
@@ -163,6 +164,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     try {
       if (pinnedReleaseId !== undefined) return await api(`releases/${pinnedReleaseId}`);
       try {
+        if (incremental || options.prepareOnly) throw Object.assign(new Error("Use complete release inventory"), { notFound: true });
         return await api(`releases/tags/${encodeURIComponent(tag)}`);
       } catch (error) {
         if (!error.notFound) throw error;
@@ -193,6 +195,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
 
   await assertTag();
   let release = await lookupRelease();
+  if (!release && incremental) throw new Error("Installer channels require the single prepared release draft");
   if (!release) {
     // The tag was already verified above. An older --target SHA whose workflows
     // differ from main requires workflows:write, which GITHUB_TOKEN cannot have.
@@ -217,6 +220,10 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     if (!release) throw new Error("Could not create the release draft");
   }
   assertRelease(release);
+  if (options.prepareOnly) {
+    await assertTag();
+    return { releaseId: release.id, tag, sha, prepared: true, draft: release.draft };
+  }
   const releaseId = release.id;
   pinnedReleaseId = releaseId;
   const wasDraft = release.draft;
@@ -326,7 +333,13 @@ async function publishQualifiedRelease(options, dependencies = {}) {
         log(`Uploading ${entry.name} (attempt ${attempt}/3)`);
         let httpStatus = null;
         try {
-          await gh(["release", "upload", tag, entry.file, "--repo", repo]);
+          if (incremental) {
+            // Address the verified release id, never an ambiguous draft by tag.
+            await gh(["api", `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(entry.name)}`,
+              "--method", "POST", "--header", "Content-Type: application/octet-stream", "--input", entry.file]);
+          } else {
+            await gh(["release", "upload", tag, entry.file, "--repo", repo]);
+          }
         } catch (error) {
           httpStatus = ghFailureHttpStatus(error);
           // A failed response may still have stored the complete asset. Never clobber it.

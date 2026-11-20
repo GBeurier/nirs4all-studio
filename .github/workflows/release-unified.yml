@@ -252,16 +252,50 @@ jobs:
       dag_ml_ref: d3608565a5fe27875d4b64e54035eb8b4c05b204
       dag_ml_data_ref: 854d5bebd88e1de761283139189735c349a6226c
 
+  # One serialized metadata writer prevents concurrent installer legs from
+  # creating several drafts for the same tag. This does not publish any asset.
+  release-draft:
+    name: Prepare installer release draft
+    needs: [prepare, quality]
+    if: >-
+      needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success' &&
+      needs.prepare.outputs.delivery_channel != 'docker'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: studio-release-draft-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Reconcile one immutable installer release draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+          RELEASE_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: node scripts/prepare-release-draft.cjs
+
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: Linux x64 (Electron + Rust sidecar + uv + required wheels)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-linux:
     name: Installer — Linux x64 (${{ matrix.variant }})
     if: >-
-      always() && needs.prepare.result == 'success' &&
-      (needs.prepare.outputs.is_tag_release != 'true' || needs.quality.result == 'success') &&
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || (needs.quality.result == 'success' && needs.release-draft.result == 'success')) &&
       (needs.prepare.outputs.delivery_channel == 'all' || startsWith(needs.prepare.outputs.delivery_channel, 'linux-'))
-    needs: [prepare, quality]
+    needs: [prepare, quality, release-draft]
+    concurrency:
+      group: studio-installer-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.variant }}
+      cancel-in-progress: false
     permissions:
       contents: write
     runs-on: ubuntu-22.04
@@ -417,10 +451,13 @@ jobs:
   installer-windows:
     name: Installer — Windows x64 (${{ matrix.variant }})
     if: >-
-      always() && needs.prepare.result == 'success' &&
-      (needs.prepare.outputs.is_tag_release != 'true' || needs.quality.result == 'success') &&
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || (needs.quality.result == 'success' && needs.release-draft.result == 'success')) &&
       (needs.prepare.outputs.delivery_channel == 'all' || startsWith(needs.prepare.outputs.delivery_channel, 'windows-'))
-    needs: [prepare, quality]
+    needs: [prepare, quality, release-draft]
+    concurrency:
+      group: studio-installer-${{ needs.prepare.outputs.tag }}-windows-${{ matrix.variant }}
+      cancel-in-progress: false
     # Methods' release preset is intentionally bound to VS 17 / 2022.
     permissions:
       contents: write
@@ -445,9 +482,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Setup Python for native containment tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: clippy, rustfmt
           targets: x86_64-pc-windows-msvc
 
       - name: Install npm dependencies
@@ -642,10 +685,13 @@ jobs:
   installer-macos-arm64:
     name: Installer — macOS arm64
     if: >-
-      always() && needs.prepare.result == 'success' &&
-      (needs.prepare.outputs.is_tag_release != 'true' || needs.quality.result == 'success') &&
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || (needs.quality.result == 'success' && needs.release-draft.result == 'success')) &&
       (needs.prepare.outputs.delivery_channel == 'all' || needs.prepare.outputs.delivery_channel == 'macos-arm64')
-    needs: [prepare, quality]
+    needs: [prepare, quality, release-draft]
+    concurrency:
+      group: studio-installer-${{ needs.prepare.outputs.tag }}-macos-arm64
+      cancel-in-progress: false
     permissions:
       contents: write
     runs-on: macos-15

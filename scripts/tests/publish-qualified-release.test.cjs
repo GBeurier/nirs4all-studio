@@ -6,6 +6,7 @@ const test = require("node:test");
 const yaml = require("js-yaml");
 const { expectedPublishedNames, sha256File } = require("../finalize-release-assets.cjs");
 const { ghFailureDiagnostic, publishQualifiedRelease, releaseManifest } = require("../publish-qualified-release.cjs");
+const { prepareReleaseDraft } = require("../prepare-release-draft.cjs");
 
 function fixture(t, channel = null) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-publisher-"));
@@ -35,6 +36,12 @@ function github(options, behavior = {}) {
     state: "uploaded", digest: `sha256:${entry.sha256}` });
   const gh = async (args) => {
     state.calls.push(args);
+    if (args[0] === "api" && args[1].startsWith('https://uploads.github.com/')) {
+      const name = decodeURIComponent(args[1].split('?name=')[1]);
+      assert.deepEqual(args, ['api', `https://uploads.github.com/repos/${options.repo}/releases/99/assets?name=${encodeURIComponent(name)}`,
+        '--method', 'POST', '--header', 'Content-Type: application/octet-stream', '--input', path.join(options.releaseRoot, name)]);
+      args = ['release', 'upload', options.tag, path.join(options.releaseRoot, name), '--repo', options.repo];
+    }
     if (args[0] === "api") {
       const endpoint = args[1].replace(`repos/${options.repo}/`, "");
       if (endpoint === `git/ref/tags/${options.tag}`) {
@@ -59,7 +66,7 @@ function github(options, behavior = {}) {
           behavior.visibilityLagReads--;
           return JSON.stringify([[], []]);
         }
-        return JSON.stringify([[], state.release ? [state.release] : []]);
+        return JSON.stringify([[], state.release ? [state.release, ...(behavior.extraDraft ? [{ ...state.release, id: 98 }] : [])] : []]);
       }
       if (endpoint === "releases/99/assets?per_page=100") {
         assert.deepEqual(args.slice(2), ["--paginate", "--slurp"]);
@@ -298,7 +305,7 @@ test("installer deliveries own their qualification and do not wait for other cha
   assert.equal(workflow.jobs.release, undefined);
   for (const id of ["installer-linux", "installer-windows", "installer-macos-arm64"]) {
     const job = workflow.jobs[id];
-    assert.deepEqual(job.needs, ["prepare", "quality"]);
+    assert.deepEqual(job.needs, ["prepare", "quality", "release-draft"]);
     const step = job.steps.find((entry) => entry.uses === "./.github/actions/publish-installer-channel");
     assert.match(step.if, /success\(\)/);
     assert.match(step.if, /is_tag_release == 'true'/);
@@ -314,6 +321,9 @@ test("installer deliveries own their qualification and do not wait for other cha
   assert(containment >= 0 && containment < windows.findIndex((entry) => entry.name === 'Publish this qualified installer channel'));
   assert.match(windows[containment].run, /cargo test --manifest-path sidecar\/Cargo.toml/);
   assert.deepEqual(workflow.jobs.docker.needs, ['prepare', 'quality']);
+  assert.deepEqual(workflow.jobs['release-draft'].needs, ['prepare', 'quality']);
+  assert.equal(workflow.jobs['release-draft'].concurrency.group, 'studio-release-draft-${{ needs.prepare.outputs.tag }}');
+  assert.equal(workflow.jobs['release-draft'].concurrency['cancel-in-progress'], false);
   const docker = workflow.jobs.docker.steps;
   assert(docker.findIndex((entry) => entry.name === 'Publish the tested Docker image') > docker.findIndex((entry) => entry.name === 'Build and smoke native release candidate'));
   assert(workflow.jobs['delivery-summary'].needs.includes('docker'));
@@ -636,6 +646,7 @@ test('strict reviewed notes bind publication atomically and support fresh drafts
 test('a qualified channel publishes without other installers and later channels append immutably', async (t) => {
   const linux = fixture(t, 'linux-standard');
   const first = github(linux, { absent: true });
+  await prepareReleaseDraft(linux, first.dependencies);
   const result = await publishQualifiedRelease(linux, first.dependencies);
   assert.equal(result.assets, 2);
   assert.equal(result.channel, 'linux-standard');
@@ -699,4 +710,74 @@ test('unknown channels and incomplete local channel pairs fail before remote acc
   await assert.rejects(publishQualifiedRelease({ ...options, channel: 'unknown' }, { gh }), /Unknown installer/);
   fs.unlinkSync(path.join(options.releaseRoot, expectedPublishedNames(options.version, options.channel)[0] + '.sha256'));
   await assert.rejects(publishQualifiedRelease(options, { gh }), /inventory is incomplete/);
+});
+
+
+test('channel invocations refuse absent or ambiguous drafts without creating a competing release', async (t) => {
+  const options = fixture(t, 'linux-standard');
+  for (const behavior of [{ absent: true, draftHidden: true }, { extraDraft: true, draftHidden: true }]) {
+    const remote = github(options, behavior);
+    const results = await Promise.allSettled([publishQualifiedRelease(options, remote.dependencies), publishQualifiedRelease(options, remote.dependencies)]);
+    assert(results.every(result => result.status === 'rejected'));
+    assert.deepEqual(remote.state.mutations, []);
+  }
+});
+
+test('serialized preparation reconciles one hidden draft, never publishes or uploads assets', async (t) => {
+  const options = fixture(t, 'linux-standard');
+  const remote = github(options, { absent: true, draftHidden: true, visibilityLagReads: 2 });
+  const first = await prepareReleaseDraft(options, remote.dependencies);
+  const second = await prepareReleaseDraft(options, remote.dependencies);
+  assert.equal(first.releaseId, second.releaseId);
+  assert.equal(first.prepared, true);
+  assert.equal(first.published, undefined);
+  assert.equal(remote.state.release.draft, true);
+  assert.deepEqual(remote.state.mutations, ['create-draft']);
+  assert.deepEqual(remote.state.assets, []);
+  await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(remote.state.release.draft, false);
+  assert(remote.state.calls.some(args => args[0] === 'api' && args[1].startsWith('https://uploads.github.com/repos/owner/studio/releases/99/assets?name=')));
+  assert(!remote.state.calls.some(args => args[0] === 'release' && args[1] === 'upload'));
+});
+
+
+test('one hidden draft supports concurrent different channels with uploads pinned by release id', async (t) => {
+  const linux = fixture(t, 'linux-standard');
+  const windows = fixture(t, 'windows-standard');
+  const entries = [...releaseManifest(linux.releaseRoot, linux.version, linux.channel), ...releaseManifest(windows.releaseRoot, windows.version, windows.channel)];
+  let release = null; let creations = 0; let nextId = 100; const assets = [];
+  const gh = async (args) => {
+    if (args[0] === 'release') {
+      assert.equal(args[1], 'create');
+      assert.equal(release, null, 'only the serialized preparation may create a draft');
+      creations++;
+      release = { id: 99, tag_name: linux.tag, prerelease: false, draft: true };
+      return '';
+    }
+    const endpoint = args[1];
+    if (endpoint.endsWith(`/git/ref/tags/${linux.tag}`)) return JSON.stringify({ object: { type: 'commit', sha: linux.sha } });
+    if (endpoint.endsWith('/releases?per_page=100')) return JSON.stringify([release ? [release] : []]);
+    if (endpoint.endsWith('/releases/99/assets?per_page=100')) return JSON.stringify([assets]);
+    if (endpoint.endsWith('/releases/99')) {
+      if (args.includes('PATCH')) release.draft = false;
+      return JSON.stringify(release);
+    }
+    if (endpoint.startsWith('https://uploads.github.com/repos/owner/studio/releases/99/assets?name=')) {
+      const name = decodeURIComponent(endpoint.split('?name=')[1]);
+      assert(!assets.some(asset => asset.name === name));
+      const entry = entries.find(item => item.name === name);
+      assert.equal(args.at(-1), entry.file);
+      await new Promise(resolve => setImmediate(resolve));
+      assets.push({ id: nextId++, name, state: 'uploaded', size: entry.size, digest: `sha256:${entry.sha256}` });
+      return '{}';
+    }
+    assert.fail(`Unexpected channel endpoint: ${endpoint}`);
+  };
+  const dependencies = { gh, sleep: async () => {}, log: () => {} };
+  await prepareReleaseDraft(linux, dependencies);
+  const results = await Promise.all([publishQualifiedRelease(linux, dependencies), publishQualifiedRelease(windows, dependencies)]);
+  assert(results.every(result => result.published === true && result.releaseId === 99));
+  assert.equal(creations, 1);
+  assert.equal(assets.length, 4);
+  assert.equal(release.draft, false);
 });

@@ -31,6 +31,7 @@ function dependencies(job: Job): string[] { return typeof job.needs === "string"
 function releaseGate(job: string, results: Record<string, string> = {}, flags: Record<string, string> = {}): boolean {
   const expression = release.jobs[job].if!
     .replace(/always\(\)/g, "true")
+    .replace(/cancelled\(\)/g, "false")
     .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? ({ is_tag_release: "true", delivery_channel: "all" } as Record<string, string>)[flag] ?? "false"))
     .replace(/needs\.([\w-]+)\.result/g, (_, dependency: string) => {
       expect(dependencies(release.jobs[job])).toContain(dependency);
@@ -156,7 +157,7 @@ describe("CI release protection graph", () => {
   it("publishes each delivery only after its own smoke and common source gates succeed", () => {
     for (const name of ["installer-linux", "installer-windows", "installer-macos-arm64", "docker"]) {
       const job = release.jobs[name];
-      expect(dependencies(job)).toEqual(["prepare", "quality"]);
+      expect(dependencies(job)).toEqual(name === "docker" ? ["prepare", "quality"] : ["prepare", "quality", "release-draft"]);
       expect(releaseGate(name)).toBe(true);
       for (const prerequisite of dependencies(job)) expect(releaseGate(name, { [prerequisite]: "failure" })).toBe(false);
       const publish = job.steps!.find(step => step.name?.startsWith('Publish this qualified') || step.name === 'Publish the tested Docker image')!;
@@ -278,7 +279,7 @@ describe("CI release protection graph", () => {
     const installers = Object.entries(release.jobs).filter(([name]) => name.startsWith("installer-"));
     expect(installers.map(([name]) => name)).toEqual(["installer-linux", "installer-windows", "installer-macos-arm64"]);
     for (const [name, job] of installers) {
-      expect(dependencies(job), name).toEqual(["prepare", "quality"]);
+      expect(dependencies(job), name).toEqual(["prepare", "quality", "release-draft"]);
       const upload = job.steps!.find(step => step.name === "Upload artifacts")!;
       if (name === "installer-macos-arm64") {
         expect(upload.with?.name, name).toBe("installer-macos-arm64-payload");

@@ -486,6 +486,7 @@ The release workflow is `.github/workflows/release-unified.yml`.
 |---|---|
 | `prepare` | Resolve the immutable source, version, runtime cohort and selected channels |
 | `quality` | Shared frontend, backend, Rust fmt/clippy/tests and native-session authentication gates |
+| `release-draft` | Prepare one source-verified draft under a per-tag lock; no installer assets or public release |
 | `installer-linux` | Qualify and publish each selected DEB variant independently |
 | `installer-windows` | Windows containment tests, then qualify and publish each selected NSIS variant independently |
 | `installer-macos-arm64` | Qualify and publish the Apple Silicon DMG; signing/notarization rules remain unchanged |
@@ -500,7 +501,9 @@ and checksum. A failed Docker, macOS or sibling variant does not block a
 qualified channel. Shared source gates still block every publication when they
 fail; standalone CI also retains its full Docker and packaging checks.
 
-The first qualified installer makes the GitHub Release public. Later channels
+One serialized metadata job prepares the draft before installer producers;
+individual channels never create drafts. The first qualified installer makes
+the GitHub Release public. Later channels
 append their exact installer/checksum pair to the same immutable source tag;
 existing assets are verified and never replaced. Release notes distinguish
 attached assets from pending or failed channels and link the workflow evidence.
