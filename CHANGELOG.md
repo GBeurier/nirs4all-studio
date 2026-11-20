@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [Unreleased]
+## [0.19.1] — 2026-11-20
 
 ### Added
 
@@ -42,6 +42,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ### Fixed
 
+- Offer a newer application version than the local 0.19.0 preview so both
+  the preview and stable 0.18.1 can discover the final Windows installer.
+  Refuse installer or checksum assets whose upload is still incomplete.
+- Publish each qualified installer independently after its shared source
+  gates and platform smoke; another installer or Docker cannot delay it.
 - Stage the selected Methods ABI 2.24 library in Docker while retaining its
   exact content hash check. Resolve shared image/offline dependencies together
   so declared recommended versions cannot conflict with a prior closure.
