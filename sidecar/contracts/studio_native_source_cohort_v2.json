@@ -12,7 +12,10 @@
     "version": "1.6.0",
     "requirement": ">=1.6.0,<1.7",
     "publication_status": "source-candidate",
-    "meaning": "Selected frozen SDK1.6.0 candidate; public registry and installed/packaged-host qualification pending."
+    "meaning": "Selected frozen SDK 1.6.0 candidate; private Python adapter qualified, actual public registry origin and final installer wheel locks/packaged-host qualification pending.",
+    "source_sha": "b0854e1bbce13a5bb66c54e4e466d01264cde36e",
+    "runtime_source_sha": "6bd7df8810ec52120202c74e6affc44be28192c2",
+    "wheel_sha256": "ac5df977e1af055ffd93410a7b64d4885d971dcce611ba1966c4843c35d33a9d"
   },
   "methods_selection": {
     "project_version": "1.5.1",
@@ -77,7 +80,7 @@
   "notes": [
     "Rust owners are genuinely published: Core0.6.1, DAG0.5, DMD/Formats0.2.17, IO0.3.6 and n4m0.5.0; one registry-only runtime graph is selected. This is not an installed Studio qualification.",
     "Source-built packaged Methods selects public source25041f88, project1.5.1 and ABI2.24. Public wheel artifacts have their separate exact identity and must not be attributed to this source without evidence.",
-    "SDK1.6.0 and Datasets0.3.22 source candidates are frozen; public index availability and final installer wheel locks remain pending the actual dependency-ordered releases.",
+    "SDK 1.6.0 release receipt b0854e1b/runtime 6bd7df88 and Datasets 0.3.22 source 478ece43 are frozen candidates; actual public index origins and final installer wheel locks remain pending the dependency-ordered releases.",
     "The historical published-registry cohort remains byte-exact in studio_native_source_cohort_v1.json."
   ]
 }

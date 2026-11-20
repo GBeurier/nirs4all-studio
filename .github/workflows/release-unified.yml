@@ -56,15 +56,15 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected immutable releases and update them with the ecosystem release board.
-  # SDK publication source and public wheel bytes are exact.
-  NIRS4ALL_PUBLICATION_STATUS: published-registry
-  NIRS4ALL_LIBRARY_REF: 1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb
-  DAG_ML_REF: d796152c148db3bb3f4398f818e1083f5e3aa816
+  # Frozen SDK source and candidate bytes; verified public wheel origin is required before release.
+  NIRS4ALL_PUBLICATION_STATUS: source-candidate
+  NIRS4ALL_LIBRARY_REF: b0854e1bbce13a5bb66c54e4e466d01264cde36e
+  DAG_ML_REF: d3608565a5fe27875d4b64e54035eb8b4c05b204
   DAG_ML_DATA_REF: 854d5bebd88e1de761283139189735c349a6226c
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb.tar.gz
-  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/ff/ff/a583e1ce79ca2ca3a54f4d1b1d47d124ccc83cdd33cf602cfde077ae2ece/nirs4all-1.5.0-py3-none-any.whl
-  NIRS4ALL_WHEEL_SHA256: 3bbcb78fc1f6992b4e91378edb36ce6bf9f03356b79321d49950196bd94ddaed
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/d796152c148db3bb3f4398f818e1083f5e3aa816.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/b0854e1bbce13a5bb66c54e4e466d01264cde36e.tar.gz
+  NIRS4ALL_WHEEL_URL: ""
+  NIRS4ALL_WHEEL_SHA256: ac5df977e1af055ffd93410a7b64d4885d971dcce611ba1966c4843c35d33a9d
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/d3608565a5fe27875d4b64e54035eb8b4c05b204.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/854d5bebd88e1de761283139189735c349a6226c.tar.gz
 
 jobs:
@@ -226,8 +226,8 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb
-      dag_ml_ref: d796152c148db3bb3f4398f818e1083f5e3aa816
+      nirs4all_library_ref: b0854e1bbce13a5bb66c54e4e466d01264cde36e
+      dag_ml_ref: d3608565a5fe27875d4b64e54035eb8b4c05b204
       dag_ml_data_ref: 854d5bebd88e1de761283139189735c349a6226c
 
   # ═══════════════════════════════════════════════════════════════════════════
