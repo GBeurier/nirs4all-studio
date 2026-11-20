@@ -781,3 +781,29 @@ test('one hidden draft supports concurrent different channels with uploads pinne
   assert.equal(assets.length, 4);
   assert.equal(release.draft, false);
 });
+
+test('legacy clients cannot discover a public channel until its payload is verified', async (t) => {
+  const options = fixture(t, 'windows-standard');
+  const payload = expectedPublishedNames(options.version, options.channel)[0];
+  const observations = [];
+  const remote = github(options, { afterUpload(state, asset) {
+    const incomplete = asset.name === payload && state.attempts.get(asset.name) === 1;
+    if (incomplete) { asset.state = 'starter'; asset.digest = null; }
+    const installer = state.assets.find(item => item.name === payload && item.size > 0);
+    const checksum = state.assets.find(item => item.name === `${payload}.sha256` && item.state === 'uploaded');
+    // Studio 0.18.1/0.19.0 requires a matching readable checksum but does not
+    // inspect the installer's GitHub state. Qualified sidecar bytes are valid.
+    const legacyOffer = Boolean(installer && checksum);
+    const ready = installer?.state === 'uploaded' && installer.digest === `sha256:${remote.manifest.find(item => item.name === payload).sha256}`;
+    observations.push({ name: asset.name, state: asset.state, legacyOffer, ready });
+    assert(!legacyOffer || ready, 'old clients must never see an unfinished installer plus a readable checksum');
+    if (incomplete) throw Object.assign(new Error('upstream'), { stderr: 'HTTP 500: Error saving asset' });
+  } });
+  remote.state.release.draft = false;
+  await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(observations[0].state, 'starter');
+  assert.equal(observations[0].legacyOffer, false);
+  assert.equal(observations.at(-1).legacyOffer, true);
+  assert(observations.at(-1).ready);
+  assert.equal(remote.state.deletedAssets.length, 1);
+});

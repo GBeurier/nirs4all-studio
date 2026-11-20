@@ -156,6 +156,10 @@ check. Both the installer and its checksum must have GitHub asset state
 before any download link is offered. During independent platform delivery, a
 release published for another platform can therefore remain unavailable for
 this installation until its standard installer and checksum are complete.
+Independent channel publication verifies the installer payload before uploading
+its checksum. This also protects older Studio clients that do not inspect the
+GitHub asset state: they cannot discover a usable checksum before the installer
+is available.
 
 ## API Reference
 

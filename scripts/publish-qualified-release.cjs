@@ -102,7 +102,14 @@ function releaseManifest(root, version, channel = null) {
       size: fs.statSync(`${file}.sha256`).size,
     });
   }
-  // Sidecars first; each invocation of gh uploads exactly one file.
+  // Public channel appends verify the payload before exposing its checksum.
+  // Older Studio clients trust a matching checksum without checking asset.state.
+  if (channel !== null) {
+    return manifest.sort((a, b) =>
+      Number(a.name.endsWith(".sha256")) - Number(b.name.endsWith(".sha256")) ||
+      a.name.localeCompare(b.name));
+  }
+  // Full draft promotion retains sidecars first, then all payloads.
   return manifest.sort((a, b) =>
     Number(b.name.endsWith(".sha256")) - Number(a.name.endsWith(".sha256")) ||
     a.name.localeCompare(b.name));
