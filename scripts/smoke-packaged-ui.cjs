@@ -77,7 +77,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
         journeys: async context => {
           const workspace = await assertOwnedWorkspace(context.env, sandbox);
           await shapJourney(context, proof, workspace);
-          await publicDatasetJourney(context, proof, workspace);
+          await publicDatasetJourney(context, proof, workspace, 'zenodo_neospectra_soil_nir_ccby');
         } });
     });
     proof.success = true;
