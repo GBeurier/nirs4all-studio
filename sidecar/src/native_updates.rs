@@ -382,6 +382,9 @@ fn parse_release(
         .ok_or("GitHub release assets are missing")?;
     let asset = select_platform_asset(assets)
         .ok_or("No matching installer for this platform and architecture")?;
+    if asset.get("state").and_then(Value::as_str) != Some("uploaded") {
+        return Err("Update installer is not fully uploaded".into());
+    }
     let name = asset
         .get("name")
         .and_then(Value::as_str)
@@ -406,6 +409,9 @@ fn parse_release(
                 .is_some_and(|candidate| candidate.eq_ignore_ascii_case(&sidecar_name))
         })
         .ok_or("Matching SHA-256 sidecar asset is missing")?;
+    if checksum_asset.get("state").and_then(Value::as_str) != Some("uploaded") {
+        return Err("Matching SHA-256 sidecar is not fully uploaded".into());
+    }
     let checksum_url = checksum_asset
         .get("browser_download_url")
         .and_then(Value::as_str)
@@ -756,6 +762,45 @@ mod tests {
     }
 
     #[test]
+    fn a_partial_release_cannot_offer_an_undelivered_windows_standard_installer() {
+        let mut assets = named(&[
+            "nirs4all.Studio-0.16.0-linux-amd64.deb",
+            "nirs4all.Studio-0.16.0-linux-amd64.deb.sha256",
+            "nirs4all.Studio-0.16.0-win-x64-offline.exe",
+            "nirs4all.Studio-0.16.0-win-x64-offline.exe.sha256",
+        ]);
+        assert!(select_installer_asset(&assets, "windows", "x86_64").is_none());
+        assert!(select_installer_asset(&assets, "linux", "x86_64").is_some());
+        assets.extend(named(&[
+            "nirs4all.Studio-0.16.0-win-x64.exe.sha256",
+            "nirs4all.Studio-0.16.0-win-x64.exe",
+        ]));
+        assert_eq!(
+            select_installer_asset(&assets, "windows", "x86_64").unwrap()["name"],
+            "nirs4all.Studio-0.16.0-win-x64.exe"
+        );
+    }
+
+    #[test]
+    fn an_uploaded_installer_without_its_checksum_is_refused() {
+        let installer = host_installer_name("2.0.0");
+        let release = json!({"tag_name": "2.0.0", "prerelease": false, "assets": [{
+            "name": installer, "state": "uploaded", "size": 300,
+            "browser_download_url": format!("https://github.com/GBeurier/nirs4all-studio/releases/download/2.0.0/{installer}")
+        }]});
+        assert_eq!(
+            parse_release(
+                &Client::new(),
+                &Url::parse("https://api.github.com").unwrap(),
+                &release,
+                false
+            )
+            .unwrap_err(),
+            "Matching SHA-256 sidecar asset is missing"
+        );
+    }
+
+    #[test]
     fn offline_installers_are_never_selected() {
         for (os, arch, installer) in PLATFORMS {
             let (stem, extension) = installer.rsplit_once('.').unwrap();
@@ -913,7 +958,7 @@ mod tests {
         let installer = host_installer_name("2.0.0");
         let (stem, extension) = installer.rsplit_once('.').unwrap();
         let offline = format!("{stem}-offline.{extension}");
-        let asset = |name: &str, size: u64| json!({"name": name, "browser_download_url": format!("{base}/{name}"), "size": size});
+        let asset = |name: &str, size: u64| json!({"name": name, "state": "uploaded", "browser_download_url": format!("{base}/{name}"), "size": size});
         let body = json!({"tag_name": "2.0.0", "prerelease": false, "assets": [
             asset(&offline, 900),
             asset(&format!("{offline}.sha256"), 80),
@@ -961,6 +1006,70 @@ mod tests {
         let second = updater.status_json(false).unwrap();
         assert!(first["last_check"].is_string());
         assert_eq!(first["last_check"], second["last_check"]);
+    }
+
+    #[test]
+    fn unfinished_installer_or_checksum_is_never_an_available_update() {
+        for (installer_state, checksum_state, expected) in [
+            (
+                "starter",
+                "uploaded",
+                "Update installer is not fully uploaded",
+            ),
+            (
+                "uploaded",
+                "starter",
+                "Matching SHA-256 sidecar is not fully uploaded",
+            ),
+            ("", "uploaded", "Update installer is not fully uploaded"),
+            (
+                "uploaded",
+                "",
+                "Matching SHA-256 sidecar is not fully uploaded",
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let base = format!("http://{address}");
+            let installer = host_installer_name("2.0.0");
+            let checksum = format!("{}  {installer}\n", "ab".repeat(32));
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 4096];
+                // Wakeup after an early refusal closes without making a request.
+                if stream.read(&mut request).unwrap() == 0 {
+                    return;
+                }
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    checksum.len()
+                )
+                .unwrap();
+                stream.write_all(checksum.as_bytes()).unwrap();
+            });
+            let asset = |name: &str, state: &str| {
+                let mut asset = json!({"name": name, "browser_download_url": format!("{base}/{name}"), "size": 300});
+                if !state.is_empty() {
+                    asset["state"] = state.into();
+                }
+                asset
+            };
+            let release = json!({"tag_name": "2.0.0", "prerelease": false, "assets": [
+                asset(&installer, installer_state),
+                asset(&format!("{installer}.sha256"), checksum_state),
+            ]});
+            let result =
+                parse_release(&Client::new(), &Url::parse(&base).unwrap(), &release, false);
+            // Release the listener when validation rejects before any HTTP read.
+            drop(std::net::TcpStream::connect(address));
+            server.join().unwrap();
+            assert_eq!(
+                result.unwrap_err(),
+                expected,
+                "installer={installer_state}, checksum={checksum_state}"
+            );
+        }
     }
 
     #[test]
