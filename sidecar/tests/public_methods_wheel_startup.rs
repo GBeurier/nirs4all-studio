@@ -228,7 +228,7 @@ console.log(JSON.stringify(result.contract));
             assert_eq!(
                 response["provenance"]["executor"],
                 format!(
-                    "nirs4all-core@0.5.1+libn4m-abi-2.23:{}",
+                    "nirs4all-core@0.6.1+libn4m-abi-2.24:{}",
                     profile["library"]["sha256"].as_str().unwrap()
                 )
             );

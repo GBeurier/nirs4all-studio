@@ -6,6 +6,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.19.1] — 2026-11-20
+
+### Added
+
+- Browse the public Datasets catalogue from the datasets page, select a source,
+  and download it from its original public provider into the active workspace.
+  Acquisition and parsing use nirs4all-datasets and IO; Rust owns the import job
+  and durable registration. Source identities, targets and metadata are retained.
+- The Variable Importance (SHAP) screen offers two engines: Python SHAP (the
+  `shap` package, unchanged default) and native SHAP (the nirs4all-methods
+  kernels shared with nirs4all Web), with permutation, exact, kernel, LIME,
+  occlusion, linear and tree explainers, a background baseline (rows or
+  mean), feature-group width, permutation count and seed. Native attributions
+  of feature groups are shown at the centre of each group's spectral span;
+  the sample breakdown is hidden for non-additive LIME and occlusion results.
+- The number of samples explained and the background size are now settable
+  (formerly fixed at 50 and 20).
+- An advanced, collapsed "Sample subsets" section, inactive unless checked,
+  replaces the partition by metadata subsets: the background candidates and
+  the explained samples, each a partition narrowed by metadata values. Only
+  the chosen explained samples are passed with the background candidates; as
+  the SHAP engine draws its background among all passed samples, the results
+  warn when explained samples lie outside the background subset. The
+  Playground metadata-columns route accepts an optional `partition` query to
+  list values across partitions.
+
+### Changed
+
+- Add nirs4all-datasets 0.3.22 to the required environment packages. Select the
+  published SDK 1.6.1, Core 0.6.1, DAG 0.5.0, Python IO 0.3.8 and
+  Methods/pls4all 1.5.1 cohort at Methods ABI 2.24, with generated public wheel
+  locks for Linux, Windows and macOS. The separate Rust graph retains its
+  selected IO 0.3.6 and Formats 0.2.17 dependencies.
+
+### Fixed
+
+- Offer a newer application version than the local 0.19.0 preview so both
+  the preview and stable 0.18.1 can discover the final Windows installer.
+  Refuse installer or checksum assets whose upload is still incomplete.
+- Publish each qualified installer independently after its shared source
+  gates and platform smoke; another installer or Docker cannot delay it.
+- Stage the selected Methods ABI 2.24 library in Docker while retaining its
+  exact content hash check. Resolve shared image/offline dependencies together
+  so declared recommended versions cannot conflict with a prior closure.
+- Admit the SDK's explicit Linear and Tree SHAP selectors through the Rust
+  analysis route. A stale auto/kernel-only filter rejected both before the
+  scientific host could check model compatibility. Affine PLS pipelines now
+  run explicit Linear SHAP; incompatible models retain the SDK's precise refusal.
+- Disable Tree SHAP for PLS models and visibly restore a stale Tree selection
+  to Auto. The application smoke now trains a PLS pipeline and checks Auto,
+  Kernel and Linear explanations, prediction additivity on every test sample,
+  result restoration, and the disabled Tree option.
+
 ## [0.18.1] — 2026-11-19
 
 ### Fixed

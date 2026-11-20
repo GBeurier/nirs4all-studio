@@ -54,9 +54,9 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.5.1";
+const CORE_PROJECT_VERSION: &str = "0.6.1";
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 23;
+const METHODS_ABI_MINOR: u32 = 24;
 const NATIVE_SOURCE_COHORT: &str = include_str!("../contracts/studio_native_source_cohort_v2.json");
 const WINDOWS_NATIVE_LINKAGE_PROFILE: &str = "studio-msvc-static-crt-v1";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
@@ -139,7 +139,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The selected cohort fixes ABI 2.23 and this preflight
+    /// capability. The selected cohort fixes ABI 2.24 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -2018,7 +2018,7 @@ mod tests {
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.5.1+libn4m-abi-2.23:{methods_sha256}")
+            format!("nirs4all-core@0.6.1+libn4m-abi-2.24:{methods_sha256}")
         );
         // Independent affine oracle for the new named fixture; the old ABI 2.0
         // witness and its numerical oracle remain historical provenance.
@@ -2045,9 +2045,9 @@ mod tests {
         assert_eq!(
             cohort["packaged_methods_identity"],
             json!({
-                "commit": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
-                "tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
-                "project_version": "1.3.19"
+                "commit": "25041f88bebb21a19748799c1681e138a3d55dfb",
+                "tree": "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3",
+                "project_version": "1.5.1"
             })
         );
         assert!(packaged_methods_library_identity().is_none());
@@ -2090,16 +2090,21 @@ mod tests {
 
     #[test]
     fn executor_provenance_names_the_exact_packaged_core_and_methods_contract() {
+        let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).unwrap();
+        assert_eq!(
+            cohort["packages"]["nirs4all"]["version"],
+            CORE_PROJECT_VERSION
+        );
         let methods = PackagedMethodsLibraryIdentity {
             path: PathBuf::from("unused-by-identity"),
             size: 1,
             sha256: "b".repeat(64),
             abi_major: 2,
-            abi_minor: 23,
+            abi_minor: 24,
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.5.1+libn4m-abi-2.23:{}", "b".repeat(64))
+            format!("nirs4all-core@0.6.1+libn4m-abi-2.24:{}", "b".repeat(64))
         );
     }
 
@@ -2219,7 +2224,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "published nirs4all 0.5.1 crates.io cohort; ordinary registry lock and exact selected Methods source required"
+            "published nirs4all 0.6.1 crates.io cohort; ordinary registry lock and exact selected Methods source required"
         );
     }
 }

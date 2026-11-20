@@ -8,6 +8,8 @@ from __future__ import annotations
 import importlib.util
 import sys
 import time
+from datetime import date, datetime
+from datetime import time as clock
 from pathlib import Path
 from typing import Any
 
@@ -136,6 +138,92 @@ def shap_axis(data: Any, width: int) -> tuple[list[float], str | None]:
     return coordinates, unit if isinstance(unit, str) and unit else None
 
 
+#: Native (nirs4all-methods) explain options Studio forwards to the SDK.
+NATIVE_SHAP_OPTIONS = ("baseline", "group_width", "n_permutations", "seed")
+
+
+def shap_engine_options(document: dict[str, Any]) -> dict[str, Any]:
+    """SDK ``explain`` options selecting the Python ``shap`` package or the native Methods kernels."""
+    if document.get("explainer_backend", "shap") != "methods":
+        return {}
+    return {"explainer_backend": "methods", **{key: document[key] for key in NATIVE_SHAP_OPTIONS if document.get(key) is not None}}
+
+
+def grouped_display(explanation: Any, X: np.ndarray, wavelengths: list[float], names: list[str]) -> tuple[np.ndarray, list[float], list[str]]:
+    """Return the explained input, axis and names at the granularity of the attributions.
+
+    The native kernels attribute contiguous feature groups. Each group is shown
+    at the centre of its axis span with the mean of its member inputs, so the
+    existing per-column views (spectrum, beeswarm colouring, bins) read groups.
+    """
+    groups = (explanation.explanation or {}).get("groups") or []
+    if len(groups) == X.shape[1]:
+        return X, wavelengths, names
+    spans = [(int(group["feature_start"]), int(group["feature_end"])) for group in groups]
+    grouped = np.column_stack([X[:, start:end].mean(axis=1) for start, end in spans])
+    return grouped, [float(np.mean(wavelengths[start:end])) for start, end in spans], [str(group["label"]) for group in groups]
+
+
+def subset_rows(data: Any, subset: dict[str, Any]) -> tuple[dict[str, Any], np.ndarray, np.ndarray]:
+    """Rows of one partition and the mask of those matching every metadata filter.
+
+    A filter keeps rows whose column value is one of its values; filters combine
+    with AND. Metadata rows follow ``x`` rows (same selector and augmentation).
+    """
+    selector = {} if subset["partition"] == "all" else {"partition": subset["partition"]}
+    X = np.asarray(data.x(selector, layout="2d"))
+    keep = np.ones(len(X), dtype=bool)
+    filters = subset.get("filters") or []
+    if filters:
+        meta = data.metadata(selector)
+        if meta is None or len(meta) != len(X):
+            raise ValueError("Sample metadata does not align with the selected samples")
+        for item in filters:
+            if item["column"] not in meta.columns:
+                raise ValueError(f"Unknown metadata column {item['column']!r}")
+            allowed = item["values"]
+            # Listed choices carry temporal values as ISO strings.
+            values = (value.isoformat() if isinstance(value, (date, datetime, clock)) else value for value in meta[item["column"]].to_list())
+            keep &= np.fromiter((value in allowed for value in values), dtype=bool, count=len(X))
+    return selector, X, keep
+
+
+def subset_data(data: Any, subsets: dict[str, Any], n_samples: int | None) -> tuple[np.ndarray, list[int], np.ndarray, np.ndarray, dict[str, int]]:
+    """Rows passed to SHAP: the background candidates plus the explained samples.
+
+    Up to ``n_samples`` explained samples are chosen reproducibly first. The SHAP
+    owner draws its background among every passed row, so only the chosen
+    explained samples are added, each once; those outside the background
+    subset are counted so the result can report them. Returns the passed rows,
+    the explained positions within them, the explained targets, the explained
+    samples' row indices within their partition and the passed-row counts.
+    """
+    _, background, keep_background = subset_rows(data, subsets["background"])
+    selector, explained, keep_explained = subset_rows(data, subsets["explained"])
+    if not keep_background.any():
+        raise ValueError("No sample matches the background subset")
+    if not keep_explained.any():
+        raise ValueError("No sample matches the explained subset")
+    targets = np.asarray(data.y(selector))
+    rows = np.flatnonzero(keep_explained)
+    if n_samples and len(rows) > n_samples:
+        rows = rows[np.sort(np.random.default_rng(42).choice(len(rows), n_samples, replace=False))]
+    pool = background[keep_background]
+    # Identical feature rows are interchangeable inputs: pass each once.
+    position = {row.tobytes(): index for index, row in enumerate(pool)}
+    extra: list[np.ndarray] = []
+    positions = []
+    for row in explained[rows]:
+        key = row.tobytes()
+        if key not in position:
+            position[key] = len(pool) + len(extra)
+            extra.append(row)
+        positions.append(position[key])
+    passed = np.vstack([pool, *extra]) if extra else pool
+    counts = {"background_candidates": len(pool), "explained_outside_background": len(extra)}
+    return passed, positions, targets[rows] if targets.size else targets, rows, counts
+
+
 def shap_compute(document: dict[str, Any]) -> dict[str, Any]:
     """Explain a captured full predictor with the library's general SHAP API."""
     import nirs4all
@@ -144,14 +232,21 @@ def shap_compute(document: dict[str, Any]) -> dict[str, Any]:
     started = time.monotonic()
     # Studio sets no input ceiling: the memory of this worker bounds the load.
     data, _ = load_dataset_for_analysis(document["config"], max_input_bytes=sys.maxsize)
-    selector = {} if document.get("partition") == "all" else {"partition": document.get("partition", "test")}
-    X = np.asarray(data.x(selector, layout="2d"))
-    y = np.asarray(data.y(selector))
-    indices = list(range(len(X)))
-    if document.get("n_samples") and len(X) > document["n_samples"]:
-        indices = sorted(np.random.default_rng(42).choice(len(X), document["n_samples"], replace=False).tolist())
+    background_pool: dict[str, int] | None = None
+    if document.get("subsets"):
+        X, explained, y, sample_rows, background_pool = subset_data(data, document["subsets"], document.get("n_samples"))
+    else:
+        selector = {} if document.get("partition") == "all" else {"partition": document.get("partition", "test")}
+        X = np.asarray(data.x(selector, layout="2d"))
+        y = np.asarray(data.y(selector))
+        explained = list(range(len(X)))
+        sample_rows = np.arange(len(X))
     if not X.size:
         raise ValueError("SHAP partition is empty; choose another partition")
+    chosen = list(range(len(explained)))
+    if background_pool is None and document.get("n_samples") and len(explained) > document["n_samples"]:
+        chosen = sorted(np.random.default_rng(42).choice(len(explained), document["n_samples"], replace=False).tolist())
+    indices = [explained[index] for index in chosen]
     wavelengths, axis_unit = shap_axis(data, X.shape[1])
     names = [f"Feature {index}" if axis_unit == "index" else f"{value:.1f} {axis_unit or ''}".strip() for index, value in enumerate(wavelengths)]
     source = {"chain_id": document["model_id"], "workspace_path": document["workspace_path"]} if document["model_source"] == "chain" else document["bundle_path"]
@@ -167,29 +262,36 @@ def shap_compute(document: dict[str, Any]) -> dict[str, Any]:
                                   session=session,
                                   explainer_type=document.get("explainer_type", "auto"),
                                   background_samples=document.get("n_background", 100), feature_names=names,
-                                  workspace_path=document["workspace_path"], visualizations=[], sample_indices=indices)
-    X, y = X[indices], y[indices] if y.size else y
+                                  workspace_path=document["workspace_path"], visualizations=[], sample_indices=indices,
+                                  **shap_engine_options(document))
+    X, y = X[indices], y[chosen] if y.size else y
+    predictor_X = X
+    X, wavelengths, names = grouped_display(explanation, X, wavelengths, names)
     if y.ndim > 1:
         y = y[:, 0]
     values = np.asarray(explanation.shap_values)
     if values.shape != X.shape or not np.isfinite(values).all():
         raise ValueError("SHAP owner returned invalid contribution dimensions")
-    base = float(np.asarray(explanation.base_value).reshape(-1)[0])
+    # LIME and occlusion have one local intercept per row: no shared expected value.
+    envelope = explanation.explanation or {}
+    additive = bool(envelope.get("additive", True))
+    base = float(np.asarray(explanation.base_value).reshape(-1)[0]) if additive else None
     importance = np.abs(values).mean(axis=0)
     feature_importance = [{"feature_idx": int(index), "feature_name": names[index], "wavelength": wavelengths[index],
                            "importance": float(importance[index])} for index in np.argsort(importance)[::-1][:20]]
     if document["model_source"] == "chain":
-        predicted = nirs4all.predict(chain_id=document["model_id"], workspace_path=document["workspace_path"], data=X, engine="dag-ml", verbose=0).y_pred
+        predicted = nirs4all.predict(chain_id=document["model_id"], workspace_path=document["workspace_path"], data=predictor_X, engine="dag-ml", verbose=0).y_pred
     else:
         from nirs4all.pipeline.dagml.general_archive import predict_general_archive
 
-        predicted = predict_general_archive(document["bundle_path"], X, expected_archive_fingerprint=document["archive_fingerprint"]).y_pred
+        predicted = predict_general_archive(document["bundle_path"], predictor_X, expected_archive_fingerprint=document["archive_fingerprint"]).y_pred
     predicted = np.asarray(predicted).reshape(len(X), -1)[:, 0]
     return sanitize_dict({"job_id": document["job_id"], "model_id": document["model_id"], "dataset_id": document["dataset_id"],
-                          "explainer_type": explanation.explainer_type, "n_samples": len(X), "n_features": X.shape[1], "base_value": base,
+                          "explainer_type": explanation.explainer_type, "explainer_backend": document.get("explainer_backend", "shap"),
+                          "additive": additive, "background_pool": background_pool, "n_input_features": predictor_X.shape[1], "n_samples": len(X), "n_features": X.shape[1], "base_value": base,
                           "execution_time_ms": (time.monotonic() - started) * 1000, "feature_importance": feature_importance,
                           "wavelengths": wavelengths, "axis_unit": axis_unit, "mean_abs_shap": importance.tolist(), "mean_spectrum": X.mean(axis=0).tolist(),
-                          "binned_importance": binned(values, wavelengths, document), "sample_indices": indices,
+                          "binned_importance": binned(values, wavelengths, document), "sample_indices": sample_rows[chosen].tolist(),
                           "_raw_shap_values": values.tolist(), "_raw_X": X.tolist(), "_y_true": y.reshape(-1).tolist() if y.size else None,
                           "_y_pred": np.asarray(predicted).reshape(-1).tolist() if predicted is not None else None})
 
@@ -235,6 +337,8 @@ def shap_view(document: dict[str, Any]) -> dict[str, Any]:
         entries.sort(key=lambda entry: -np.mean([abs(point["shap_value"]) for point in entry["points"]]))
         return {"bins": entries, "base_value": result["base_value"], "axis_unit": axis_unit}
     if view == "sample":
+        if result.get("additive") is False:
+            raise ValueError("The sample breakdown needs additive attributions; this explainer is not additive")
         row = document["sample_idx"]
         if not 0 <= row < len(values):
             raise ValueError("Invalid SHAP sample index")

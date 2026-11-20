@@ -5036,7 +5036,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -5238,7 +5239,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -6238,6 +6240,294 @@
     }
   },
   {
+    "id": "preprocessing.n4m_models_neural_multibranch_regressor",
+    "name": "Multibranch Regressor (n4m)",
+    "type": "preprocessing",
+    "description": "Native nirs4all-methods transformer (models.neural.multibranch_regressor).",
+    "category": "Neural",
+    "classPath": "n4m:models.neural.multibranch_regressor",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "transformer",
+      "neural"
+    ],
+    "parameters": [
+      {
+        "name": "branch_kinds",
+        "label": "Branch Kinds",
+        "type": "array",
+        "required": false,
+        "itemType": "int",
+        "default": [],
+        "min": 0,
+        "max": 2
+      },
+      {
+        "name": "branch_shapes",
+        "label": "Branch Shapes",
+        "type": "array",
+        "required": false,
+        "itemType": "int",
+        "default": [],
+        "min": 1
+      },
+      {
+        "name": "filters",
+        "label": "Filters",
+        "type": "int",
+        "required": false,
+        "default": 4,
+        "min": 1,
+        "max": 64
+      },
+      {
+        "name": "kernel_size",
+        "label": "Kernel Size",
+        "type": "int",
+        "required": false,
+        "default": 5,
+        "min": 1,
+        "max": 31
+      },
+      {
+        "name": "pool_size",
+        "label": "Pool Size",
+        "type": "int",
+        "required": false,
+        "default": 2,
+        "min": 1,
+        "max": 16
+      },
+      {
+        "name": "embedding_dim",
+        "label": "Embedding Dim",
+        "type": "int",
+        "required": false,
+        "default": 8,
+        "min": 1,
+        "max": 256
+      },
+      {
+        "name": "head_hidden",
+        "label": "Head Hidden",
+        "type": "int",
+        "required": false,
+        "default": 8,
+        "min": 0,
+        "max": 256
+      },
+      {
+        "name": "epochs",
+        "label": "Epochs",
+        "type": "int",
+        "required": false,
+        "default": 100,
+        "min": 0,
+        "max": 100000
+      },
+      {
+        "name": "batch_size",
+        "label": "Batch Size",
+        "type": "int",
+        "required": false,
+        "default": 16,
+        "min": 1,
+        "max": 1048576
+      },
+      {
+        "name": "learning_rate",
+        "label": "Learning Rate",
+        "type": "float",
+        "required": false,
+        "default": 0.01,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "name": "weight_decay",
+        "label": "Weight Decay",
+        "type": "float",
+        "required": false,
+        "default": 0.0001,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "name": "seed",
+        "label": "Seed",
+        "type": "int",
+        "required": false
+      }
+    ],
+    "n4m": {
+      "methodId": "models.neural.multibranch_regressor",
+      "kind": "estimator",
+      "role": "transformer",
+      "capabilities": [
+        "transform",
+        "predict",
+        "serializable"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "required",
+          "label": "targets"
+        },
+        {
+          "input": "blocks",
+          "requirement": "optional",
+          "label": "multiblock"
+        }
+      ]
+    }
+  },
+  {
+    "id": "model.n4m_models_neural_multibranch_regressor",
+    "name": "Multibranch Regressor (n4m)",
+    "type": "model",
+    "description": "Native nirs4all-methods regressor (models.neural.multibranch_regressor).",
+    "category": "Neural",
+    "classPath": "n4m:models.neural.multibranch_regressor",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "regressor",
+      "neural"
+    ],
+    "parameters": [
+      {
+        "name": "branch_kinds",
+        "label": "Branch Kinds",
+        "type": "array",
+        "required": false,
+        "itemType": "int",
+        "default": [],
+        "min": 0,
+        "max": 2
+      },
+      {
+        "name": "branch_shapes",
+        "label": "Branch Shapes",
+        "type": "array",
+        "required": false,
+        "itemType": "int",
+        "default": [],
+        "min": 1
+      },
+      {
+        "name": "filters",
+        "label": "Filters",
+        "type": "int",
+        "required": false,
+        "default": 4,
+        "min": 1,
+        "max": 64
+      },
+      {
+        "name": "kernel_size",
+        "label": "Kernel Size",
+        "type": "int",
+        "required": false,
+        "default": 5,
+        "min": 1,
+        "max": 31
+      },
+      {
+        "name": "pool_size",
+        "label": "Pool Size",
+        "type": "int",
+        "required": false,
+        "default": 2,
+        "min": 1,
+        "max": 16
+      },
+      {
+        "name": "embedding_dim",
+        "label": "Embedding Dim",
+        "type": "int",
+        "required": false,
+        "default": 8,
+        "min": 1,
+        "max": 256
+      },
+      {
+        "name": "head_hidden",
+        "label": "Head Hidden",
+        "type": "int",
+        "required": false,
+        "default": 8,
+        "min": 0,
+        "max": 256
+      },
+      {
+        "name": "epochs",
+        "label": "Epochs",
+        "type": "int",
+        "required": false,
+        "default": 100,
+        "min": 0,
+        "max": 100000
+      },
+      {
+        "name": "batch_size",
+        "label": "Batch Size",
+        "type": "int",
+        "required": false,
+        "default": 16,
+        "min": 1,
+        "max": 1048576
+      },
+      {
+        "name": "learning_rate",
+        "label": "Learning Rate",
+        "type": "float",
+        "required": false,
+        "default": 0.01,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "name": "weight_decay",
+        "label": "Weight Decay",
+        "type": "float",
+        "required": false,
+        "default": 0.0001,
+        "min": 0,
+        "max": 10
+      },
+      {
+        "name": "seed",
+        "label": "Seed",
+        "type": "int",
+        "required": false
+      }
+    ],
+    "n4m": {
+      "methodId": "models.neural.multibranch_regressor",
+      "kind": "estimator",
+      "role": "regressor",
+      "capabilities": [
+        "transform",
+        "predict",
+        "serializable"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "required",
+          "label": "targets"
+        },
+        {
+          "input": "blocks",
+          "requirement": "optional",
+          "label": "multiblock"
+        }
+      ]
+    }
+  },
+  {
     "id": "model.n4m_models_pls_cppls",
     "name": "CPPLS (n4m)",
     "type": "model",
@@ -6377,6 +6667,148 @@
     }
   },
   {
+    "id": "preprocessing.n4m_models_pls_opls",
+    "name": "Opls (n4m)",
+    "type": "preprocessing",
+    "description": "Native nirs4all-methods transformer (models.pls.opls).",
+    "category": "PLS",
+    "classPath": "n4m:models.pls.opls",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "transformer",
+      "pls"
+    ],
+    "parameters": [
+      {
+        "name": "n_components",
+        "label": "N Components",
+        "type": "int",
+        "required": false,
+        "default": 2,
+        "min": 1
+      },
+      {
+        "name": "center_x",
+        "label": "Center X",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "scale_x",
+        "label": "Scale X",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "center_y",
+        "label": "Center Y",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "scale_y",
+        "label": "Scale Y",
+        "type": "bool",
+        "required": false,
+        "default": true
+      }
+    ],
+    "n4m": {
+      "methodId": "models.pls.opls",
+      "kind": "estimator",
+      "role": "transformer",
+      "capabilities": [
+        "transform",
+        "predict",
+        "serializable",
+        "affine",
+        "affine_transform"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "required",
+          "label": "targets"
+        }
+      ]
+    }
+  },
+  {
+    "id": "model.n4m_models_pls_opls",
+    "name": "Opls (n4m)",
+    "type": "model",
+    "description": "Native nirs4all-methods regressor (models.pls.opls).",
+    "category": "PLS",
+    "classPath": "n4m:models.pls.opls",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "regressor",
+      "pls"
+    ],
+    "parameters": [
+      {
+        "name": "n_components",
+        "label": "N Components",
+        "type": "int",
+        "required": false,
+        "default": 2,
+        "min": 1
+      },
+      {
+        "name": "center_x",
+        "label": "Center X",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "scale_x",
+        "label": "Scale X",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "center_y",
+        "label": "Center Y",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "scale_y",
+        "label": "Scale Y",
+        "type": "bool",
+        "required": false,
+        "default": true
+      }
+    ],
+    "n4m": {
+      "methodId": "models.pls.opls",
+      "kind": "estimator",
+      "role": "regressor",
+      "capabilities": [
+        "transform",
+        "predict",
+        "serializable",
+        "affine",
+        "affine_transform"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "required",
+          "label": "targets"
+        }
+      ]
+    }
+  },
+  {
     "id": "preprocessing.n4m_models_pls_pcr",
     "name": "PCR (n4m)",
     "type": "preprocessing",
@@ -6435,7 +6867,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -6505,7 +6938,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -6547,7 +6981,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -6589,7 +7024,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -6700,7 +7136,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -6811,7 +7248,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -7564,7 +8002,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -7613,7 +8052,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -7753,7 +8193,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -7798,7 +8239,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -8059,7 +8501,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8115,7 +8558,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8180,7 +8624,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8252,7 +8697,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8292,7 +8738,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8381,7 +8829,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8437,7 +8886,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8493,7 +8943,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8541,7 +8992,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8648,7 +9100,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8695,7 +9148,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -8743,7 +9197,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8807,7 +9263,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8906,7 +9364,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8954,7 +9414,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -8994,7 +9456,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -9034,7 +9497,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -9073,7 +9537,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9120,7 +9586,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9166,7 +9634,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -9301,7 +9770,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -9426,7 +9896,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -9462,7 +9933,42 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "optional",
+          "label": "targets"
+        }
+      ]
+    }
+  },
+  {
+    "id": "preprocessing.n4m_preprocessing_scaling_block_rms",
+    "name": "Block Rms (n4m)",
+    "type": "preprocessing",
+    "description": "Native nirs4all-methods transformer (preprocessing.scaling.block_rms).",
+    "category": "Scaling",
+    "classPath": "n4m:preprocessing.scaling.block_rms",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "transformer",
+      "scaling"
+    ],
+    "parameters": [],
+    "n4m": {
+      "methodId": "preprocessing.scaling.block_rms",
+      "kind": "estimator",
+      "role": "transformer",
+      "capabilities": [
+        "transform",
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9524,7 +10030,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9570,7 +10077,41 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "optional",
+          "label": "targets"
+        }
+      ]
+    }
+  },
+  {
+    "id": "preprocessing.n4m_preprocessing_scaling_row_l2_normalize",
+    "name": "Row L2 Normalize (n4m)",
+    "type": "preprocessing",
+    "description": "Native nirs4all-methods transformer (preprocessing.scaling.row_l2_normalize).",
+    "category": "Scaling",
+    "classPath": "n4m:preprocessing.scaling.row_l2_normalize",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "transformer",
+      "scaling"
+    ],
+    "parameters": [],
+    "n4m": {
+      "methodId": "preprocessing.scaling.row_l2_normalize",
+      "kind": "estimator",
+      "role": "transformer",
+      "capabilities": [
+        "transform",
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9601,7 +10142,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9639,6 +10182,14 @@
         "type": "bool",
         "required": false,
         "default": true
+      },
+      {
+        "name": "ddof",
+        "label": "Ddof",
+        "type": "int",
+        "required": false,
+        "default": 0,
+        "min": 0
       }
     ],
     "n4m": {
@@ -9647,7 +10198,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9700,7 +10253,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9740,7 +10294,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9844,7 +10399,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9900,7 +10456,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9931,7 +10488,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -9987,7 +10545,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10043,7 +10602,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10097,7 +10657,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10151,7 +10712,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10191,7 +10753,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10247,7 +10810,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10278,7 +10842,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10317,7 +10883,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10364,7 +10931,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10395,7 +10963,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10449,7 +11019,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10541,7 +11112,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10594,7 +11167,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -10641,7 +11215,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -10701,7 +11276,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -10770,7 +11346,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -10806,7 +11383,9 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -10837,7 +11416,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -10915,7 +11495,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11035,7 +11616,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "fitInputs": [
         {
@@ -11232,7 +11814,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11326,7 +11909,8 @@
       "role": "transformer",
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11391,7 +11975,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11461,7 +12046,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11531,7 +12117,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11617,7 +12204,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11719,7 +12307,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11853,7 +12442,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -11945,7 +12535,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12014,7 +12605,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12120,7 +12712,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12220,7 +12813,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12290,7 +12884,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12363,7 +12958,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12449,7 +13045,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12528,7 +13125,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12598,7 +13196,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12651,7 +13250,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12715,7 +13315,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12776,7 +13377,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12845,7 +13447,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12922,7 +13525,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -12996,7 +13600,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -13052,7 +13657,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -13151,7 +13757,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -13211,7 +13818,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -13282,7 +13890,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "fitInputs": [
         {
@@ -13463,9 +14072,15 @@
         "label": "Test Size",
         "type": "float",
         "required": false,
-        "default": 0.25,
         "min": 0,
         "max": 1
+      },
+      {
+        "name": "n_train",
+        "label": "N Train",
+        "type": "int",
+        "required": false,
+        "min": 0
       }
     ],
     "n4m": {

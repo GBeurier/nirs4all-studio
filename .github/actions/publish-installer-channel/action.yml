@@ -1,0 +1,37 @@
+name: Publish qualified installer channel
+description: Append one qualified installer and checksum without waiting for other channels
+inputs:
+  channel:
+    required: true
+    description: Exact installer platform and variant
+  version:
+    required: true
+    description: Qualified package version
+  tag:
+    required: true
+    description: Existing immutable source tag
+  source_sha:
+    required: true
+    description: Exact source commit qualified by the producer
+  prerelease:
+    required: true
+    description: Explicit prerelease flag
+runs:
+  using: composite
+  steps:
+    - name: Stage and verify this channel's exact assets
+      shell: bash
+      env:
+        GH_REPO: ${{ github.repository }}
+        RELEASE_SHA: ${{ inputs.source_sha }}
+        RELEASE_NOTES_PATH: ${{ runner.temp }}/installer-channel-notes.md
+      run: node scripts/stage-release-channel.cjs release qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'
+    - name: Publish only this qualified channel
+      shell: bash
+      env:
+        GH_REPO: ${{ github.repository }}
+        RELEASE_TAG: ${{ inputs.tag }}
+        RELEASE_SHA: ${{ inputs.source_sha }}
+        RELEASE_PRERELEASE: ${{ inputs.prerelease }}
+        RELEASE_NOTES_PATH: ${{ runner.temp }}/installer-channel-notes.md
+      run: node scripts/publish-qualified-release.cjs qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'

@@ -12,6 +12,7 @@ ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 
 FROM scratch AS studio-document-adapter-sources
 COPY ["api/shared/system_info.py", "/api/shared/"]
+COPY ["api/library_public_datasets.py", "/api/"]
 COPY ["api/library_operator_availability.py", "api/library_inspector.py", "api/library_prediction_export.py", "api/library_analysis.py", "api/robustness_contract.py", "/api/"]
 COPY ["api/library_documents.py", "api/library_checkpoint.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_prediction_results.py", "api/library_aggregated_results.py", "api/library_aggregated_steps.py", "api/library_playground_views.py", "api/store_adapter.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/pipeline_y_processing.py", "api/node_registry_loader.py", "/api/"]
 COPY ["api/shared/json_safe.py", "api/shared/dataset_config.py", "api/shared/operator_catalogue.py", "api/shared/filter_catalogue.py", "api/shared/decimation.py", "/api/shared/"]
@@ -75,7 +76,7 @@ WORKDIR /product
 RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
-COPY --from=methods-runtime /libn4m.so.2.23.0 backend/native/libn4m.so
+COPY --from=methods-runtime /libn4m.so.2.24.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
 COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/methods-public-wheel-profile.json /contract-scripts/
 COPY recommended-config.json /recommended-config.json

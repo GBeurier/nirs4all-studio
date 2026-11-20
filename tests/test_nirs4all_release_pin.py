@@ -24,7 +24,7 @@ def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
     # Cross-repository owners are minor-level ranges; Cargo.lock holds the cohort.
-    assert dependencies["nirs4all"] == "0.5"
+    assert dependencies["nirs4all"] == "0.6"
     assert dependencies["nirs4all-io"] == "0.3"
     # Core and Studio resolve one public Rust IO cohort without overrides.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
@@ -47,7 +47,7 @@ def test_lock_selects_the_public_registry_owner_cohort() -> None:
         assert matching[0]["source"] == "registry+https://github.com/rust-lang/crates.io-index"
         assert re.fullmatch(r"[0-9a-f]{64}", matching[0]["checksum"])
     # The Rust binding version is independent of the selected libn4m ABI.
-    assert selected["n4m"]["version"] == "0.4.2"
+    assert selected["n4m"]["version"] == "0.5.0"
 
 
 def test_historical_published_registry_cohort_is_unchanged() -> None:
@@ -133,7 +133,7 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         assert package["min"] == nirs4all["range"]
 
 
-def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime() -> None:
+def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime(tmp_path: Path) -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
     parsed = yaml.safe_load(workflow)
 
@@ -145,10 +145,22 @@ def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime
         "node scripts/build-wheelhouse.cjs",
         "node scripts/studio-document-adapters.cjs --install backend-dist/adapters",
     ]
+    matrix_output = tmp_path / "delivery-matrix"
+    matrix = subprocess.run(
+        ["node", str(ROOT / "scripts/release-delivery-matrix.cjs")],
+        env=dict(os.environ) | {"GITHUB_OUTPUT": str(matrix_output), "SELECTED_CHANNEL": "all", "MACOS_ONLY": "false", "SKIP_DOCKER": "false"},
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    assert matrix.returncode == 0, matrix.stderr
+    outputs = dict(line.split("=", 1) for line in matrix_output.read_text().splitlines())
+    assert outputs["delivery_channel"] == "all"
     for name in ["installer-linux", "installer-windows"]:
         job = parsed["jobs"][name]
-        assert job["needs"] == "prepare"
-        assert [leg["variant"] for leg in job["strategy"]["matrix"]["include"]] == ["standard", "offline"]
+        assert job["needs"] == ["prepare", "quality", "release-draft"]
+        platform = name.removeprefix("installer-")
+        assert job["strategy"]["matrix"] == "${{ fromJSON(needs.prepare.outputs." + platform + "_matrix) }}"
+        assert job["strategy"]["fail-fast"] is False
+        assert [leg["variant"] for leg in json.loads(outputs[f"{platform}_matrix"])["include"]] == ["standard", "offline"]
         staged = next(step["run"] for step in job["steps"] if step.get("name") == "Stage uv, required wheels and document adapters")
         assert staged.splitlines() == staging
         offline = next(step for step in job["steps"] if step.get("name") == "Stage offline payload")
@@ -190,16 +202,16 @@ def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
     assert cohort["sdk_selection"]["requirement"] == _required_nirs4all()["range"]
     assert cohort["sdk_selection"]["publication_status"] == "published-registry"
     assert cohort["packaged_methods_identity"] == {
-        "commit": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
-        "tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
-        "project_version": "1.3.19",
+        "commit": "25041f88bebb21a19748799c1681e138a3d55dfb",
+        "tree": "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3",
+        "project_version": "1.5.1",
     }
 
 
 def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None:
     sdk = json.loads((ROOT / "build/runtime-cohort.json").read_text())["sdk"]
-    assert sdk["source_sha"] == "1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb"
-    assert sdk["wheel_sha256"] == "3bbcb78fc1f6992b4e91378edb36ce6bf9f03356b79321d49950196bd94ddaed"
+    assert sdk["source_sha"] == "fd5db4af9131f19477867650814f1090f2308d08"
+    assert sdk["wheel_sha256"] == "b331c2c2ea806afba9e7947dc9378dacee1bf1678482dac9a3325adf5543c084"
     assert sdk["version"] == _required_nirs4all()["install"]
     assert sdk["publication_status"] == "published-registry"
     assert sdk["wheel_url"].endswith(f"/nirs4all-{sdk['version']}-py3-none-any.whl")
@@ -221,9 +233,36 @@ def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None
 def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
+    jobs = workflow["jobs"]
+    assert jobs["prepare"]["outputs"]["is_tag_release"] == (
+        "${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_existing_tag == true) }}"
+    )
+    assert jobs["quality"]["with"]["delivery_source_only"] is True
+    assert jobs["release-draft"]["needs"] == ["prepare", "quality"]
+    assert "needs.prepare.outputs.is_tag_release == 'true'" in jobs["release-draft"]["if"]
+    assert "needs.quality.result == 'success'" in jobs["release-draft"]["if"]
+    assert "needs.prepare.outputs.delivery_channel != 'docker'" in jobs["release-draft"]["if"]
+    publication_guard = "success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'"
+    for name in ["installer-linux", "installer-windows", "installer-macos-arm64"]:
+        job = jobs[name]
+        assert job["needs"] == ["prepare", "quality", "release-draft"]
+        assert "needs.quality.result == 'success' && needs.release-draft.result == 'success'" in job["if"]
+        assert "needs.installer-" not in job["if"] and "needs.docker" not in job["if"]
+        publication = next(step for step in job["steps"] if step.get("name") == "Publish this qualified installer channel")
+        assert publication["if"] == publication_guard
+        assert publication["uses"] == "./.github/actions/publish-installer-channel"
+        channel = "macos-arm64" if name == "installer-macos-arm64" else name.removeprefix("installer-") + "-${{ matrix.variant }}"
+        assert publication["with"]["channel"] == channel
+        assert publication["with"]["version"] == "${{ needs.prepare.outputs.version }}"
+        assert publication["with"]["tag"] == "${{ needs.prepare.outputs.tag }}"
+        assert publication["with"]["source_sha"] == "${{ needs.prepare.outputs.checkout_ref }}"
+    docker = jobs["docker"]
+    assert docker["needs"] == ["prepare", "quality"]
+    assert "needs.prepare.outputs.skip_docker != 'true'" in docker["if"]
+    assert "needs.installer-" not in docker["if"]
     for step_name in ["Login to GitHub Container Registry", "Publish the tested Docker image"]:
-        step = next(step for step in workflow["jobs"]["release"]["steps"] if step.get("name") == step_name)
-        assert step["if"] == "needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'"
+        step = next(step for step in docker["steps"] if step.get("name") == step_name)
+        assert step["if"] == publication_guard
 
 
 def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() -> None:
@@ -231,14 +270,14 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
 
     installers = {name: job for name, job in workflow["jobs"].items() if name.startswith("installer-")}
     assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-arm64"}
-    release = workflow["jobs"]["release"]
     for name, job in installers.items():
-        assert name in release["needs"]
-        assert f"needs.{name}.result == 'success'" in release["if"]
+        assert job["needs"] == ["prepare", "quality", "release-draft"]
         steps = job["steps"]
         qualification = next(i for i, step in enumerate(steps) if "scripts/smoke-archive-standalone.cjs" in step.get("run", ""))
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
-        assert qualification < upload
+        publication = next(i for i, step in enumerate(steps) if step.get("name") == "Publish this qualified installer channel")
+        assert qualification < upload < publication
+        assert steps[publication]["if"] == "success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'"
         qualifier = steps[qualification]["run"]
         assert "scripts/smoke-packaged-ui.cjs" in qualifier
         assert "--installer" in qualifier
@@ -252,7 +291,10 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
             assert "$($_.Name)" in checksum
         else:
             assert checksum.startswith("cd release\n")
-    # The existing finalizer verifies producer hashes and rewrites sidecars to
-    # the exact public asset basename (GitHub normalizes spaces to dots).
-    preparation = next(step for step in release["steps"] if step.get("name") == "Prepare release assets")
-    assert "scripts/finalize-release-assets.cjs" in preparation["run"]
+    # Each channel stages its own installer/checksum pair, then publishes that
+    # qualified directory. Its owner script tests cover basename/hash checks.
+    action = yaml.safe_load((ROOT / ".github/actions/publish-installer-channel/action.yml").read_text())
+    staging, publication = action["runs"]["steps"]
+    assert staging["run"] == "node scripts/stage-release-channel.cjs release qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'"
+    assert publication["run"] == "node scripts/publish-qualified-release.cjs qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'"
+    assert staging["env"]["RELEASE_SHA"] == publication["env"]["RELEASE_SHA"] == "${{ inputs.source_sha }}"

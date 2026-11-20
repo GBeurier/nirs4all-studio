@@ -1,8 +1,14 @@
 import type {
-  ExplainerType,
   Partition,
   ShapComputeRequest,
 } from '@/types/shap';
+import {
+  activeShapSubset,
+  DEFAULT_SHAP_OPTIONS,
+  usesShapBaseline,
+  usesShapPermutations,
+  type ShapAnalysisOptions,
+} from '@/lib/shapVariableImportanceFormData';
 import type { ResultArtifactRef } from '@/lib/resultArtifacts';
 
 export type ShapExplicitModelRef =
@@ -15,7 +21,7 @@ export interface BuildShapComputeRequestInput {
   modelRef: ShapModelRequestRef;
   datasetId: string;
   partition: Partition;
-  explainerType: ExplainerType;
+  options?: ShapAnalysisOptions;
 }
 
 export function isShapBundleReference(modelRef: string): boolean {
@@ -65,7 +71,7 @@ export function buildShapComputeRequest({
   modelRef,
   datasetId,
   partition,
-  explainerType,
+  options = DEFAULT_SHAP_OPTIONS,
 }: BuildShapComputeRequestInput): ShapComputeRequest {
   if (!datasetId) throw new Error('The model has no authorized dataset link.');
   const resolvedModelRef = resolveShapModelRef(modelRef);
@@ -76,11 +82,24 @@ export function buildShapComputeRequest({
     bundle_path: isBundle ? resolvedModelRef.bundlePath : undefined,
     dataset_id: datasetId,
     partition,
-    explainer_type: explainerType,
-    n_samples: 50,
-    n_background: 20,
+    explainer_type: options.explainerType,
+    n_samples: options.nSamples,
+    n_background: options.nBackground,
     bin_size: 20,
     bin_stride: 10,
     bin_aggregation: 'sum',
+    ...(options.engine === 'native' ? {
+      explainer_backend: 'methods' as const,
+      seed: options.seed,
+      // The engine default is the background-rows baseline; leaving it unset
+      // keeps native auto free to choose path-dependent TreeSHAP for trees.
+      ...(usesShapBaseline(options) && options.baseline !== 'background' ? { baseline: options.baseline } : {}),
+      ...(options.groupWidth !== null ? { group_width: options.groupWidth } : {}),
+      ...(usesShapPermutations(options) && options.nPermutations !== null ? { n_permutations: options.nPermutations } : {}),
+    } : {}),
+    ...(options.subsets.enabled ? { subsets: {
+      background: activeShapSubset(options.subsets.background),
+      explained: activeShapSubset(options.subsets.explained),
+    } } : {}),
   };
 }

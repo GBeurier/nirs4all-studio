@@ -19,7 +19,7 @@
 #      and its SHAP analysis (shap and matplotlib come from the package index).
 #   - Native Docker image (static frontend + Rust sidecar)
 #
-# Trigger: tag v* or manual dispatch
+# Trigger: immutable numeric source tag or independently selectable delivery retry
 # Phase 3 (CI/CD Hardening) + Phase 4 (Code Signing & macOS)
 name: Release
 
@@ -39,10 +39,23 @@ on:
         default: false
         type: boolean
       macos_arm64_only:
-        description: 'Build and smoke only the macOS ARM installer. Publishes nothing: the release job needs the jobs this input skips'
+        description: 'Legacy macOS-only selection; publication still requires publish_existing_tag=true'
         required: false
         default: false
         type: boolean
+      delivery_channel:
+        description: 'Build, qualify and optionally publish only this delivery channel'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - linux-standard
+          - linux-offline
+          - windows-standard
+          - windows-offline
+          - macos-arm64
+          - docker
       skip_docker:
         description: 'Skip Docker image builds'
         required: false
@@ -56,15 +69,15 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected immutable releases and update them with the ecosystem release board.
-  # SDK publication source and public wheel bytes are exact.
+  # Verified immutable SDK publication source and exact public wheel bytes.
   NIRS4ALL_PUBLICATION_STATUS: published-registry
-  NIRS4ALL_LIBRARY_REF: 1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb
-  DAG_ML_REF: d796152c148db3bb3f4398f818e1083f5e3aa816
+  NIRS4ALL_LIBRARY_REF: fd5db4af9131f19477867650814f1090f2308d08
+  DAG_ML_REF: d3608565a5fe27875d4b64e54035eb8b4c05b204
   DAG_ML_DATA_REF: 854d5bebd88e1de761283139189735c349a6226c
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb.tar.gz
-  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/ff/ff/a583e1ce79ca2ca3a54f4d1b1d47d124ccc83cdd33cf602cfde077ae2ece/nirs4all-1.5.0-py3-none-any.whl
-  NIRS4ALL_WHEEL_SHA256: 3bbcb78fc1f6992b4e91378edb36ce6bf9f03356b79321d49950196bd94ddaed
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/d796152c148db3bb3f4398f818e1083f5e3aa816.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/fd5db4af9131f19477867650814f1090f2308d08.tar.gz
+  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/78/55/8c66138a976ff93b0ff2cf17f9c6945a9797b43692f6ee609a8ccbd32c29/nirs4all-1.6.1-py3-none-any.whl
+  NIRS4ALL_WHEEL_SHA256: b331c2c2ea806afba9e7947dc9378dacee1bf1678482dac9a3325adf5543c084
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/d3608565a5fe27875d4b64e54035eb8b4c05b204.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/854d5bebd88e1de761283139189735c349a6226c.tar.gz
 
 jobs:
@@ -80,6 +93,9 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       skip_docker: ${{ steps.flags.outputs.skip_docker }}
       macos_arm64_only: ${{ steps.flags.outputs.macos_arm64_only }}
+      delivery_channel: ${{ steps.flags.outputs.delivery_channel }}
+      linux_matrix: ${{ steps.flags.outputs.linux_matrix }}
+      windows_matrix: ${{ steps.flags.outputs.windows_matrix }}
       # Publication occurs for a tag push or an explicit existing-tag retry.
       # Other dispatches build and smoke without publishing.
       is_tag_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_existing_tag == true) }}
@@ -96,13 +112,15 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo '::error::Release tag must be a numeric immutable source version'
+            exit 1
           fi
-          VERSION="${TAG#v}"
+          VERSION="$TAG"
 
           if [[ "$VERSION" == *-* ]]; then
             PRERELEASE=true
@@ -171,7 +189,7 @@ jobs:
             fi
           done
           if [[ "$NIRS4ALL_SOURCE_URL" != "https://github.com/GBeurier/nirs4all/archive/$NIRS4ALL_LIBRARY_REF.tar.gz" ||
-                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/ff/ff/a583e1ce79ca2ca3a54f4d1b1d47d124ccc83cdd33cf602cfde077ae2ece/nirs4all-1.5.0-py3-none-any.whl" ]]; then
+                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/78/55/8c66138a976ff93b0ff2cf17f9c6945a9797b43692f6ee609a8ccbd32c29/nirs4all-1.6.1-py3-none-any.whl" ]]; then
             echo "::error::SDK publication source and wheel URL must match the selected public artifact"
             exit 1
           fi
@@ -213,39 +231,77 @@ jobs:
 
       - name: Determine build flags
         id: flags
+        env:
+          SELECTED_CHANNEL: ${{ inputs.delivery_channel || 'all' }}
+          MACOS_ONLY: ${{ inputs.macos_arm64_only || 'false' }}
+          SKIP_DOCKER: ${{ inputs.skip_docker || 'false' }}
         run: |
-          echo "macos_arm64_only=${{ inputs.macos_arm64_only || 'false' }}" >> $GITHUB_OUTPUT
-          echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
+          node scripts/release-delivery-matrix.cjs
 
   # Run the required checks on the exact Studio commit and pinned library refs.
   # A tag or manual dispatch must not bypass the PR quality gate.
   quality:
     name: Qualify release commit
-    if: needs.prepare.outputs.macos_arm64_only != 'true'
+    if: needs.prepare.outputs.macos_arm64_only != 'true' || needs.prepare.outputs.is_tag_release == 'true'
     needs: prepare
     uses: ./.github/workflows/ci.yml
     with:
+      delivery_source_only: true
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb
-      dag_ml_ref: d796152c148db3bb3f4398f818e1083f5e3aa816
+      nirs4all_library_ref: fd5db4af9131f19477867650814f1090f2308d08
+      dag_ml_ref: d3608565a5fe27875d4b64e54035eb8b4c05b204
       dag_ml_data_ref: 854d5bebd88e1de761283139189735c349a6226c
+
+  # One serialized metadata writer prevents concurrent installer legs from
+  # creating several drafts for the same tag. This does not publish any asset.
+  release-draft:
+    name: Prepare installer release draft
+    needs: [prepare, quality]
+    if: >-
+      needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success' &&
+      needs.prepare.outputs.delivery_channel != 'docker'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: studio-release-draft-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Reconcile one immutable installer release draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+          RELEASE_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: node scripts/prepare-release-draft.cjs
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: Linux x64 (Electron + Rust sidecar + uv + required wheels)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-linux:
     name: Installer — Linux x64 (${{ matrix.variant }})
-    if: needs.prepare.outputs.macos_arm64_only != 'true'
-    needs: prepare
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || (needs.quality.result == 'success' && needs.release-draft.result == 'success')) &&
+      (needs.prepare.outputs.delivery_channel == 'all' || startsWith(needs.prepare.outputs.delivery_channel, 'linux-'))
+    needs: [prepare, quality, release-draft]
+    concurrency:
+      group: studio-installer-${{ needs.prepare.outputs.tag }}-linux-${{ matrix.variant }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - variant: standard
-            builder_config: electron-builder.installer.yml
-          - variant: offline
-            builder_config: electron-builder.offline.yml
+      matrix: ${{ fromJSON(needs.prepare.outputs.linux_matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -377,23 +433,38 @@ jobs:
             release/*.yml
           retention-days: 5
 
+      - name: Publish this qualified installer channel
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
+        uses: ./.github/actions/publish-installer-channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          channel: linux-${{ matrix.variant }}
+          version: ${{ needs.prepare.outputs.version }}
+          tag: ${{ needs.prepare.outputs.tag }}
+          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: Windows x64 (Electron + Rust sidecar + uv + required wheels)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-windows:
     name: Installer — Windows x64 (${{ matrix.variant }})
-    if: needs.prepare.outputs.macos_arm64_only != 'true'
-    needs: prepare
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || (needs.quality.result == 'success' && needs.release-draft.result == 'success')) &&
+      (needs.prepare.outputs.delivery_channel == 'all' || startsWith(needs.prepare.outputs.delivery_channel, 'windows-'))
+    needs: [prepare, quality, release-draft]
+    concurrency:
+      group: studio-installer-${{ needs.prepare.outputs.tag }}-windows-${{ matrix.variant }}
+      cancel-in-progress: false
     # Methods' release preset is intentionally bound to VS 17 / 2022.
+    permissions:
+      contents: write
     runs-on: windows-2022
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - variant: standard
-            builder_config: electron-builder.installer.yml
-          - variant: offline
-            builder_config: electron-builder.offline.yml
+      matrix: ${{ fromJSON(needs.prepare.outputs.windows_matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -411,9 +482,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Setup Python for native containment tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: clippy, rustfmt
           targets: x86_64-pc-windows-msvc
 
       - name: Install npm dependencies
@@ -469,6 +546,19 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-python-payload --require-bundled-methods
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar --smoke-readiness
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check and test Windows Job containment
+        shell: pwsh
+        run: |
+          $env:N4M_LIBRARY_PATH = $env:NIRS4ALL_BUILD_METHODS_LIBRARY
+          cargo fmt --manifest-path sidecar/crates/studio-windows-job/Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path sidecar/crates/studio-windows-job/Cargo.toml --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path sidecar/Cargo.toml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # ── Windows Code Signing (Phase 4 — P4-3) ──
@@ -577,12 +667,33 @@ jobs:
             release/*.yml
           retention-days: 5
 
+      - name: Publish this qualified installer channel
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
+        uses: ./.github/actions/publish-installer-channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          channel: windows-${{ matrix.variant }}
+          version: ${{ needs.prepare.outputs.version }}
+          tag: ${{ needs.prepare.outputs.tag }}
+          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: macOS arm64 (Apple Silicon) — Phase 4: signed + notarized
   # ═══════════════════════════════════════════════════════════════════════════
   installer-macos-arm64:
     name: Installer — macOS arm64
-    needs: prepare
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || (needs.quality.result == 'success' && needs.release-draft.result == 'success')) &&
+      (needs.prepare.outputs.delivery_channel == 'all' || needs.prepare.outputs.delivery_channel == 'macos-arm64')
+    needs: [prepare, quality, release-draft]
+    concurrency:
+      group: studio-installer-${{ needs.prepare.outputs.tag }}-macos-arm64
+      cancel-in-progress: false
+    permissions:
+      contents: write
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -802,13 +913,29 @@ jobs:
             release/*.yml
           retention-days: 5
 
+      - name: Publish this qualified installer channel
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
+        uses: ./.github/actions/publish-installer-channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          channel: macos-arm64
+          version: ${{ needs.prepare.outputs.version }}
+          tag: ${{ needs.prepare.outputs.tag }}
+          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+
   # ═══════════════════════════════════════════════════════════════════════════
   # Docker: static frontend + loopback Rust sidecar
   # ═══════════════════════════════════════════════════════════════════════════
   docker:
     name: Native Docker Image
-    needs: prepare
-    if: needs.prepare.outputs.skip_docker != 'true'
+    needs: [prepare, quality]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      (needs.prepare.outputs.is_tag_release != 'true' || needs.quality.result == 'success') &&
+      needs.prepare.outputs.skip_docker != 'true' &&
+      (needs.prepare.outputs.delivery_channel == 'all' || needs.prepare.outputs.delivery_channel == 'docker')
     outputs:
       image_id: ${{ steps.image.outputs.id }}
     runs-on: ubuntu-latest
@@ -873,157 +1000,8 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # Release: Consolidate all artifacts into GitHub Release
-  # Publication consumes the exact installers and image qualified above.
-  # ═══════════════════════════════════════════════════════════════════════════
-  release:
-    name: Create Release
-    needs: [prepare, quality, installer-linux, installer-windows, installer-macos-arm64, docker]
-    if: >-
-      always() &&
-      needs.prepare.result == 'success' &&
-      needs.quality.result == 'success' &&
-      needs.installer-linux.result == 'success' &&
-      needs.installer-windows.result == 'success' &&
-      needs.installer-macos-arm64.result == 'success' &&
-      (needs.prepare.outputs.skip_docker == 'true' || needs.docker.result == 'success')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: 'installer-*-payload'
-          merge-multiple: false
-
-      - name: Prepare release assets
-        run: |
-          mkdir -p release
-          find artifacts -type f \( \
-            -name "*.deb" -o -name "*.exe" \
-            -o -name "*.dmg" \
-            -o -name "*.sha256" \
-          \) -exec cp {} release/ \; 2>/dev/null || true
-
-          # GitHub normalizes spaces in uploaded asset names to dots. Perform
-          # that normalization ourselves, verify every producer checksum
-          # against its payload, and regenerate sidecars with the exact public
-          # basename so `sha256sum -c` works after download.
-          node scripts/finalize-release-assets.cjs \
-            release \
-            '${{ needs.prepare.outputs.version }}'
-
-          echo "## Release Assets" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -d release ] && [ "$(ls -A release 2>/dev/null)" ]; then
-            ls -lh release/ | while read line; do echo "    $line" >> $GITHUB_STEP_SUMMARY; done
-          else
-            echo "No assets found" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Generate release notes
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          # Collect job results
-          INSTALLER_LINUX="${{ needs.installer-linux.result }}"
-          INSTALLER_WINDOWS="${{ needs.installer-windows.result }}"
-          INSTALLER_MACOS_ARM64="${{ needs.installer-macos-arm64.result }}"
-          DOCKER="${{ needs.docker.result }}"
-
-          cat > release_notes.md << NOTES
-          ## nirs4all Studio ${VERSION}
-
-          ### Installers (Recommended)
-
-          Desktop application. On first launch Studio lists the Python environments
-          found on the computer and uses the one you choose, or creates one for you;
-          the packages it requires are installed automatically.
-
-          | Platform | Architecture | File | Status |
-          |----------|-------------|------|--------|
-          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64.exe\` | ${INSTALLER_WINDOWS} |
-          | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-mac-arm64.dmg\` | ${INSTALLER_MACOS_ARM64} |
-          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-amd64.deb\` | ${INSTALLER_LINUX} |
-
-          On macOS the first launch needs an internet connection: Studio downloads
-          the Python runtime and its required packages. When macOS blocks the
-          first opening of the application, allow it in System Settings >
-          Privacy & Security > Open Anyway.
-
-          PyTorch is not installed when the environment is created: Studio offers
-          to install it when you select a neural-network model. XGBoost is not
-          installed either: add it in Settings > Python to use the XGBoost models.
-
-          ### Offline installers (Windows and Linux)
-
-          The same application with the Python runtime, the default package set,
-          XGBoost and PyTorch (CPU build) included, for computers without network access.
-
-          | Platform | Architecture | File | Status |
-          |----------|-------------|------|--------|
-          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64-offline.exe\` | ${INSTALLER_WINDOWS} |
-          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-amd64-offline.deb\` | ${INSTALLER_LINUX} |
-
-          ### Docker
-
-          Server/HPC deployment — no Electron or Python HTTP backend. nginx
-          serves the static renderer and proxies API/WebSocket traffic to the
-          loopback-only Rust sidecar.
-
-          \`\`\`bash
-          docker pull ghcr.io/gbeurier/nirs4all-studio:${VERSION}
-          docker run -p 127.0.0.1:8000:8000 -e NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY=1 ghcr.io/gbeurier/nirs4all-studio:${VERSION}
-          \`\`\`
-
-          | Runtime | Tag | Status |
-          |---------|-----|--------|
-          | Native Rust | \`ghcr.io/gbeurier/nirs4all-studio:${VERSION}\` | ${DOCKER} |
-
-          This command is local-only. Shared deployments require a mounted
-          password file and TLS; see docs/NATIVE_HTTP_ACCESS.md in the source.
-
-          ### Verification
-
-          SHA256 checksums are provided as \`.sha256\` files for each download.
-
-          \`\`\`bash
-          # Linux/macOS
-          sha256sum -c 'nirs4all.Studio-${VERSION}-linux-amd64.deb.sha256'
-
-          # Windows (PowerShell)
-          (Get-FileHash '.\nirs4all.Studio-${VERSION}-win-x64.exe').Hash
-          \`\`\`
-
-          ### System Requirements
-
-          - **Windows**: Windows 10+ (x64)
-          - **macOS**: macOS 12+ on Apple Silicon
-          - **Linux**: Ubuntu 22.04+ or equivalent (x64; glibc 2.35 and GLIBCXX 3.4.29 required)
-          - **Docker**: OCI runtime on Linux x64
-
-          ---
-          *Application source: ${{ needs.prepare.outputs.checkout_ref }}*
-          *Qualification workflow: ${{ github.sha }}*
-          NOTES
-
-      - name: Download the tested Docker image
-        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-candidate
-          path: docker-candidate
-
       - name: Login to GitHub Container Registry
-        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -1031,13 +1009,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish the tested Docker image
-        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
         env:
-          EXPECTED_IMAGE_ID: ${{ needs.docker.outputs.image_id }}
+          EXPECTED_IMAGE_ID: ${{ steps.image.outputs.id }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           IS_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
-          docker load --input docker-candidate/studio-image.tar
           test "$(docker image inspect --format '{{.Id}}' nirs4all-studio:native-release-candidate)" = "$EXPECTED_IMAGE_ID"
           IMAGE=ghcr.io/gbeurier/nirs4all-studio
           docker tag nirs4all-studio:native-release-candidate "$IMAGE:$RELEASE_VERSION"
@@ -1047,37 +1024,32 @@ jobs:
             docker push "$IMAGE:latest"
           fi
 
-      - name: Publish verified assets sequentially
-        # Publish on a real tag push or an explicit retry of an existing tag.
-        # Default dispatches still perform build/smoke without publication.
-        if: needs.prepare.outputs.is_tag_release == 'true'
+
+  # Reporting waits for all attempts; delivery itself never does.
+  delivery-summary:
+    name: Report independent delivery status
+    needs: [prepare, quality, installer-linux, installer-windows, installer-macos-arm64, docker]
+    if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.is_tag_release == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: studio-delivery-status-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Report available, pending and failed delivery channels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           RELEASE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
           RELEASE_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
-          RELEASE_NOTES_PATH: release_notes.md
-        run: |
-          node scripts/publish-qualified-release.cjs \
-            release \
-            '${{ needs.prepare.outputs.version }}'
-
-      - name: Release summary
-        run: |
-          echo "## Release Published" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag**: ${{ needs.prepare.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Prerelease**: ${{ needs.prepare.outputs.prerelease }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Job Results" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Installer Linux | ${{ needs.installer-linux.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Installer Windows | ${{ needs.installer-windows.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Installer macOS arm64 | ${{ needs.installer-macos-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Docker | ${{ needs.docker.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Assets" >> $GITHUB_STEP_SUMMARY
-          ls -1 release/ 2>/dev/null | while read f; do echo "- \`$f\`" >> $GITHUB_STEP_SUMMARY; done || echo "No assets" >> $GITHUB_STEP_SUMMARY
+        run: node scripts/report-release-deliveries.cjs

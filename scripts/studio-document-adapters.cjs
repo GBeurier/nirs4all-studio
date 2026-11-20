@@ -18,6 +18,7 @@ const SOURCE_FILES = Object.freeze([
   "api/shared/filter_catalogue.py",
   "api/shared/decimation.py",
   "api/library_dataset_inspection.py",
+  "api/library_public_datasets.py",
   "api/library_predictions.py",
   "api/library_prediction_results.py",
   "api/library_aggregated_results.py",

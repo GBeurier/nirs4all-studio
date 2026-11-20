@@ -4,12 +4,12 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
-## Public backend owner cohort (2026-11-18)
+## Public backend owner cohort (2026-11-19)
 
-`contracts/studio_native_source_cohort_v2.json` selects Core 0.5.1, DAG 0.4.3,
-DMD 0.2.17, IO 0.3.6, Formats 0.2.17 and Rust n4m 0.4.2 from crates.io.
+`contracts/studio_native_source_cohort_v2.json` selects Core 0.6.1, DAG 0.5.0,
+DMD 0.2.17, IO 0.3.6, Formats 0.2.17 and Rust n4m 0.5.0 from crates.io.
 `Cargo.toml` depends on one tested minor series of each owner crate (`nirs4all =
-"0.5"`, `nirs4all-io = "0.3"`; see [version constraints](../docs/PACKAGING.md#version-constraints)), and `Cargo.lock` selects the exact cohort shared
+"0.6"`, `nirs4all-io = "0.3"`; see [version constraints](../docs/PACKAGING.md#version-constraints)), and `Cargo.lock` selects the exact cohort shared
 with Core, so one Rust IO version resolves. Use the ordinary registry lock
 without candidate source overrides. The Python
 environment follows `recommended-config.json` (`required`) and may carry newer
@@ -17,8 +17,8 @@ owner releases than this Rust graph: the Rust crates move only with a Core
 crate release that pins them. Browser npm and
 owner-built browser artifacts have separate provenance and are not this graph.
 
-Packaged Methods has two explicit identity paths at ABI 2.23. The default
-`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.19
+Packaged Methods has two explicit identity paths at ABI 2.24. The default
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.5.1
 artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
 installed library size/hash, wheel reference and unknown source. It does not
 infer a source commit from the package version, ABI, public tag or Rust crate.
@@ -40,11 +40,12 @@ The retained injected HTTP test alone does not qualify that startup path.
 The ignored `public_methods_wheel_startup` integration test launches the real
 binary and replays the same owner-produced fixture, then checks typed refusal
 for absent, incompatible or altered selections without acquiring Python.
-SDK 1.4.21 is public on PyPI; `build/runtime-cohort.json` records its wheel
-hash and source commit. Studio host installation and current-closure
-qualification remain separate; historical SDK shipping receipts do not qualify
-that closure. The retained SDK host-cohort status is owned by that integration
-lane and is not a claim that the SDK is absent from the public registry.
+SDK 1.6.1 is published; `build/runtime-cohort.json` records its verified public
+wheel URL/hash and publication source `fd5db4af`. Its runtime/build source
+`cf283f41` is a separate identity, and all three target locks select the actual
+public wheel. Installed-host and packaged-host qualification remain separate
+evidence; source identity and historical shipping receipts alone do not qualify
+that closure.
 
 After resolving the final registry lock, qualify the existing backend tests and
 `node scripts/test-native-archive-v2.cjs` with one attested Methods library.

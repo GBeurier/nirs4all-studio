@@ -3,6 +3,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SHAP_OPTIONS } from './shapVariableImportanceFormData';
 import {
   clearShapSessionState,
   loadShapSessionState,
@@ -22,7 +23,7 @@ describe('shapSessionCache', () => {
       chainId: 'chain-123',
       datasetName: 'corn',
       partition: 'test',
-      explainerType: 'auto',
+      options: DEFAULT_SHAP_OPTIONS,
       jobId: 'job-123',
       results: {
         job_id: 'job-123',
@@ -82,12 +83,12 @@ describe('shapSessionCache', () => {
     sessionStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        version: 1,
+        version: 2,
         savedAt: now.getTime() - (24 * 60 * 60 * 1000 + 1),
         chainId: 'chain-123',
         datasetName: 'corn',
         partition: 'test',
-        explainerType: 'auto',
+        options: DEFAULT_SHAP_OPTIONS,
         jobId: 'job-123',
         results: null,
         rebinnedData: null,
@@ -106,7 +107,7 @@ describe('shapSessionCache', () => {
       chainId: null,
       datasetName: null,
       partition: 'test',
-      explainerType: 'auto',
+      options: DEFAULT_SHAP_OPTIONS,
       jobId: 'job-123',
       results: null,
       rebinnedData: null,

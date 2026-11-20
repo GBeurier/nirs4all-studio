@@ -6,7 +6,11 @@
 
 // ============= Request Types =============
 
-export type ExplainerType = 'auto' | 'tree' | 'kernel' | 'linear';
+/** Python `shap` selectors, plus the native (nirs4all-methods) model-agnostic explainers. */
+export type ExplainerType = 'auto' | 'tree' | 'kernel' | 'linear' | 'permutation' | 'exact' | 'lime' | 'occlusion';
+/** `python`: the `shap` package; `native`: the nirs4all-methods kernels (as in Web). */
+export type ShapEngine = 'python' | 'native';
+export type ShapBaseline = 'background' | 'mean';
 export type BinAggregation = 'sum' | 'sum_abs' | 'mean' | 'mean_abs';
 export type Partition = 'train' | 'test' | 'all';
 
@@ -21,6 +25,26 @@ export interface ShapComputeRequest {
   bin_size: number;
   bin_stride: number;
   bin_aggregation: BinAggregation;
+  /** Native engine only (`methods`); omitted for the Python `shap` engine. */
+  explainer_backend?: 'shap' | 'methods';
+  baseline?: ShapBaseline;
+  group_width?: number;
+  n_permutations?: number;
+  seed?: number;
+  /** Replaces `partition` when present: background candidates and explained samples. */
+  subsets?: { background: ShapSubset; explained: ShapSubset };
+}
+
+/** A row matches when its metadata value is one of `values`. */
+export interface ShapSubsetFilter {
+  column: string;
+  values: (string | number | boolean | null)[];
+}
+
+/** One partition narrowed by metadata filters (combined with AND). */
+export interface ShapSubset {
+  partition: Partition;
+  filters: ShapSubsetFilter[];
 }
 
 export interface RebinRequest {
@@ -59,9 +83,18 @@ export interface ShapResultsResponse {
   model_id: string;
   dataset_id: string;
   explainer_type: string;
+  explainer_backend?: 'shap' | 'methods';
+  /** False for LIME and occlusion: attributions do not sum to the prediction. */
+  additive?: boolean;
   n_samples: number;
+  /** Attributed columns: input features, or contiguous feature groups (native engine). */
   n_features: number;
-  base_value: number;
+  /** Input features of the explained model, when attributions are grouped. */
+  n_input_features?: number;
+  /** Shared expected value; null for non-additive explainers (one local intercept per row). */
+  base_value: number | null;
+  /** Rows passed to the SHAP engine with metadata subsets; the background is drawn among all of them. */
+  background_pool?: { background_candidates: number; explained_outside_background: number } | null;
   execution_time_ms: number;
   feature_importance: FeatureImportance[];
   wavelengths: number[];

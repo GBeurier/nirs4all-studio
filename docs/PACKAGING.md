@@ -160,8 +160,8 @@ pre-signing byte hash; tampering then invalidates that platform signature and
 remains fail-closed.
 
 The sidecar builder refuses to emit a product tree unless the build supplies
-one content-addressed native Methods library at ABI 2.23
-(`nirs4all-methods` 1.3.19). Every release gate invokes
+one content-addressed native Methods library at ABI 2.24
+(`nirs4all-methods` 1.5.1). Every release gate invokes
 `native-runtime-contract.cjs` with `--require-python-payload` and
 `--require-bundled-methods`, so an installer cannot be published without `uv`,
 the required wheels (on macOS: no embedded wheels), the attested adapters and
@@ -370,15 +370,15 @@ patch is required; moving to a new minor series is an explicit, tested Studio
 decision. For 1.x owners the caret forms that stop at the next major (npm
 `^1.x`, Cargo `"1.x"`, `<2`) are not used.
 
-The sidecar depends on `nirs4all = "0.5"` and `nirs4all-io = "0.3"` (0.x Cargo
+The sidecar depends on `nirs4all = "0.6"` and `nirs4all-io = "0.3"` (0.x Cargo
 caret ranges, which stop at the next minor). The `range` of a `required` package
 in `recommended-config.json` (the versions an existing Python environment may
 hold) follows the same rule, for example `nirs4all-io >=0.3,<0.4`; an empty
-range accepts any version, and the 1.x `nirs4all-methods`/`pls4all` ranges
-`>=1.3,<2` are narrowed to one series at the next release. These ranges are Studio's environment-admission
+range accepts any version. The 1.x `nirs4all-methods`/`pls4all` ranges
+`>=1.5.1,<1.6` accept the selected Methods series. These ranges are Studio's environment-admission
 ranges: Studio reinstalls the required cohort at its `install` versions only
 when an environment falls outside them, so the SDK range floor
-(`>=1.4.21,<1.5`) is how a Studio release delivers an SDK fix to existing
+(`>=1.6.1,<1.7`) is how a Studio release delivers the selected SDK series to existing
 environments, and its minor cap is where Studio qualifies its Python host.
 Exact versions are not constraints: the `install` versions, the hash-pinned
 wheel locks above, `sidecar/Cargo.lock`, `build/runtime-cohort.json` and the
@@ -436,9 +436,13 @@ node scripts/smoke-packaged-ui.cjs --extracted-root <unpacked app> --platform <p
   preselects; `shap` and `matplotlib` are then added the same way. The smoke
   waits for the scientific host, saves a preference, reloads, restarts, and
   runs one real training followed by its SHAP analysis in the renderer. It
+  then opens the public-datasets button, downloads the selected Canopy source
+  through the Datasets owner into a fresh workspace cache, waits for Rust job
+  registration, and previews the registered data before reloading the renderer.
+  The proof records source identity, dimensions, targets and preview values. It
   needs `RELEASE_SOURCE_SHA`, `RELEASE_VERSION` and the cohort variables of
   the release workflow. `scripts/smoke-first-launch-ui.cjs` is the same run
-  without the release identity checks and the SHAP journey.
+  without the release identity checks or the training/SHAP and public-dataset journeys.
 
 On macOS both install the required packages from the package index.
 
@@ -466,29 +470,48 @@ The release workflow is `.github/workflows/release-unified.yml`.
 
 ### Manual inputs
 
-- `tag`
-- `publish_existing_tag`
-- `macos_arm64_only`: builds and smokes the macOS installer only. It
-  publishes nothing: the `release` job needs the quality, Linux and Windows
-  jobs, which this input skips.
-- `skip_docker`
+- `tag`: exact immutable source tag.
+- `publish_existing_tag`: explicitly publish a qualified existing-tag retry;
+  false (the default) only builds and smokes.
+- `delivery_channel`: `all`, `linux-standard`, `linux-offline`,
+  `windows-standard`, `windows-offline`, `macos-arm64`, or `docker`.
+- `macos_arm64_only`: legacy macOS-only selection. Diagnostic runs skip the
+  common source gate; publishing still requires that gate and the explicit
+  `publish_existing_tag` input.
+- `skip_docker`: omit Docker when selecting all channels.
 
-### Jobs
+### Jobs and independent deliveries
 
 | Job | Purpose |
 |---|---|
-| `prepare` | Resolve version/tag, prerelease flag, and build switches |
-| `quality` | Qualify the release commit |
-| `installer-linux` | Linux DEB installer and its offline variant |
-| `installer-windows` | Windows NSIS installer and its offline variant |
-| `installer-macos-arm64` | macOS Apple Silicon DMG; signed/notarized when secrets are available |
-| `docker` | Native container image with nginx, the Rust sidecar and its Python environment |
-| `release` | Consolidates the `installer-*` artifacts into the GitHub Release |
+| `prepare` | Resolve the immutable source, version, runtime cohort and selected channels |
+| `quality` | Shared frontend, backend, Rust fmt/clippy/tests and native-session authentication gates |
+| `release-draft` | Prepare one source-verified draft under a per-tag lock; no installer assets or public release |
+| `installer-linux` | Qualify and publish each selected DEB variant independently |
+| `installer-windows` | Windows containment tests, then qualify and publish each selected NSIS variant independently |
+| `installer-macos-arm64` | Qualify and publish the Apple Silicon DMG; signing/notarization rules remain unchanged |
+| `docker` | Qualify and publish the exact tested native container image independently |
+| `delivery-summary` | Report available, pending and failed channels after delivery; no producer depends on it |
 
-The Linux and Windows jobs run once per variant (`standard`, `offline`). Each
-leg stages the [build inputs](#build-inputs) for its target, verifies the
+The Linux and Windows jobs run once per selected variant (`standard`,
+`offline`). Each leg stages the [build inputs](#build-inputs), verifies its
 runtime contract, packages its installer, and runs both smokes described under
-[Verification](#verification) on the unpacked application.
+[Verification](#verification). Only a successful leg may attach its installer
+and checksum. A failed Docker, macOS or sibling variant does not block a
+qualified channel. Shared source gates still block every publication when they
+fail; standalone CI also retains its full Docker and packaging checks.
+
+One serialized metadata job prepares the draft before installer producers;
+individual channels never create drafts. The first qualified installer makes
+the GitHub Release public. Later channels
+append their exact installer/checksum pair to the same immutable source tag;
+existing assets are verified and never replaced. Release notes distinguish
+attached assets from pending or failed channels and link the workflow evidence.
+Retry a missing channel by dispatching this workflow with its original `tag`,
+`publish_existing_tag=true` and the specific `delivery_channel`. Changes to
+application source require a new version and tag. Docker retries use
+`delivery_channel=docker`; package-index publication is an upstream owner
+channel and does not wait for Studio delivery.
 
 ### Candidate package lane
 
@@ -556,9 +579,11 @@ published set.
 | macOS Apple Silicon | `nirs4all.Studio-{version}-mac-arm64.dmg` | none |
 | Linux x64 | `nirs4all.Studio-{version}-linux-amd64.deb` | `nirs4all.Studio-{version}-linux-amd64-offline.deb` |
 
-`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` is that
-exact set of five files; a release directory with a missing or an additional
-payload is refused.
+`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` declares that
+exact set of five files. The default full-set mode refuses missing or additional
+payloads. An explicit installer channel requires exactly its one payload and
+checksum; `scripts/stage-release-channel.cjs` verifies that pair before the
+publisher appends it without replacing any existing asset.
 
 The in-app update check always selects the installer, never an `-offline`
 asset. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md#asset-selection-rules).
@@ -597,7 +622,7 @@ The image contains no FastAPI, Uvicorn, `main.py` or `websocket/` sources, and
 no `python` command on `PATH`. The sidecar invokes the interpreter only through
 the bounded stdio protocol; it never owns a port, scheduler, store, or fallback
 route.
-The image also embeds the exact `nirs4all-methods` ABI 2.23 library and its
+The image also embeds the exact `nirs4all-methods` 1.5.1 ABI 2.24 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the Python host. CI supplies that library through the local
 BuildKit context `methods-runtime`, never from an unverified URL. The image
@@ -706,7 +731,8 @@ installs its required packages from the package index.
 | `scripts/provision-environment.cjs` | Creates an environment from a backend tree (smokes, Docker image) |
 | `scripts/smoke-archive-standalone.cjs` | Payload smoke of an unpacked or installed application |
 | `scripts/smoke-first-launch-ui.cjs` | Application smoke: environment created by Studio from its setup page |
-| `scripts/smoke-packaged-ui.cjs` | Release gate: the application smoke with release identity checks and a training + SHAP journey |
+| `scripts/smoke-packaged-ui.cjs` | Release gate: application setup, release identity, training/SHAP and public-source dataset import/preview |
+| `scripts/smoke-public-dataset-journey.cjs` | Public button/catalogue, original-source acquisition, Rust registration and persisted preview journey |
 | `scripts/finalize-release-assets.cjs` | Published asset names and checksum sidecars |
 | `.github/workflows/multimodal-package-candidate.yml` | Manual nonpublishing qualification of unpublished Python candidates |
 | `scripts/prepare-multimodal-package-candidate.cjs` | Selects candidate wheels in the catalogue and the wheel lock of a disposable checkout |

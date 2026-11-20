@@ -47,6 +47,8 @@ import {
 } from "@/lib/datasetDrop";
 import { isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
 import { ImportMultimodalDialog } from "@/components/datasets/ImportMultimodalDialog";
+import { PublicDatasetsDialog } from "@/components/datasets/PublicDatasetsDialog";
+import { isPublicDatasetImportBusy, usePublicDatasetImport } from "@/hooks/usePublicDatasets";
 import type { Dataset, DatasetGroup } from "@/types/datasets";
 import {
   DatasetsHeader,
@@ -104,6 +106,8 @@ export default function Datasets() {
   );
   const workspacePath = activeWorkspace?.path ?? null;
   const workspaceId = activeWorkspace?.id ?? null;
+  // Page-mounted so hiding the dialog keeps monitoring a running import.
+  const publicImport = usePublicDatasetImport({ workspaceId, workspacePath });
 
   // Show the spinner only when we have no cached data at all. After the first
   // load, refetches happen in the background while the previous list stays
@@ -162,6 +166,7 @@ export default function Datasets() {
   // Modal state
   const [wizardOpen, setWizardOpen] = useState(false);
   const [multimodalImportOpen, setMultimodalImportOpen] = useState(false);
+  const [publicDatasetsOpen, setPublicDatasetsOpen] = useState(false);
   const [syntheticDialogOpen, setSyntheticDialogOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
@@ -258,6 +263,8 @@ export default function Datasets() {
           onOpenSynthetic={() => setSyntheticDialogOpen(true)}
           onOpenWizard={() => setWizardOpen(true)}
           onOpenMultimodalImport={() => setMultimodalImportOpen(true)}
+          onOpenPublicDatasets={() => setPublicDatasetsOpen(true)}
+          publicImportActive={isPublicDatasetImportBusy(publicImport.state.phase)}
           hasWorkspace={Boolean(workspacePath)}
         />
       </motion.div>
@@ -445,6 +452,12 @@ export default function Datasets() {
         open={multimodalImportOpen}
         onOpenChange={setMultimodalImportOpen}
         onImport={datasetActions.addMultimodalDataset}
+      />
+      <PublicDatasetsDialog
+        open={publicDatasetsOpen}
+        onOpenChange={setPublicDatasetsOpen}
+        workspaceId={workspaceId}
+        importer={publicImport}
       />
     </motion.div>
   );

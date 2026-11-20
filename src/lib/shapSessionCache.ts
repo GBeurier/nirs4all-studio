@@ -6,20 +6,21 @@ import {
 } from '@/lib/clientStorage';
 import type {
   BinnedImportanceData,
-  ExplainerType,
   Partition,
   ShapResultsResponse,
   ShapTab,
 } from '@/types/shap';
+import type { ShapAnalysisOptions } from '@/lib/shapVariableImportanceFormData';
 
-const STORAGE_VERSION = 1;
+// Version 2 stores the analysis options (engine, explainer, sample and native settings).
+const STORAGE_VERSION = 2;
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface ShapSessionState {
   chainId: string | null;
   datasetName: string | null;
   partition: Partition;
-  explainerType: ExplainerType;
+  options: ShapAnalysisOptions;
   jobId: string | null;
   results: ShapResultsResponse | null;
   rebinnedData: BinnedImportanceData | null;

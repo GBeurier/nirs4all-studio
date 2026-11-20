@@ -12,10 +12,10 @@ const yaml = require("js-yaml") as { load(source: string): Workflow };
 interface Step { name?: string; run?: string; uses?: string; if?: string; env?: Record<string, string>; "continue-on-error"?: boolean; with?: Record<string, unknown> }
 interface Job {
   needs?: string | string[]; if?: string; steps?: Step[]; uses?: string; with?: Record<string, unknown>; "continue-on-error"?: boolean;
-  strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+  strategy?: { matrix?: string | { include?: Array<Record<string, string>> } };
 }
 interface Workflow {
-  on: { workflow_call?: { inputs: Record<string, { type: string; required: boolean; default: string }> }; push?: unknown; pull_request?: unknown };
+  on: { workflow_call?: { inputs: Record<string, { type: string; required: boolean; default: string | boolean }> }; push?: unknown; pull_request?: unknown };
   env?: Record<string, string>;
   jobs: Record<string, Job>;
 }
@@ -31,12 +31,13 @@ function dependencies(job: Job): string[] { return typeof job.needs === "string"
 function releaseGate(job: string, results: Record<string, string> = {}, flags: Record<string, string> = {}): boolean {
   const expression = release.jobs[job].if!
     .replace(/always\(\)/g, "true")
-    .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? "false"))
+    .replace(/cancelled\(\)/g, "false")
+    .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? ({ is_tag_release: "true", delivery_channel: "all" } as Record<string, string>)[flag] ?? "false"))
     .replace(/needs\.([\w-]+)\.result/g, (_, dependency: string) => {
       expect(dependencies(release.jobs[job])).toContain(dependency);
       return JSON.stringify(results[dependency] ?? "success");
     });
-  return runInNewContext(expression, Object.create(null), { timeout: 100 }) as boolean;
+  return runInNewContext(expression, { startsWith: (value: string, prefix: string) => value.startsWith(prefix) }, { timeout: 100 }) as boolean;
 }
 afterEach(() => { directories.splice(0).forEach((directory) => fs.rmSync(directory, { recursive: true, force: true })); });
 
@@ -102,9 +103,10 @@ describe("CI release protection graph", () => {
         expect(steps[packaged].run).toContain("--config ${{ matrix.builder_config }}");
       }
     }
-    const assets = release.jobs.release.steps!.find(step => step.name === "Prepare release assets")!.run!;
-    expect(assets).not.toContain("wheels.tar.gz");
-    expect(assets).toMatch(/finalize-release-assets\.cjs \\\n\s+release \\\n\s+'\$\{\{ needs\.prepare\.outputs\.version \}\}'\n/);
+    const action = yaml.load(fs.readFileSync('.github/actions/publish-installer-channel/action.yml', 'utf8')) as unknown as { runs: { steps: Step[] } };
+    expect(action.runs.steps[0].run).toContain('scripts/stage-release-channel.cjs');
+    expect(action.runs.steps[1].run).toContain('scripts/publish-qualified-release.cjs');
+    expect(JSON.stringify(action)).not.toContain('wheels.tar.gz');
     const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
     for (const fullJourney of ["installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
       expect(remoteCommands).not.toContain(fullJourney);
@@ -152,16 +154,18 @@ describe("CI release protection graph", () => {
     }
   });
 
-  it("publishes only after mandatory build and package smoke jobs succeed", () => {
-    const steps = release.jobs.release.steps!;
-    const required = ["prepare", "quality", "installer-linux", "installer-windows", "installer-macos-arm64", "docker"];
-    expect(dependencies(release.jobs.release)).toEqual(expect.arrayContaining(required));
-    expect(releaseGate("release")).toBe(true);
-    for (const job of required) expect(releaseGate("release", { [job]: "failure" }), job).toBe(false);
-    for (const publication of ["Publish the tested Docker image", "Publish verified assets sequentially"]) {
-      const step = steps.find(item => item.name === publication)!;
-      expect(step.if).toContain("needs.prepare.outputs.is_tag_release == 'true'");
-      expect(step["continue-on-error"]).not.toBe(true);
+  it("publishes each delivery only after its own smoke and common source gates succeed", () => {
+    for (const name of ["installer-linux", "installer-windows", "installer-macos-arm64", "docker"]) {
+      const job = release.jobs[name];
+      expect(dependencies(job)).toEqual(name === "docker" ? ["prepare", "quality"] : ["prepare", "quality", "release-draft"]);
+      expect(releaseGate(name)).toBe(true);
+      for (const prerequisite of dependencies(job)) expect(releaseGate(name, { [prerequisite]: "failure" })).toBe(false);
+      const publish = job.steps!.find(step => step.name?.startsWith('Publish this qualified') || step.name === 'Publish the tested Docker image')!;
+      expect(publish.if).toContain('success()');
+      expect(publish.if).toContain("needs.quality.result == 'success'");
+      expect(publish.if).toContain("needs.prepare.outputs.is_tag_release == 'true'");
+      expect(publish["continue-on-error"]).not.toBe(true);
+      expect(job.steps!.findIndex(step => step.run?.includes(name === 'docker' ? 'smoke-docker-native-runtime.sh' : 'smoke-packaged-ui.cjs'))).toBeLessThan(job.steps!.indexOf(publish));
     }
   });
 
@@ -178,7 +182,7 @@ describe("CI release protection graph", () => {
     expect(buildIndex).toBeGreaterThanOrEqual(0);
     expect(smokeIndex).toBeGreaterThan(buildIndex);
     expect(steps[smokeIndex].run).toContain("xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux");
-    expect(steps[smokeIndex].if).toBeUndefined();
+    expect(steps[smokeIndex].if).toBe("inputs.delivery_source_only != true");
     expect(steps[smokeIndex]["continue-on-error"]).not.toBe(true);
     expect(job["continue-on-error"]).not.toBe(true);
   });
@@ -190,7 +194,8 @@ describe("CI release protection graph", () => {
     const root = temporaryDirectory();
     for (const failedJob of [null, ...dependencies(ci.jobs.summary)]) {
       for (const outcome of failedJob ? ["failure", "cancelled", "skipped"] : ["success"]) {
-        const script = summary.replace(/\$\{\{ needs\.([\w-]+)\.result \}\}/g, (_, job: string) => job === failedJob ? outcome : "success");
+        const script = summary.replace(/\$\{\{ needs\.([\w-]+)\.result \}\}/g, (_, job: string) => job === failedJob ? outcome : "success")
+          .replaceAll("${{ inputs.delivery_source_only }}", "false");
         const result = spawnSync("bash", ["-e", "-c", script], {
           env: { ...process.env, GITHUB_STEP_SUMMARY: path.join(root, "summary.md") }, encoding: "utf8",
         });
@@ -268,29 +273,28 @@ describe("CI release protection graph", () => {
       expect(quality.with?.[input]).toMatch(/^[0-9a-f]{40}$/);
       expect(quality.with?.[input]).toBe(release.env?.[variable]);
     }
-    for (const publisher of ["release"]) {
+    for (const publisher of ["installer-linux", "installer-windows", "installer-macos-arm64", "docker"]) {
       expect(dependencies(release.jobs[publisher])).toContain("quality");
     }
     const installers = Object.entries(release.jobs).filter(([name]) => name.startsWith("installer-"));
     expect(installers.map(([name]) => name)).toEqual(["installer-linux", "installer-windows", "installer-macos-arm64"]);
     for (const [name, job] of installers) {
-      expect(dependencies(job), name).toEqual(["prepare"]);
+      expect(dependencies(job), name).toEqual(["prepare", "quality", "release-draft"]);
       const upload = job.steps!.find(step => step.name === "Upload artifacts")!;
       if (name === "installer-macos-arm64") {
         expect(upload.with?.name, name).toBe("installer-macos-arm64-payload");
         continue;
       }
-      expect(job.strategy?.matrix?.include, name).toEqual([
-        { variant: "standard", builder_config: "electron-builder.installer.yml" },
-        { variant: "offline", builder_config: "electron-builder.offline.yml" },
-      ]);
+      expect(job.strategy?.matrix, name).toBe(name === 'installer-linux'
+        ? '${{ fromJSON(needs.prepare.outputs.linux_matrix) }}'
+        : '${{ fromJSON(needs.prepare.outputs.windows_matrix) }}');
       expect(upload.with?.name, name).toMatch(/^installer-[a-z0-9-]+-\$\{\{ matrix\.variant \}\}-payload$/);
     }
     expect(Object.keys(release.jobs)).not.toContain("pinned-plugin-wheels");
   });
 
-  it("blocks publication when quality or any enabled platform fails or is skipped", () => {
-    for (const publisher of ["release"]) {
+  it("blocks a delivery when its required source gate fails or is skipped", () => {
+    for (const publisher of ["installer-linux", "installer-windows", "installer-macos-arm64", "docker"]) {
       expect(releaseGate(publisher)).toBe(true);
       for (const prerequisite of dependencies(release.jobs[publisher])) {
         for (const outcome of ["failure", "cancelled", "skipped"]) {
@@ -300,13 +304,13 @@ describe("CI release protection graph", () => {
 
     }
     expect(releaseGate("docker", {}, { skip_docker: "true" })).toBe(false);
-    expect(releaseGate("release", { docker: "skipped" }, { skip_docker: "true" })).toBe(true);
+    expect(releaseGate("installer-windows", { docker: "skipped" }, { skip_docker: "true" })).toBe(true);
   });
 
   it.skipIf(process.platform === "win32")("promotes the exact tested Docker candidate and reserves latest for stable releases", () => {
-    const steps = release.jobs.release.steps!;
+    const steps = release.jobs.docker.steps!;
     const publication = steps.find((step) => step.run?.includes("docker push"))!;
-    expect(publication.if).toBe("needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'");
+    expect(publication.if).toBe("success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'");
     const root = temporaryDirectory();
     const log = path.join(root, "docker-calls");
     const fakeDocker = path.join(root, "docker");
@@ -321,7 +325,6 @@ describe("CI release protection graph", () => {
       expect(result.status, result.stderr).toBe(0);
       const calls = fs.readFileSync(log, "utf8").trim().split("\n");
       const expected = [
-        "load --input docker-candidate/studio-image.tar",
         "image inspect --format {{.Id}} nirs4all-studio:native-release-candidate",
         "tag nirs4all-studio:native-release-candidate ghcr.io/gbeurier/nirs4all-studio:1.2.3",
         "push ghcr.io/gbeurier/nirs4all-studio:1.2.3",

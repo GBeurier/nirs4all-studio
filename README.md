@@ -133,7 +133,7 @@ runtime or Python backend source.
 Startup requires a mounted password file or an explicit trusted-local-only
 configuration; see [Docker access](docs/NATIVE_HTTP_ACCESS.md#docker). Do not
 publish an unauthenticated container port on a shared network.
-It does include the content-addressed `nirs4all-methods` ABI 2.23 library used by
+It does include the content-addressed `nirs4all-methods` 1.5.1 ABI 2.24 library used by
 the Rust/Core Archive V2 prediction path, and a Python environment built at
 image build time with `uv` from the same package catalogue as the desktop
 product (the required packages plus `shap`, `matplotlib` and `lightgbm`).

@@ -12,17 +12,21 @@ const PAYLOAD_SUFFIXES = Object.freeze([
  * Assets of a release: the installer of each platform and the offline
  * installers for Windows and Linux.
  */
-function expectedPublishedNames(version) {
+function expectedPublishedNames(version, channel = null) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Release version is invalid: ${version}`);
   }
-  return [
-    `nirs4all.Studio-${version}-linux-amd64-offline.deb`,
-    `nirs4all.Studio-${version}-linux-amd64.deb`,
-    `nirs4all.Studio-${version}-mac-arm64.dmg`,
-    `nirs4all.Studio-${version}-win-x64-offline.exe`,
-    `nirs4all.Studio-${version}-win-x64.exe`,
-  ].sort();
+  const names = {
+    "linux-offline": `nirs4all.Studio-${version}-linux-amd64-offline.deb`,
+    "linux-standard": `nirs4all.Studio-${version}-linux-amd64.deb`,
+    "macos-arm64": `nirs4all.Studio-${version}-mac-arm64.dmg`,
+    "windows-offline": `nirs4all.Studio-${version}-win-x64-offline.exe`,
+    "windows-standard": `nirs4all.Studio-${version}-win-x64.exe`,
+  };
+  if (channel !== null && !Object.hasOwn(names, channel)) {
+    throw new Error(`Unknown installer delivery channel: ${channel}`);
+  }
+  return (channel === null ? Object.values(names) : [names[channel]]).sort();
 }
 
 function canonicalPublishedName(name) {
@@ -168,10 +172,10 @@ function finalizeReleaseAssets(releaseRoot, expectedNames = null) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  if (argv.length !== 2) {
-    throw new Error("Usage: node scripts/finalize-release-assets.cjs <release-root> <version>");
+  if (argv.length < 2 || argv.length > 3) {
+    throw new Error("Usage: node scripts/finalize-release-assets.cjs <release-root> <version> [channel]");
   }
-  const records = finalizeReleaseAssets(path.resolve(argv[0]), expectedPublishedNames(argv[1]));
+  const records = finalizeReleaseAssets(path.resolve(argv[0]), expectedPublishedNames(argv[1], argv[2] ?? null));
   for (const record of records) {
     process.stdout.write(`${record.digest}  ${record.publishedName}\n`);
   }

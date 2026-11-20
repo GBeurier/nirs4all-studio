@@ -77,12 +77,12 @@ function ghFailureHttpStatus(error) {
   return new Set(statuses).size === 1 ? statuses[0] : null;
 }
 
-function releaseManifest(root, version) {
+function releaseManifest(root, version, channel = null) {
   const stat = fs.lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error("Release root must be a real directory");
   }
-  const payloads = expectedPublishedNames(version);
+  const payloads = expectedPublishedNames(version, channel);
   const expected = payloads.flatMap((name) => [name, `${name}.sha256`]).sort();
   if (JSON.stringify(fs.readdirSync(root).sort()) !== JSON.stringify(expected)) {
     throw new Error("Release asset inventory is incomplete or contains unexpected files");
@@ -102,7 +102,14 @@ function releaseManifest(root, version) {
       size: fs.statSync(`${file}.sha256`).size,
     });
   }
-  // Sidecars first; each invocation of gh uploads exactly one file.
+  // Public channel appends verify the payload before exposing its checksum.
+  // Older Studio clients trust a matching checksum without checking asset.state.
+  if (channel !== null) {
+    return manifest.sort((a, b) =>
+      Number(a.name.endsWith(".sha256")) - Number(b.name.endsWith(".sha256")) ||
+      a.name.localeCompare(b.name));
+  }
+  // Full draft promotion retains sidecars first, then all payloads.
   return manifest.sort((a, b) =>
     Number(b.name.endsWith(".sha256")) - Number(a.name.endsWith(".sha256")) ||
     a.name.localeCompare(b.name));
@@ -113,6 +120,8 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   const wait = dependencies.sleep || sleep;
   const log = dependencies.log || ((message) => console.log(message));
   const { repo, tag, version, sha, prerelease, releaseRoot, notesPath } = options;
+  const channel = options.channel ?? null;
+  const incremental = channel !== null;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || "")) {
     throw new Error("GH_REPO must be an owner/repository pair");
   }
@@ -122,7 +131,10 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   if (typeof prerelease !== "boolean") {
     throw new Error("An explicit prerelease flag is required");
   }
-  const manifest = releaseManifest(path.resolve(releaseRoot), version);
+  const manifest = options.prepareOnly ? [] : releaseManifest(path.resolve(releaseRoot), version, channel);
+  if (options.prepareOnly && incremental) throw new Error("Draft preparation cannot publish a channel");
+  const otherChannelNames = new Set(expectedPublishedNames(version)
+    .flatMap((name) => [name, `${name}.sha256`]));
   let reviewedNotes;
   if (options.reviewedNotesSha256 !== undefined) {
     if (!/^[0-9a-f]{64}$/.test(options.reviewedNotesSha256)) throw new Error("Invalid reviewed notes SHA256");
@@ -159,6 +171,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     try {
       if (pinnedReleaseId !== undefined) return await api(`releases/${pinnedReleaseId}`);
       try {
+        if (incremental || options.prepareOnly) throw Object.assign(new Error("Use complete release inventory"), { notFound: true });
         return await api(`releases/tags/${encodeURIComponent(tag)}`);
       } catch (error) {
         if (!error.notFound) throw error;
@@ -189,6 +202,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
 
   await assertTag();
   let release = await lookupRelease();
+  if (!release && incremental) throw new Error("Installer channels require the single prepared release draft");
   if (!release) {
     // The tag was already verified above. An older --target SHA whose workflows
     // differ from main requires workflows:write, which GITHUB_TOKEN cannot have.
@@ -213,6 +227,10 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     if (!release) throw new Error("Could not create the release draft");
   }
   assertRelease(release);
+  if (options.prepareOnly) {
+    await assertTag();
+    return { releaseId: release.id, tag, sha, prepared: true, draft: release.draft };
+  }
   const releaseId = release.id;
   pinnedReleaseId = releaseId;
   const wasDraft = release.draft;
@@ -228,18 +246,27 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   const inspect = async (requireComplete = false, expectedDraft = wasDraft, currentAttempt = null) => {
     const current = await lookupRelease();
     assertRelease(current, releaseId);
-    if (current.draft !== expectedDraft) throw new Error("Release visibility changed during upload");
+    // Independent channels can finish while this one uploads. Only an explicit
+    // channel invocation may append to a published release; full promotion
+    // retains its original atomic draft/public inventory contract.
+    if (!incremental && current.draft !== expectedDraft) throw new Error("Release visibility changed during upload");
     const pages = await api(`releases/${releaseId}/assets?per_page=100`, ["--paginate", "--slurp"]);
     if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
       throw new Error("Malformed release asset inventory");
     }
     const present = new Map();
     const assetIds = new Set();
+    const assetNames = new Set();
     for (const asset of pages.flat()) {
       const entry = expected.get(asset.name);
-      if (!entry || present.has(asset.name) || assetIds.has(asset.id)) throw new Error(`Unexpected or duplicate release asset: ${asset.name}`);
-      present.set(asset.name, asset);
+      if ((!entry && !(incremental && otherChannelNames.has(asset.name))) ||
+        assetNames.has(asset.name) || assetIds.has(asset.id) ||
+        !Number.isSafeInteger(asset.id) || asset.id <= 0) throw new Error(`Unexpected or duplicate release asset: ${asset.name}`);
+      assetNames.add(asset.name);
       assetIds.add(asset.id);
+      // Other channels are preserved, not assessed or claimed by this call.
+      if (!entry) continue;
+      present.set(asset.name, asset);
       if (currentAttempt && asset.name === currentAttempt.name && isCurrentStarter(asset, currentAttempt)) continue;
       if (!Number.isSafeInteger(asset.id) || asset.id <= 0 ||
         asset.state !== "uploaded" || asset.size !== entry.size ||
@@ -275,7 +302,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     }
     const beforeDelete = await lookupRelease();
     assertRelease(beforeDelete, releaseId);
-    if (!beforeDelete.draft) throw new Error("Release became public; starter deletion refused");
+    if (!beforeDelete.draft && !incremental) throw new Error("Release became public; starter deletion refused");
     const proof = {
       release_id: releaseId, asset_id: starter.id, name: entry.name, size: entry.size,
       state: "starter", digest: null, http_status: httpStatus, attempt,
@@ -295,9 +322,10 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     return inspect();
   };
 
-  // Check every existing asset before making any upload. Public releases are read-only.
-  let present = await inspect(!wasDraft);
-  if (wasDraft) {
+  // Full-release invocations keep public releases read-only. An explicit
+  // channel may add only its missing, qualified pair, never replace an asset.
+  let present = await inspect(!wasDraft && !incremental);
+  if (wasDraft || incremental) {
     for (const entry of manifest) {
       if (present.has(entry.name)) continue;
       for (let attempt = 1; attempt <= 3; attempt++) {
@@ -312,7 +340,13 @@ async function publishQualifiedRelease(options, dependencies = {}) {
         log(`Uploading ${entry.name} (attempt ${attempt}/3)`);
         let httpStatus = null;
         try {
-          await gh(["release", "upload", tag, entry.file, "--repo", repo]);
+          if (incremental) {
+            // Address the verified release id, never an ambiguous draft by tag.
+            await gh(["api", `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(entry.name)}`,
+              "--method", "POST", "--header", "Content-Type: application/octet-stream", "--input", entry.file]);
+          } else {
+            await gh(["release", "upload", tag, entry.file, "--repo", repo]);
+          }
         } catch (error) {
           httpStatus = ghFailureHttpStatus(error);
           // A failed response may still have stored the complete asset. Never clobber it.
@@ -334,7 +368,8 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   await assertTag();
   await inspect(true);
   if (wasDraft) {
-    // This must be the final mutation: no verified payload is ever replaced or deleted.
+    // No verified payload is ever replaced or deleted. A later independent
+    // channel can append its own qualified files to this immutable source tag.
     try {
       const fields = ["--method", "PATCH", "--field", "draft=false"];
       // Bind the reviewed body in the same PATCH that makes the draft public,
@@ -350,13 +385,14 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     if (release.draft) throw new Error("All assets are verified but the release is still a draft");
     await inspect(true, false);
   }
-  log(`Verified published release ${tag}: ${manifest.length} assets, source ${sha}`);
-  return { releaseId, tag, sha, assets: manifest.length, published: true, cleanedStarters };
+  log(`Verified published ${channel || "release"} ${tag}: ${manifest.length} assets, source ${sha}`);
+  return { releaseId, tag, sha, assets: manifest.length, published: true, cleanedStarters,
+    ...(incremental ? { channel, otherChannelsAssessed: false } : {}) };
 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {
-  if (argv.length !== 2 || !["true", "false"].includes(env.RELEASE_PRERELEASE)) {
-    throw new Error("Usage: node scripts/publish-qualified-release.cjs <release-root> <version>; set GH_REPO, RELEASE_TAG, RELEASE_SHA, RELEASE_PRERELEASE, RELEASE_NOTES_PATH and GH_TOKEN");
+  if (argv.length < 2 || argv.length > 3 || !["true", "false"].includes(env.RELEASE_PRERELEASE)) {
+    throw new Error("Usage: node scripts/publish-qualified-release.cjs <release-root> <version> [channel]; set GH_REPO, RELEASE_TAG, RELEASE_SHA, RELEASE_PRERELEASE, RELEASE_NOTES_PATH and GH_TOKEN");
   }
   return publishQualifiedRelease({
     repo: env.GH_REPO || env.GITHUB_REPOSITORY,
@@ -366,6 +402,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     releaseRoot: argv[0],
     version: argv[1],
     notesPath: env.RELEASE_NOTES_PATH || "release_notes.md",
+    channel: argv[2] ?? null,
   });
 }
 

@@ -240,6 +240,10 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         raise ValueError("Document must be a JSON object")
     if isinstance(document.get("workspace_path"), str):
         document = {**document, "workspace_path": plain_windows_path(document["workspace_path"])}
+    if operation in {"datasets.public_catalogue", "datasets.public_import"}:
+        from .library_public_datasets import catalogue, import_dataset
+
+        return catalogue(document) if operation == "datasets.public_catalogue" else import_dataset(document)
     if operation == "dataset.fingerprint":
         from nirs4all.api.dataset_inspection import load_dataset_for_analysis
         if set(document) != {"config"}:

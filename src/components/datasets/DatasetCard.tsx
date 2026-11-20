@@ -181,18 +181,18 @@ export function DatasetCard({
 
       {/*
         Metrics grid — fixed column widths so numbers align across cards.
-        Columns (lg+):  score (160) | samples (96) | features (80) | task (96)
+        Columns (xl+):  score (160) | samples (96) | features (80) | task (96)
         Columns (md):                samples (96) | features (80) | task (96)
       */}
       <div
         className="
           hidden md:grid items-center flex-shrink-0 gap-x-6
           md:grid-cols-[96px_80px_96px]
-          lg:grid-cols-[160px_96px_80px_96px]
+          xl:grid-cols-[160px_96px_80px_96px]
         "
       >
-        {/* Best Score (lg+ only) — always reserved, shows placeholder when absent */}
-        <div className="hidden lg:flex flex-col items-end justify-center leading-tight">
+        {/* Best Score (xl+ only) — always reserved, shows placeholder when absent */}
+        <div className="hidden xl:flex flex-col items-end justify-center leading-tight">
           {bestScore ? (
             <>
               <div className="flex items-baseline gap-1.5">

@@ -1,5 +1,5 @@
 {
-  "abi": "2.17.0",
+  "abi": "2.24.0",
   "methods": [
     {
       "method_id": "aom_pop.aom_chain_fixed_fit",
@@ -5547,6 +5547,63 @@
       ]
     },
     {
+      "method_id": "diagnostics.local_density",
+      "fq_name": "n4m.diagnostics.local_density",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "optional",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "mode",
+          "type": "enum",
+          "required": false,
+          "default": "training",
+          "min": null,
+          "max": null,
+          "choices": [
+            "training",
+            "novelty"
+          ],
+          "recorded": false
+        },
+        {
+          "name": "n_neighbors",
+          "type": "int",
+          "required": false,
+          "default": 20,
+          "min": 1,
+          "max": 2147483647,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
       "method_id": "diagnostics.model_selection",
       "fq_name": "n4m.metrics.scoring.one_se_rule",
       "kind": "procedure",
@@ -5568,6 +5625,50 @@
         "fold_ids": "none"
       },
       "params": []
+    },
+    {
+      "method_id": "diagnostics.pca_reference_qc",
+      "fq_name": "n4m.diagnostics.pca_reference_qc",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "required",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "n_components",
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "min": 1,
+          "max": 2147483647,
+          "choices": [],
+          "recorded": false
+        }
+      ]
     },
     {
       "method_id": "diagnostics.pls_diagnostics",
@@ -5751,6 +5852,271 @@
       "params": []
     },
     {
+      "method_id": "diagnostics.spectral_events_qc",
+      "fq_name": "n4m.diagnostics.spectral_events_qc",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "axis_basis",
+          "type": "enum",
+          "required": false,
+          "default": "index",
+          "min": null,
+          "max": null,
+          "choices": [
+            "index",
+            "physical"
+          ],
+          "recorded": false
+        },
+        {
+          "name": "axis_values",
+          "type": "double_array",
+          "required": false,
+          "default": [],
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "outlier_threshold",
+          "type": "double",
+          "required": false,
+          "default": 8,
+          "min": 0,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "clip_lower",
+          "type": "double",
+          "required": false,
+          "default": null,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "clip_upper",
+          "type": "double",
+          "required": false,
+          "default": null,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "clip_tolerance",
+          "type": "double",
+          "required": false,
+          "default": 0,
+          "min": 0,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
+      "method_id": "diagnostics.spectral_noise_proxy",
+      "fq_name": "n4m.diagnostics.spectral_noise_proxy",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
+      "method_id": "diagnostics.spectral_population_events_qc",
+      "fq_name": "n4m.diagnostics.spectral_population_events_qc",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "axis_basis",
+          "type": "enum",
+          "required": false,
+          "default": "index",
+          "min": null,
+          "max": null,
+          "choices": [
+            "index",
+            "physical"
+          ],
+          "recorded": false
+        },
+        {
+          "name": "axis_values",
+          "type": "double_array",
+          "required": false,
+          "default": [],
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "outlier_threshold",
+          "type": "double",
+          "required": false,
+          "default": 8,
+          "min": 0,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "min_spectra",
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "min": 3,
+          "max": 2147483647,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
+      "method_id": "diagnostics.spectral_reference_qc",
+      "fq_name": "n4m.diagnostics.spectral_reference_qc",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "optional",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "reference_mode",
+          "type": "enum",
+          "required": false,
+          "default": "dataset_mean",
+          "min": null,
+          "max": null,
+          "choices": [
+            "dataset_mean",
+            "supplied"
+          ],
+          "recorded": false
+        },
+        {
+          "name": "reference_valid_mask",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
       "method_id": "filters.correlation",
       "fq_name": "n4m.feature_selection.filter.correlation",
       "kind": "estimator",
@@ -5763,7 +6129,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -5984,7 +6351,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -6987,6 +7355,158 @@
       ]
     },
     {
+      "method_id": "models.neural.multibranch_regressor",
+      "fq_name": "n4m.estimators.neural.multibranch_regressor",
+      "kind": "estimator",
+      "roles": [
+        "transformer",
+        "regressor"
+      ],
+      "node_kinds": [
+        "model",
+        "transform"
+      ],
+      "capabilities": [
+        "transform",
+        "predict",
+        "serializable"
+      ],
+      "state_format": "multibranch_network",
+      "inputs": {
+        "y": "required",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "optional",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "branch_kinds",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 2,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "branch_shapes",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 1,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "filters",
+          "type": "int",
+          "required": false,
+          "default": 4,
+          "min": 1,
+          "max": 64,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "kernel_size",
+          "type": "int",
+          "required": false,
+          "default": 5,
+          "min": 1,
+          "max": 31,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "pool_size",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "min": 1,
+          "max": 16,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "embedding_dim",
+          "type": "int",
+          "required": false,
+          "default": 8,
+          "min": 1,
+          "max": 256,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "head_hidden",
+          "type": "int",
+          "required": false,
+          "default": 8,
+          "min": 0,
+          "max": 256,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "epochs",
+          "type": "int",
+          "required": false,
+          "default": 100,
+          "min": 0,
+          "max": 100000,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "batch_size",
+          "type": "int",
+          "required": false,
+          "default": 16,
+          "min": 1,
+          "max": 1048576,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "learning_rate",
+          "type": "double",
+          "required": false,
+          "default": 0.01,
+          "min": 0,
+          "max": 10,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "weight_decay",
+          "type": "double",
+          "required": false,
+          "default": 0.0001,
+          "min": 0,
+          "max": 10,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
       "method_id": "models.pls.cppls",
       "fq_name": "n4m.estimators.regression.latent.cppls",
       "kind": "estimator",
@@ -7122,6 +7642,90 @@
       ]
     },
     {
+      "method_id": "models.pls.opls",
+      "fq_name": "n4m.estimators.regression.latent.opls",
+      "kind": "estimator",
+      "roles": [
+        "transformer",
+        "regressor"
+      ],
+      "node_kinds": [
+        "model",
+        "transform"
+      ],
+      "capabilities": [
+        "transform",
+        "predict",
+        "serializable",
+        "affine",
+        "affine_transform"
+      ],
+      "state_format": "n4mm",
+      "inputs": {
+        "y": "required",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "n_components",
+          "type": "int",
+          "required": false,
+          "default": 2,
+          "min": 1,
+          "max": null,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "center_x",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "scale_x",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "center_y",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": true
+        },
+        {
+          "name": "scale_y",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": true
+        }
+      ]
+    },
+    {
       "method_id": "models.pls.pcr",
       "fq_name": "n4m.estimators.regression.latent.pcr",
       "kind": "estimator",
@@ -7137,7 +7741,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "state_format": "n4mm",
       "inputs": {
@@ -7220,7 +7825,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "state_format": "n4mm",
       "inputs": {
@@ -7263,7 +7869,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "state_format": "n4mm",
       "inputs": {
@@ -8114,7 +8721,8 @@
         "transform",
         "predict",
         "serializable",
-        "affine"
+        "affine",
+        "affine_transform"
       ],
       "state_format": "n4mm",
       "inputs": {
@@ -8273,7 +8881,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "coef",
       "inputs": {
@@ -8301,7 +8910,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "coef",
       "inputs": {
@@ -8546,7 +9156,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -8605,7 +9216,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -8664,7 +9276,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -8733,7 +9346,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -8812,7 +9426,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -8851,7 +9467,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -8950,7 +9567,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9009,7 +9627,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9068,7 +9687,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9186,7 +9806,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9225,7 +9846,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "width",
       "inputs": {
@@ -9274,7 +9896,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9323,7 +9947,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9392,7 +10018,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9487,7 +10115,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -9536,7 +10166,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "components",
       "inputs": {
@@ -9575,7 +10206,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "components",
       "inputs": {
@@ -9614,7 +10246,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "epo",
       "inputs": {
@@ -9653,7 +10287,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "orthogonal_components",
       "inputs": {
@@ -9702,7 +10338,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "width",
       "inputs": {
@@ -9842,7 +10479,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "width",
       "inputs": {
@@ -9881,7 +10519,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "source_axis",
       "inputs": {
@@ -10024,9 +10663,41 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "column_mean",
+      "inputs": {
+        "y": "optional",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": []
+    },
+    {
+      "method_id": "preprocessing.scaling.block_rms",
+      "fq_name": "n4m.transform.scaling.block_rms",
+      "kind": "estimator",
+      "roles": [
+        "transformer"
+      ],
+      "node_kinds": [
+        "transform"
+      ],
+      "capabilities": [
+        "transform",
+        "serializable",
+        "affine_transform",
+        "column_aligned"
+      ],
+      "state_format": "block_rms",
       "inputs": {
         "y": "optional",
         "labels": "none",
@@ -10052,7 +10723,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "offset",
       "inputs": {
@@ -10121,7 +10793,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "column_stats",
       "inputs": {
@@ -10159,6 +10833,35 @@
       ]
     },
     {
+      "method_id": "preprocessing.scaling.row_l2_normalize",
+      "fq_name": "n4m.transform.scaling.row_l2_normalize",
+      "kind": "estimator",
+      "roles": [
+        "transformer"
+      ],
+      "node_kinds": [
+        "transform"
+      ],
+      "capabilities": [
+        "transform",
+        "serializable",
+        "column_aligned"
+      ],
+      "state_format": "width",
+      "inputs": {
+        "y": "optional",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": []
+    },
+    {
       "method_id": "preprocessing.scaling.simple_scale",
       "fq_name": "n4m.transform.scaling.simple_scale",
       "kind": "estimator",
@@ -10170,7 +10873,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "column_stats",
       "inputs": {
@@ -10198,7 +10903,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "components",
       "inputs": {
@@ -10232,6 +10939,16 @@
           "max": null,
           "choices": [],
           "recorded": false
+        },
+        {
+          "name": "ddof",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "min": 0,
+          "max": null,
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10247,7 +10964,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10290,7 +11008,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "reference",
       "inputs": {
@@ -10357,7 +11076,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10420,7 +11140,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "reference",
       "inputs": {
@@ -10479,7 +11200,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "reference",
       "inputs": {
@@ -10507,7 +11229,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "reference",
       "inputs": {
@@ -10566,7 +11289,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10625,7 +11349,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10684,7 +11409,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10743,7 +11469,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "weights",
       "inputs": {
@@ -10782,7 +11509,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10841,7 +11569,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10869,7 +11599,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10908,7 +11639,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10957,7 +11689,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -10985,7 +11719,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -11044,7 +11779,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -11129,7 +11866,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "width",
       "inputs": {
@@ -11188,7 +11926,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "coef",
       "inputs": {
@@ -11237,7 +11976,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "window_coefs",
       "inputs": {
@@ -11296,7 +12036,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "coef",
       "inputs": {
@@ -11365,7 +12106,9 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform",
+        "column_aligned"
       ],
       "state_format": "coef",
       "inputs": {
@@ -11393,7 +12136,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "width",
       "inputs": {
@@ -11421,7 +12165,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "width",
       "inputs": {
@@ -11479,7 +12224,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "column_aligned"
       ],
       "state_format": "width",
       "inputs": {
@@ -11654,7 +12400,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "components",
       "inputs": {
@@ -11732,7 +12479,8 @@
       ],
       "capabilities": [
         "transform",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "components",
       "inputs": {
@@ -11811,7 +12559,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -11881,7 +12630,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -11951,7 +12701,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12021,7 +12772,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12111,7 +12863,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12270,7 +13023,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12360,7 +13114,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12460,7 +13215,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12530,7 +13286,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12650,7 +13407,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12760,7 +13518,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12830,7 +13589,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -12910,7 +13670,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13000,7 +13761,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13080,7 +13842,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13150,7 +13913,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13200,7 +13964,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13270,7 +14035,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13330,7 +14096,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13400,7 +14167,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13480,7 +14248,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13544,7 +14313,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13604,7 +14374,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13714,7 +14485,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -13774,7 +14546,8 @@
       "capabilities": [
         "transform",
         "selected_indices",
-        "serializable"
+        "serializable",
+        "affine_transform"
       ],
       "state_format": "selection",
       "inputs": {
@@ -14017,9 +14790,19 @@
           "name": "test_size",
           "type": "double",
           "required": false,
-          "default": 0.25,
+          "default": null,
           "min": 0,
           "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "n_train",
+          "type": "int",
+          "required": false,
+          "default": null,
+          "min": 0,
+          "max": null,
           "choices": [],
           "recorded": false
         }
@@ -14323,6 +15106,40 @@
       ]
     },
     {
+      "method_id": "utilities.finite_column_quantiles",
+      "fq_name": "n4m.utilities.finite_column_quantiles",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "probabilities",
+          "type": "double_array",
+          "required": true,
+          "default": null,
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
       "method_id": "utilities.hotelling_t2",
       "fq_name": "n4m.outlier_detection.hotelling_t2",
       "kind": "procedure",
@@ -14429,6 +15246,73 @@
           "min": 0,
           "max": 1,
           "choices": [],
+          "recorded": false
+        }
+      ]
+    },
+    {
+      "method_id": "utilities.ragged_summary",
+      "fq_name": "n4m.utilities.ragged_summary",
+      "kind": "procedure",
+      "roles": [
+        "generic"
+      ],
+      "node_kinds": [],
+      "capabilities": [],
+      "state_format": "",
+      "inputs": {
+        "y": "none",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "offsets",
+          "type": "int_array",
+          "required": true,
+          "default": null,
+          "min": 0,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "presence",
+          "type": "int_array",
+          "required": false,
+          "default": [],
+          "min": 0,
+          "max": 1,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "time_coordinates",
+          "type": "double_array",
+          "required": false,
+          "default": [],
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "missing_policy",
+          "type": "enum",
+          "required": false,
+          "default": "reject",
+          "min": null,
+          "max": null,
+          "choices": [
+            "reject",
+            "zero_with_indicator"
+          ],
           "recorded": false
         }
       ]

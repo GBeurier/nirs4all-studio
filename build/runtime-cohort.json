@@ -1,44 +1,52 @@
 {
   "schema": "nirs4all.studio.runtime-cohort.v1",
   "sdk": {
-    "version": "1.5.0",
-    "source_sha": "1a7c2f8ac9c75d4f80e3caeeb89b8cc44d24b0bb",
-    "wheel_sha256": "3bbcb78fc1f6992b4e91378edb36ce6bf9f03356b79321d49950196bd94ddaed",
-    "source_tree": "14eeb0c48e5dc7b16f8d420525a4f1d534b198a9",
+    "version": "1.6.1",
+    "source_sha": "fd5db4af9131f19477867650814f1090f2308d08",
+    "source_tree": "e6fc3d575275c27e2d0b82828e5c0313257ec8fe",
+    "wheel_sha256": "b331c2c2ea806afba9e7947dc9378dacee1bf1678482dac9a3325adf5543c084",
     "publication_status": "published-registry",
-    "wheel_url": "https://files.pythonhosted.org/packages/ff/ff/a583e1ce79ca2ca3a54f4d1b1d47d124ccc83cdd33cf602cfde077ae2ece/nirs4all-1.5.0-py3-none-any.whl"
+    "wheel_url": "https://files.pythonhosted.org/packages/78/55/8c66138a976ff93b0ff2cf17f9c6945a9797b43692f6ee609a8ccbd32c29/nirs4all-1.6.1-py3-none-any.whl",
+    "runtime_source_sha": "cf283f41b30ae80f0214d5feafc62ffab5c4c2a8",
+    "runtime_source_tree": "9d1b9be52c38a04a0f46e474d7f014aa1d7504b8"
   },
   "dag": {
-    "version": "0.4.3",
-    "source_sha": "d796152c148db3bb3f4398f818e1083f5e3aa816"
+    "version": "0.5.0",
+    "source_sha": "d3608565a5fe27875d4b64e54035eb8b4c05b204"
   },
   "dag_data": {
     "version": "0.2.17",
     "source_sha": "854d5bebd88e1de761283139189735c349a6226c"
   },
   "core": {
-    "version": "0.5.1",
-    "source_sha": "053704bd62b8d08f04dc6f61f744dee04e6a2387",
-    "native_version": "0.5.1",
+    "version": "0.6.1",
+    "source_sha": "d82bea70cbe5d66ac8ff46c5b66cc64c3b90498b",
+    "native_version": "0.6.1",
     "native_source_status": "published-registry",
-    "native_source_sha": "053704bd62b8d08f04dc6f61f744dee04e6a2387"
+    "native_source_sha": "d82bea70cbe5d66ac8ff46c5b66cc64c3b90498b"
   },
   "io": {
-    "version": "0.3.6",
-    "source_sha": "284f50609212456e3275567f25dc0234e58333f6"
+    "version": "0.3.8",
+    "source_sha": "ce82e0ac074b322d04a276c57cd9bf2b5f8adc91"
   },
   "formats": {
     "version": "0.2.17",
     "source_sha": "53624331210b1a6e2d797fd13c6f07363386a91e"
   },
   "methods": {
-    "version": "1.3.19",
-    "source_sha": "18dd0b5cece9da5eaac709a0451ce3e884fa1dda",
-    "source_tree": "586b0c555be350a6d5658bbd9c1d843656a2764c",
-    "abi": "2.23.0"
+    "version": "1.5.1",
+    "source_sha": "25041f88bebb21a19748799c1681e138a3d55dfb",
+    "source_tree": "78ef29128ed21c2c38655235d8de7dcbc8c5e1c3",
+    "abi": "2.24.0"
   },
   "pls4all": {
-    "version": "1.3.19",
+    "version": "1.5.1",
     "lockstep": "methods"
+  },
+  "datasets": {
+    "version": "0.3.22",
+    "source_sha": "478ece433476c400cb8652346715f50826d3e36d",
+    "publication_status": "published-registry",
+    "source_tree": "ae7aa22cabef8bf73a7878a46cb30b97bf93a3d7"
   }
 }

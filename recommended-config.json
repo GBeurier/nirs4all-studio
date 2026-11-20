@@ -1,16 +1,17 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.18.1",
-  "nirs4all": "1.5.0",
-  "_note": "Selected public SDK 1.5.0 and owner cohort with Methods 1.3.19. Registry publication alone does not establish installed-host or all-platform qualification. Existing cpu-lite exclusions and package renames remain in force.",
+  "app_version": "0.19.1",
+  "nirs4all": "1.6.1",
+  "_note": "Selected SDK 1.6.1 and owner cohort with Methods 1.5.1 and Datasets 0.3.22. Registry publication alone does not establish installed-host or all-platform qualification. Existing cpu-lite exclusions and package renames remain in force.",
   "required": [
-    { "name": "nirs4all", "range": ">=1.5.0,<1.6", "install": "1.5.0" },
-    { "name": "nirs4all-core", "range": "", "install": "0.5.1" },
-    { "name": "dag-ml", "range": "", "install": "0.4.3" },
-    { "name": "dag-ml-data", "range": "", "install": "0.2.17" },
-    { "name": "nirs4all-io", "range": ">=0.3,<0.4", "install": "0.3.6" },
-    { "name": "nirs4all-methods", "range": ">=1.3,<2", "install": "1.3.19" },
-    { "name": "pls4all", "range": ">=1.3,<2", "install": "1.3.19" }
+    { "name": "nirs4all", "range": ">=1.6.1,<1.7", "install": "1.6.1" },
+    { "name": "nirs4all-core", "range": ">=0.6,<0.7", "install": "0.6.1" },
+    { "name": "dag-ml", "range": ">=0.5,<0.6", "install": "0.5.0" },
+    { "name": "dag-ml-data", "range": ">=0.2,<0.3", "install": "0.2.17" },
+    { "name": "nirs4all-io", "range": ">=0.3,<0.4", "install": "0.3.8" },
+    { "name": "nirs4all-methods", "range": ">=1.5.1,<1.6", "install": "1.5.1" },
+    { "name": "pls4all", "range": ">=1.5.1,<1.6", "install": "1.5.1" },
+    { "name": "nirs4all-datasets", "range": ">=0.3.22,<0.4", "install": "0.3.22" }
   ],
   "profiles": {
     "cpu": {
@@ -23,8 +24,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.5.0,<1.6",
-          "recommended": "1.5.0"
+          "min": ">=1.6.1,<1.7",
+          "recommended": "1.6.1"
         },
         "torch": {
           "min": ">=2.1.0",
@@ -54,8 +55,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.5.0,<1.6",
-          "recommended": "1.5.0"
+          "min": ">=1.6.1,<1.7",
+          "recommended": "1.6.1"
         }
       },
       "exclude_optionals": [
@@ -83,8 +84,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.5.0,<1.6",
-          "recommended": "1.5.0"
+          "min": ">=1.6.1,<1.7",
+          "recommended": "1.6.1"
         },
         "torch": {
           "min": ">=2.1.0",
@@ -112,8 +113,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.5.0,<1.6",
-          "recommended": "1.5.0"
+          "min": ">=1.6.1,<1.7",
+          "recommended": "1.6.1"
         },
         "torch": {
           "min": ">=2.1.0",

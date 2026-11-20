@@ -151,7 +151,15 @@ Rules:
 The `.sha256` sidecar published next to the selected asset is required. It is
 downloaded and bound to that exact asset name; its digest is reported as
 `checksum_sha256`. A release whose selected asset has no sidecar fails the
-check.
+check. Both the installer and its checksum must have GitHub asset state
+`uploaded`; an incomplete upload (`starter`) or missing state fails the check
+before any download link is offered. During independent platform delivery, a
+release published for another platform can therefore remain unavailable for
+this installation until its standard installer and checksum are complete.
+Independent channel publication verifies the installer payload before uploading
+its checksum. This also protects older Studio clients that do not inspect the
+GitHub asset state: they cannot discover a usable checksum before the installer
+is available.
 
 ## API Reference
 
