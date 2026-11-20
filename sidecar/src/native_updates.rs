@@ -740,6 +740,9 @@ mod tests {
         assert_eq!(strictly_newer("1.0.1", "1.0.0"), Ok(true));
         assert_eq!(strictly_newer("1.0.0", "1.0.0"), Ok(false));
         assert_eq!(strictly_newer("0.9.9", "1.0.0"), Ok(false));
+        assert_eq!(strictly_newer("0.19.1", "0.18.1"), Ok(true));
+        assert_eq!(strictly_newer("0.19.1", "0.19.0"), Ok(true));
+        assert_eq!(strictly_newer("0.19.0", "0.19.0"), Ok(false));
         assert!(strictly_newer("latest", "1.0.0").is_err());
     }
 
@@ -764,20 +767,20 @@ mod tests {
     #[test]
     fn a_partial_release_cannot_offer_an_undelivered_windows_standard_installer() {
         let mut assets = named(&[
-            "nirs4all.Studio-0.16.0-linux-amd64.deb",
-            "nirs4all.Studio-0.16.0-linux-amd64.deb.sha256",
-            "nirs4all.Studio-0.16.0-win-x64-offline.exe",
-            "nirs4all.Studio-0.16.0-win-x64-offline.exe.sha256",
+            "nirs4all.Studio-0.19.1-linux-amd64.deb",
+            "nirs4all.Studio-0.19.1-linux-amd64.deb.sha256",
+            "nirs4all.Studio-0.19.1-win-x64-offline.exe",
+            "nirs4all.Studio-0.19.1-win-x64-offline.exe.sha256",
         ]);
         assert!(select_installer_asset(&assets, "windows", "x86_64").is_none());
         assert!(select_installer_asset(&assets, "linux", "x86_64").is_some());
         assets.extend(named(&[
-            "nirs4all.Studio-0.16.0-win-x64.exe.sha256",
-            "nirs4all.Studio-0.16.0-win-x64.exe",
+            "nirs4all.Studio-0.19.1-win-x64.exe.sha256",
+            "nirs4all.Studio-0.19.1-win-x64.exe",
         ]));
         assert_eq!(
             select_installer_asset(&assets, "windows", "x86_64").unwrap()["name"],
-            "nirs4all.Studio-0.16.0-win-x64.exe"
+            "nirs4all.Studio-0.19.1-win-x64.exe"
         );
     }
 
@@ -955,11 +958,11 @@ mod tests {
         let digest = "ab".repeat(32);
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let installer = host_installer_name("2.0.0");
+        let installer = host_installer_name("0.19.1");
         let (stem, extension) = installer.rsplit_once('.').unwrap();
         let offline = format!("{stem}-offline.{extension}");
         let asset = |name: &str, size: u64| json!({"name": name, "state": "uploaded", "browser_download_url": format!("{base}/{name}"), "size": size});
-        let body = json!({"tag_name": "2.0.0", "prerelease": false, "assets": [
+        let body = json!({"tag_name": "0.19.1", "prerelease": false, "assets": [
             asset(&offline, 900),
             asset(&format!("{offline}.sha256"), 80),
             asset(&installer, 300),
@@ -988,10 +991,11 @@ mod tests {
                 stream.write_all(payload).unwrap();
             }
         });
-        let updater = updater("1.0.0", &base);
+        let updater = updater("0.19.0", &base);
         let first = updater.status_json(true).unwrap();
         let webapp = &first["webapp"];
-        assert_eq!(webapp["latest_version"], "2.0.0");
+        assert_eq!(webapp["current_version"], "0.19.0");
+        assert_eq!(webapp["latest_version"], "0.19.1");
         assert_eq!(webapp["update_available"], true);
         assert_eq!(webapp["asset_name"], installer);
         assert_eq!(webapp["installer_asset_name"], installer);
