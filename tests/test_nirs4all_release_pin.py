@@ -133,7 +133,7 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         assert package["min"] == nirs4all["range"]
 
 
-def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime() -> None:
+def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime(tmp_path: Path) -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
     parsed = yaml.safe_load(workflow)
 
@@ -145,10 +145,22 @@ def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime
         "node scripts/build-wheelhouse.cjs",
         "node scripts/studio-document-adapters.cjs --install backend-dist/adapters",
     ]
+    matrix_output = tmp_path / "delivery-matrix"
+    matrix = subprocess.run(
+        ["node", str(ROOT / "scripts/release-delivery-matrix.cjs")],
+        env=dict(os.environ) | {"GITHUB_OUTPUT": str(matrix_output), "SELECTED_CHANNEL": "all", "MACOS_ONLY": "false", "SKIP_DOCKER": "false"},
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    assert matrix.returncode == 0, matrix.stderr
+    outputs = dict(line.split("=", 1) for line in matrix_output.read_text().splitlines())
+    assert outputs["delivery_channel"] == "all"
     for name in ["installer-linux", "installer-windows"]:
         job = parsed["jobs"][name]
-        assert job["needs"] == "prepare"
-        assert [leg["variant"] for leg in job["strategy"]["matrix"]["include"]] == ["standard", "offline"]
+        assert job["needs"] == ["prepare", "quality", "release-draft"]
+        platform = name.removeprefix("installer-")
+        assert job["strategy"]["matrix"] == "${{ fromJSON(needs.prepare.outputs." + platform + "_matrix) }}"
+        assert job["strategy"]["fail-fast"] is False
+        assert [leg["variant"] for leg in json.loads(outputs[f"{platform}_matrix"])["include"]] == ["standard", "offline"]
         staged = next(step["run"] for step in job["steps"] if step.get("name") == "Stage uv, required wheels and document adapters")
         assert staged.splitlines() == staging
         offline = next(step for step in job["steps"] if step.get("name") == "Stage offline payload")
@@ -221,9 +233,36 @@ def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None
 def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
+    jobs = workflow["jobs"]
+    assert jobs["prepare"]["outputs"]["is_tag_release"] == (
+        "${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_existing_tag == true) }}"
+    )
+    assert jobs["quality"]["with"]["delivery_source_only"] is True
+    assert jobs["release-draft"]["needs"] == ["prepare", "quality"]
+    assert "needs.prepare.outputs.is_tag_release == 'true'" in jobs["release-draft"]["if"]
+    assert "needs.quality.result == 'success'" in jobs["release-draft"]["if"]
+    assert "needs.prepare.outputs.delivery_channel != 'docker'" in jobs["release-draft"]["if"]
+    publication_guard = "success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'"
+    for name in ["installer-linux", "installer-windows", "installer-macos-arm64"]:
+        job = jobs[name]
+        assert job["needs"] == ["prepare", "quality", "release-draft"]
+        assert "needs.quality.result == 'success' && needs.release-draft.result == 'success'" in job["if"]
+        assert "needs.installer-" not in job["if"] and "needs.docker" not in job["if"]
+        publication = next(step for step in job["steps"] if step.get("name") == "Publish this qualified installer channel")
+        assert publication["if"] == publication_guard
+        assert publication["uses"] == "./.github/actions/publish-installer-channel"
+        channel = "macos-arm64" if name == "installer-macos-arm64" else name.removeprefix("installer-") + "-${{ matrix.variant }}"
+        assert publication["with"]["channel"] == channel
+        assert publication["with"]["version"] == "${{ needs.prepare.outputs.version }}"
+        assert publication["with"]["tag"] == "${{ needs.prepare.outputs.tag }}"
+        assert publication["with"]["source_sha"] == "${{ needs.prepare.outputs.checkout_ref }}"
+    docker = jobs["docker"]
+    assert docker["needs"] == ["prepare", "quality"]
+    assert "needs.prepare.outputs.skip_docker != 'true'" in docker["if"]
+    assert "needs.installer-" not in docker["if"]
     for step_name in ["Login to GitHub Container Registry", "Publish the tested Docker image"]:
-        step = next(step for step in workflow["jobs"]["release"]["steps"] if step.get("name") == step_name)
-        assert step["if"] == "needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'"
+        step = next(step for step in docker["steps"] if step.get("name") == step_name)
+        assert step["if"] == publication_guard
 
 
 def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() -> None:
@@ -231,14 +270,14 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
 
     installers = {name: job for name, job in workflow["jobs"].items() if name.startswith("installer-")}
     assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-arm64"}
-    release = workflow["jobs"]["release"]
     for name, job in installers.items():
-        assert name in release["needs"]
-        assert f"needs.{name}.result == 'success'" in release["if"]
+        assert job["needs"] == ["prepare", "quality", "release-draft"]
         steps = job["steps"]
         qualification = next(i for i, step in enumerate(steps) if "scripts/smoke-archive-standalone.cjs" in step.get("run", ""))
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
-        assert qualification < upload
+        publication = next(i for i, step in enumerate(steps) if step.get("name") == "Publish this qualified installer channel")
+        assert qualification < upload < publication
+        assert steps[publication]["if"] == "success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'"
         qualifier = steps[qualification]["run"]
         assert "scripts/smoke-packaged-ui.cjs" in qualifier
         assert "--installer" in qualifier
@@ -252,7 +291,10 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
             assert "$($_.Name)" in checksum
         else:
             assert checksum.startswith("cd release\n")
-    # The existing finalizer verifies producer hashes and rewrites sidecars to
-    # the exact public asset basename (GitHub normalizes spaces to dots).
-    preparation = next(step for step in release["steps"] if step.get("name") == "Prepare release assets")
-    assert "scripts/finalize-release-assets.cjs" in preparation["run"]
+    # Each channel stages its own installer/checksum pair, then publishes that
+    # qualified directory. Its owner script tests cover basename/hash checks.
+    action = yaml.safe_load((ROOT / ".github/actions/publish-installer-channel/action.yml").read_text())
+    staging, publication = action["runs"]["steps"]
+    assert staging["run"] == "node scripts/stage-release-channel.cjs release qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'"
+    assert publication["run"] == "node scripts/publish-qualified-release.cjs qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'"
+    assert staging["env"]["RELEASE_SHA"] == publication["env"]["RELEASE_SHA"] == "${{ inputs.source_sha }}"
