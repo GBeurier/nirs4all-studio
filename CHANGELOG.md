@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.19.2] - 2026-11-20
+
+### Fixed
+
+- Wait within the existing two-second read budget for the first atomic workspace
+  schema commit before publishing a read-only snapshot. Exact schema validation
+  still refuses incompatible or persistently uninitialized stores. The reproduced
+  race is consistent with the transient HTTP 409 captured during the macOS
+  0.19.1 first-launch smoke; that failed installer was not published.
+
+
 ## [0.19.1] — 2026-11-20
 
 ### Added
