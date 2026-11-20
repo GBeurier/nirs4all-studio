@@ -12,6 +12,7 @@ use std::{
     error::Error,
     fmt, fs,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row, TransactionBehavior};
@@ -1787,6 +1788,7 @@ pub(crate) fn workspace_store_path(workspace_path: &Path) -> Option<PathBuf> {
 /// A fresh `SQLite` transaction sees committed WAL data and remains consistent
 /// across every query composing a response. It is closed at request completion.
 pub(crate) fn open_read_snapshot(workspace: &Path) -> Result<Connection, WorkspaceStoreReadError> {
+    let deadline = Instant::now() + Duration::from_secs(2);
     let database = canonical_workspace_store_path(workspace)?;
     let connection = Connection::open_with_flags(
         read_only_uri(&database)?,
@@ -1796,11 +1798,38 @@ pub(crate) fn open_read_snapshot(workspace: &Path) -> Result<Connection, Workspa
     )
     .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
     connection
-        .busy_timeout(std::time::Duration::from_secs(2))
+        .execute_batch("PRAGMA query_only=ON")
         .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
-    connection
-        .execute_batch("PRAGMA query_only=ON; BEGIN")
-        .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    loop {
+        connection
+            .busy_timeout(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+        connection
+            .execute_batch("BEGIN")
+            .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+        let version = connection
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+        let initializing = version == 0
+            && connection
+                .query_row(
+                    "SELECT NOT EXISTS (SELECT 1 FROM sqlite_master)",
+                    [],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if !initializing || remaining.is_zero() {
+            break;
+        }
+        // A new file is visible before the owner's atomic initial DDL commits.
+        // Release only this empty-v0 snapshot so the next attempt can see that
+        // commit. Existing schemas remain subject to exact-version validation.
+        connection
+            .execute_batch("ROLLBACK")
+            .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+        std::thread::sleep(remaining.min(Duration::from_millis(5)));
+    }
     Ok(connection)
 }
 
@@ -3236,6 +3265,128 @@ mod tests {
         drop(first);
         drop(writer);
         fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn first_wal_schema_commit_precedes_the_published_read_snapshot() {
+        use std::sync::mpsc::{channel, RecvTimeoutError};
+        use std::time::Duration;
+
+        let seed = fixture_workspace("workspace-store-initial-schema-source");
+        let source = Connection::open(seed.join("store.sqlite")).unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let writer = Connection::open(workspace.path().join("store.sqlite")).unwrap();
+        writer
+            .execute_batch("PRAGMA journal_mode=WAL; BEGIN IMMEDIATE")
+            .unwrap();
+        writer
+            .execute(
+                "ATTACH DATABASE ?1 AS seed",
+                [seed.join("store.sqlite").to_str().unwrap()],
+            )
+            .unwrap();
+        // Use the real Python-written fixture schema and rows. Both the DDL
+        // and version stamp remain uncommitted while the reader starts.
+        for table in ["runs", "pipelines"] {
+            let ddl: String = source
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            writer.execute_batch(&ddl).unwrap();
+            writer
+                .execute_batch(&format!(
+                    "INSERT INTO main.{table} SELECT * FROM seed.{table}"
+                ))
+                .unwrap();
+        }
+        writer.execute_batch("PRAGMA user_version=5").unwrap();
+        let (sender, receiver) = channel();
+        let reader_workspace = workspace.path().to_path_buf();
+        let reader = std::thread::spawn(move || {
+            let snapshot = super::open_read_snapshot(&reader_workspace).unwrap();
+            let rows = super::read_run_summaries_from_connection(
+                &snapshot,
+                DEFAULT_RUN_SUMMARIES_LIMIT,
+                0,
+            );
+            sender.send((snapshot, rows)).unwrap();
+        });
+        let early = receiver.recv_timeout(Duration::from_millis(40));
+        let waited_for_commit = matches!(&early, Err(RecvTimeoutError::Timeout));
+        writer.execute_batch("COMMIT").unwrap();
+        let (snapshot, rows) =
+            early.unwrap_or_else(|_| receiver.recv_timeout(Duration::from_secs(2)).unwrap());
+        reader.join().unwrap();
+        assert!(
+            waited_for_commit,
+            "reader exposed an uninitialized snapshot: {rows:?}"
+        );
+        let rows = rows.unwrap();
+        assert_eq!(rows.len(), 1);
+        let initial_name = rows[0].response()["name"].clone();
+        writer
+            .execute("UPDATE runs SET name='next committed result'", [])
+            .unwrap();
+        let held =
+            super::read_run_summaries_from_connection(&snapshot, DEFAULT_RUN_SUMMARIES_LIMIT, 0)
+                .unwrap();
+        assert_eq!(held[0].response()["name"], initial_name);
+        let fresh = read_run_summaries(workspace.path(), DEFAULT_RUN_SUMMARIES_LIMIT, 0).unwrap();
+        assert_eq!(fresh[0].response()["name"], "next committed result");
+        assert!(snapshot
+            .execute("CREATE TABLE forbidden_write (id INTEGER)", [])
+            .is_err());
+        drop(snapshot);
+        drop(writer);
+        drop(source);
+        fs::remove_dir_all(seed).unwrap();
+    }
+
+    #[test]
+    fn an_empty_uninitialized_wal_store_still_refuses_schema_zero() {
+        let workspace = tempfile::tempdir().unwrap();
+        let database = workspace.path().join("store.sqlite");
+        let writer = Connection::open(&database).unwrap();
+        writer.execute_batch("PRAGMA journal_mode=WAL").unwrap();
+        let before = fs::read(&database).unwrap();
+        assert!(matches!(
+            read_run_summaries(workspace.path(), DEFAULT_RUN_SUMMARIES_LIMIT, 0),
+            Err(WorkspaceStoreReadError::SchemaVersion {
+                expected: 5,
+                actual: 0
+            })
+        ));
+        assert_eq!(fs::read(&database).unwrap(), before);
+        assert_eq!(
+            writer
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn nonempty_zero_and_future_schemas_remain_incompatible() {
+        for version in [0, 6] {
+            let workspace = fixture_workspace("workspace-store-incompatible-initialization");
+            let writer = Connection::open(workspace.join("store.sqlite")).unwrap();
+            writer.pragma_update(None, "user_version", version).unwrap();
+            assert!(matches!(
+                read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
+                Err(WorkspaceStoreReadError::SchemaVersion { expected: 5, actual }) if actual == version
+            ));
+            assert_eq!(
+                writer
+                    .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                version
+            );
+            drop(writer);
+            fs::remove_dir_all(workspace).unwrap();
+        }
     }
 
     #[cfg(unix)]
