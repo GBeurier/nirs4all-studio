@@ -15,6 +15,7 @@ const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.
 const { verifyRuntimeCohort } = require('./verify-runtime-cohort.cjs');
 const { withOwnedProfile, bootstrapOwnedWorkspace, assertOwnedWorkspace } = require('./smoke-owned-profile.cjs');
 const { shapJourney } = require('./smoke-shap-journey.cjs');
+const { publicDatasetJourney } = require('./smoke-public-dataset-journey.cjs');
 
 // The journey explains a model and renders its figures: neither package is installed by default.
 const JOURNEY_PACKAGES = ['shap', 'matplotlib'];
@@ -42,7 +43,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const args = [...rest.slice(0, installerIndex), ...rest.slice(installerIndex + 2)];
   const config = archive.assertValidConfig(archive.parseArgs(args));
   const proof = { schema: 'nirs4all.studio.packaged-ui-smoke.v1', success: false,
-    scope: 'unpacked-build-application-created-environment-renderer-readiness-training-shap', full_local_qualification: false,
+    scope: 'unpacked-build-application-created-environment-renderer-readiness-training-shap-public-dataset', full_local_qualification: false,
     installed_cycle: false,
     platform: config.platform, arch: process.arch, source_sha: env.RELEASE_SOURCE_SHA,
     performance_policy: resolvePerformancePolicy(env), timings: [] };
@@ -73,7 +74,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       await ui.main({ config, sandboxRoot: profile, consent: 'decline', extraPackages: JOURNEY_PACKAGES, timings: proof.timings,
         performancePolicy: proof.performance_policy,
         inspectProfile: async ({ env: actualEnv }) => assertOwnedWorkspace(actualEnv, sandbox),
-        journeys: async context => shapJourney(context, proof, await assertOwnedWorkspace(context.env, sandbox)) });
+        journeys: async context => {
+          const workspace = await assertOwnedWorkspace(context.env, sandbox);
+          await shapJourney(context, proof, workspace);
+          await publicDatasetJourney(context, proof, workspace);
+        } });
     });
     proof.success = true;
     return proof;
