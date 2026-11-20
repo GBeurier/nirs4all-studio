@@ -423,8 +423,8 @@ fn failed_or_escaping_imports_leave_no_link_and_no_stage() {
         );
         let job = wait_terminal(&jobs, body(&response)["job_id"].as_str().unwrap());
         assert_eq!(job.status, JobStatus::Failed);
-        assert!(linked(&settings).is_empty());
-        assert!(import_dirs(&workspace).is_empty());
+        assert_eq!(linked(&settings), Vec::<serde_json::Value>::new());
+        assert_eq!(import_dirs(&workspace), Vec::<std::path::PathBuf>::new());
     }
     assert!(outside.is_file());
 }
@@ -458,8 +458,8 @@ fn symlinked_library_output_is_refused() {
     );
     let job = wait_terminal(&jobs, body(&response)["job_id"].as_str().unwrap());
     assert_eq!(job.status, JobStatus::Failed);
-    assert!(linked(&settings).is_empty());
-    assert!(import_dirs(&workspace).is_empty());
+    assert_eq!(linked(&settings), Vec::<serde_json::Value>::new());
+    assert_eq!(import_dirs(&workspace), Vec::<std::path::PathBuf>::new());
 }
 
 #[test]
@@ -509,8 +509,8 @@ fn cancellation_during_acquisition_is_acknowledged_without_a_dataset() {
     assert_eq!(cancel.status, 200, "{}", cancel.body);
     assert_eq!(body(&cancel)["cancellation_requested"], true);
     assert_eq!(wait_terminal(&jobs, &id).status, JobStatus::Cancelled);
-    assert!(linked(&settings).is_empty());
-    assert!(import_dirs(&workspace).is_empty());
+    assert_eq!(linked(&settings), Vec::<serde_json::Value>::new());
+    assert_eq!(import_dirs(&workspace), Vec::<std::path::PathBuf>::new());
 }
 
 #[test]
