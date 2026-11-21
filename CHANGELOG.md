@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.19.3] - 2026-11-21
+
+### Fixed
+
+- Show scientific runs with their wall-clock duration and keep model variants
+  grouped under the run. Open a variant to inspect its parameters.
+- Show refit predictions and cross-validation folds in Results and Predictions,
+  rank models by validation score, and distinguish predictions with missing
+  reference targets from scored predictions.
+- Run the NICON preset with supported training controls.
+- Export fitted model bundles in the .n4a format from a run.
+
 ## [0.19.2] - 2026-11-20
 
 ### Fixed
