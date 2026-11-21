@@ -46,6 +46,8 @@ export default function VariableImportance() {
   const [modelRef, setModelRef] = useState<ShapExplicitModelRef | null>(null);
   const [datasetName, setDatasetName] = useState<string | null>(() => persistedSession?.datasetName ?? null);
   const [datasetId, setDatasetId] = useState<string | null>(null);
+  const [manualDataset, setManualDataset] = useState<{ modelId: string; datasetId: string } | null>(null);
+  const analysisDatasetId = datasetId ?? (manualDataset?.modelId === chainId ? manualDataset?.datasetId ?? null : null);
   const [partition, setPartition] = useState<Partition>(() => persistedSession?.partition ?? 'test');
 
   // Configuration state
@@ -111,22 +113,28 @@ export default function VariableImportance() {
     newModelRef: ShapExplicitModelRef | null = null,
     newDatasetId: string | null = null,
   ) => {
-    // Metadata subsets name columns and values of one dataset: drop them when
-    // another dataset is selected (a restored selection keeps its dataset name).
-    if (datasetName !== null && newDatasetName !== datasetName) {
+    if (newChainId !== chainId) setManualDataset(null);
+    // Metadata subsets refer to the selected analysis data.
+    if ((datasetName !== null && newDatasetName !== datasetName)
+        || (newChainId !== chainId && newDatasetId !== analysisDatasetId)) {
       setOptions((current) => ({ ...current, subsets: DEFAULT_SHAP_SUBSETS }));
     }
     setChainId(newChainId);
     setModelRef(newModelRef);
     setDatasetName(newDatasetName);
     setDatasetId(newDatasetId);
-  }, [datasetName]);
+  }, [analysisDatasetId, chainId, datasetName]);
+
+  const handleDatasetSelect = useCallback((selected: string) => {
+    setManualDataset(chainId && selected ? { modelId: chainId, datasetId: selected } : null);
+    setOptions((current) => ({ ...current, subsets: DEFAULT_SHAP_SUBSETS }));
+  }, [chainId]);
 
   const handleRunAnalysis = useCallback(async () => {
-    await runAnalysis({ chainId, modelRef, datasetId, partition, options: effectiveOptions });
-  }, [chainId, datasetId, modelRef, effectiveOptions, partition, runAnalysis]);
+    await runAnalysis({ chainId, modelRef, datasetId: analysisDatasetId, partition, options: effectiveOptions });
+  }, [chainId, analysisDatasetId, modelRef, effectiveOptions, partition, runAnalysis]);
 
-  const canRun = Boolean(chainId && datasetId && !isRunning);
+  const canRun = Boolean(modelRef && analysisDatasetId && !isRunning);
 
   return (
     <MlLoadingOverlay>
@@ -143,7 +151,9 @@ export default function VariableImportance() {
       >
         <VariableImportanceSidebar
           chainId={chainId}
-          datasetId={datasetId}
+          datasetId={analysisDatasetId}
+          needsDatasetSelection={Boolean(modelRef && !datasetId)}
+          onDatasetSelect={handleDatasetSelect}
           onChainSelect={handleChainSelect}
           partition={partition}
           onPartitionChange={setPartition}
