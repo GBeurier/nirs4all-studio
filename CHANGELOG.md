@@ -19,6 +19,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 - Run the NICON preset with supported training controls.
 - Explain when the active workspace folder is unavailable in the pipeline editor
   and library. Label draft and preset actions as Open.
+- Create the durable job directory when the first experiment starts in an
+  existing workspace that does not have one.
 - Export fitted model bundles in the .n4a format from a run.
 
 ## [0.19.2] - 2026-11-20
