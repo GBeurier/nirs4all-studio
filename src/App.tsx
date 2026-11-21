@@ -5,7 +5,6 @@ import { NirsSplashLoader } from "@/components/layout/NirsSplashLoader";
 import { useMlReadiness } from "@/context/useMlReadiness";
 import { TelemetryConsentDialog } from "@/components/privacy/TelemetryConsentDialog";
 import { TRANSFER_ENABLED } from "@/lib/featureFlags";
-import { useShapAvailable } from "@/hooks/useBackendCapabilities";
 import { LoadingState } from "@/components/ui/state-display";
 
 // Every page is split per route so the entry chunk only carries the shell.
@@ -106,15 +105,6 @@ function BackendConnectingScreen() {
   );
 }
 
-/**
- * `/lab/shapley` requires `shap` in the backend (absent in lite builds).
- * Mirrors the Transfer route guard: redirect to /lab when unavailable.
- */
-function ShapleyRoute() {
-  const shapAvailable = useShapAvailable();
-  return shapAvailable ? <VariableImportance /> : <Navigate to="/lab" replace />;
-}
-
 /** Keeps the sidebar/layout mounted while a lazily loaded page chunk is fetched. */
 function PageSuspense() {
   return (
@@ -172,7 +162,7 @@ function App() {
               <Route index element={<Navigate to="/lab/synthesis" replace />} />
               <Route path="synthesis" element={<SpectraSynthesis />} />
               <Route path="transfer" element={TRANSFER_ENABLED ? <TransferAnalysis /> : <Navigate to="/lab" replace />} />
-              <Route path="shapley" element={<ShapleyRoute />} />
+              <Route path="shapley" element={<VariableImportance />} />
             </Route>
             <Route path="settings" element={<Settings />} />
             <Route path="setup" element={<SetupWizard />} />

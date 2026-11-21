@@ -45,6 +45,7 @@ interface VariableImportanceFormProps {
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
   options: ShapAnalysisOptions;
+  pythonShapAvailable: boolean;
   onOptionsChange: (options: ShapAnalysisOptions) => void;
 }
 
@@ -149,6 +150,7 @@ export function VariableImportanceForm({
   partition,
   onPartitionChange,
   options,
+  pythonShapAvailable,
   onOptionsChange,
 }: VariableImportanceFormProps) {
   const { t } = useTranslation();
@@ -206,7 +208,13 @@ export function VariableImportanceForm({
         value={options.engine}
         options={SHAP_ENGINE_OPTIONS}
         onChange={(value) => update({ engine: value as ShapAnalysisOptions['engine'] })}
+        disabled={(value) => value === 'python' && !pythonShapAvailable}
       />
+      {!pythonShapAvailable && (
+        <p className="text-xs text-muted-foreground">
+          <Link to="/settings?tab=python" className="underline">{t('shap.form.installPython')}</Link>
+        </p>
+      )}
 
       <OptionSelect
         label={t('shap.form.explainerType')}

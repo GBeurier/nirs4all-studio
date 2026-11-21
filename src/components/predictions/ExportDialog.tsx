@@ -40,6 +40,7 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
   const { t } = useTranslation();
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const [useN4a, setUseN4a] = useState(false);
 
   useEffect(() => {
     if (open) setExportSelection(new Set(datasets));
@@ -61,13 +62,13 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
 
     setIsExporting(true);
     try {
-      const format = datasetNames.length === 1 ? "parquet" : "zip";
+      const format = useN4a ? "n4a" : datasetNames.length === 1 ? "parquet" : "zip";
       const blob = await exportAggregatedPredictions({ dataset_names: datasetNames, format });
       downloadBlob(
         blob,
         format === "parquet"
           ? `${datasetNames[0]}.parquet`
-          : `predictions_export_${new Date().toISOString().slice(0, 10)}.zip`,
+          : `predictions_export_${new Date().toISOString().slice(0, 10)}.${format}`,
       );
       toast.success(t("predictions.export.ready"));
       onOpenChange(false);
@@ -85,6 +86,18 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
           <DialogTitle>{t("predictions.export.title")}</DialogTitle>
           <DialogDescription>{t("predictions.export.description")}</DialogDescription>
         </DialogHeader>
+        <label className="flex flex-wrap items-center gap-2 text-sm">
+          {t("predictions.export.format")}
+          <select
+            value={useN4a ? "n4a" : "parquet"}
+            onChange={(event) => setUseN4a(event.target.value === "n4a")}
+            disabled={isExporting}
+            className="rounded-md border border-input bg-background px-2 py-1"
+          >
+            <option value="parquet">{t("predictions.export.parquet")}</option>
+            <option value="n4a">.n4a</option>
+          </select>
+        </label>
         <div className="space-y-2 max-h-60 overflow-auto">
           {datasets.map(datasetName => (
             <label key={datasetName} className="flex items-center gap-2 text-sm">

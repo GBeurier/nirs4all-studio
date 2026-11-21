@@ -8222,7 +8222,9 @@ notFound: {
     },
     export: {
       title: "Export Predictions",
-      description: "Select datasets to export (.parquet or .zip).",
+      description: "Select the datasets and file format to export.",
+      format: "File format",
+      parquet: "Parquet (ZIP for multiple datasets)",
       selectAtLeastOne: "Select at least one dataset",
       ready: "Export ready",
       failed: "Export failed",
@@ -9279,6 +9281,7 @@ transferAnalysis: {
       binStride: "Bin Stride",
       aggregation: "Aggregation",
       engine: "SHAP engine",
+      installPython: "Install Python SHAP",
       engineHelp: "Python SHAP uses the shap package. Native SHAP uses the nirs4all-methods kernels shared with nirs4all Web, with more explainers and settings.",
       engines: {
         python: "Python SHAP (shap package)",

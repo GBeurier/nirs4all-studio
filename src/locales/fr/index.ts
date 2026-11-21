@@ -8222,7 +8222,9 @@ notFound: {
     },
     export: {
       title: "Exporter les prédictions",
-      description: "Sélectionnez les jeux de données à exporter (.parquet ou .zip).",
+      description: "Sélectionnez les jeux de données et le format de fichier.",
+      format: "Format de fichier",
+      parquet: "Parquet (ZIP pour plusieurs jeux de données)",
       selectAtLeastOne: "Sélectionnez au moins un jeu de données",
       ready: "Export prêt",
       failed: "Échec de l'export",
@@ -9279,6 +9281,7 @@ transferAnalysis: {
       binStride: "Pas de bin",
       aggregation: "Agrégation",
       engine: "Moteur SHAP",
+      installPython: "Installer SHAP Python",
       engineHelp: "SHAP Python utilise le package shap. SHAP natif utilise les noyaux nirs4all-methods partagés avec nirs4all Web, avec davantage d'explicateurs et de réglages.",
       engines: {
         python: "SHAP Python (package shap)",
