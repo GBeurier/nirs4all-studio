@@ -171,8 +171,8 @@ pub fn read_execution_job_record(
 ///
 /// # Errors
 ///
-/// Rejects missing/non-directory workspace roots and runs directories,
-/// symlinks, escapes, malformed identifiers, and an already occupied job path.
+/// Rejects missing or invalid workspace roots, unsafe directories, malformed
+/// identifiers, and occupied job paths. A missing runs directory is valid.
 pub fn preflight_execution_job_record_write(
     workspace_path: &Path,
     job_id: &str,
@@ -182,7 +182,11 @@ pub fn preflight_execution_job_record_write(
         return Err(ExecutionJobRecordWriteError::InvalidIdentifier);
     }
     let runs = workspace.join("runs");
-    safe_existing_directory(&runs, &workspace)?;
+    match safe_existing_directory(&runs, &workspace) {
+        Ok(()) => {}
+        Err(ExecutionJobRecordWriteError::WorkspaceUnavailable) => return Ok(workspace),
+        Err(error) => return Err(error),
+    }
     let job_directory = runs.join(job_id);
     match fs::symlink_metadata(&job_directory) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
@@ -216,7 +220,18 @@ pub fn write_execution_job_record(
     }
     normalize_record(record, job_id).map_err(|_| ExecutionJobRecordWriteError::InvalidShape)?;
     let runs = workspace.join("runs");
-    safe_existing_directory(&runs, &workspace)?;
+    if let Err(error) = safe_existing_directory(&runs, &workspace) {
+        if error != ExecutionJobRecordWriteError::WorkspaceUnavailable {
+            return Err(error);
+        }
+        // Older linked workspaces may have a Store but no Studio job directory.
+        match fs::create_dir(&runs) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(_) => return Err(ExecutionJobRecordWriteError::Write),
+        }
+        safe_existing_directory(&runs, &workspace)?;
+    }
     let job_directory = runs.join(job_id);
     match fs::symlink_metadata(&job_directory) {
         Ok(metadata) => {
@@ -578,11 +593,11 @@ mod tests {
     #[test]
     fn atomically_writes_a_reader_compatible_record() {
         let root = workspace();
-        fs::create_dir(root.join("runs")).unwrap();
         assert_eq!(
             preflight_execution_job_record_write(&root, "job-1").unwrap(),
             root.canonicalize().unwrap()
         );
+        assert!(!root.join("runs").exists());
         let expected = record("job-1");
         write_execution_job_record(&root, "job-1", &expected).unwrap();
         let actual = read_execution_job_record(&root, "job-1").unwrap();

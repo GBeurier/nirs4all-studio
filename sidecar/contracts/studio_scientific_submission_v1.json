@@ -58,6 +58,7 @@
     "active_linked_workspace": "required",
     "existing_directory": "required",
     "runs_directory": "required",
+    "runs_directory_initialization": "created_if_missing_during_first_durable_write",
     "symlink_or_escape": "reject"
   },
   "accepted_submission": {

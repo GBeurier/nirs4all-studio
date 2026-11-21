@@ -717,7 +717,8 @@ async function verifyRunLaunch(port, sessionToken) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-run-smoke-"));
   try {
     const workspace = path.join(root, "workspace");
-    await request("/workspace/create", { path: workspace, name: "Run smoke", create_dir: true });
+    // An existing linked workspace may not have the Studio runs directory yet.
+    fs.mkdirSync(workspace);
     await request("/workspace/select", { path: workspace });
     const data = path.join(root, "data");
     fs.mkdirSync(data);
@@ -761,7 +762,13 @@ async function verifyRunLaunch(port, sessionToken) {
     const deadline = Date.now() + 180000;
     for (;;) {
       const job = await request(`/training/${encodeURIComponent(submitted.job_id)}`);
-      if (job.status === "completed") return;
+      if (job.status === "completed") {
+        const receipt = path.join(workspace, "runs", submitted.job_id, "execution_job_record.json");
+        if (JSON.parse(fs.readFileSync(receipt, "utf8")).status !== "completed") {
+          throw new Error("Run smoke did not persist its completion receipt");
+        }
+        return;
+      }
       if (["failed", "error", "cancelled"].includes(job.status) || Date.now() > deadline) {
         throw new Error(`Run smoke did not complete: ${JSON.stringify(job).slice(0, 4000)}`);
       }
