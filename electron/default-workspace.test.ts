@@ -7,7 +7,7 @@ describe("desktop first workspace", () => {
   const documents = path.resolve("Documents with spaces");
   it("creates and selects a workspace under the OS Documents directory", async () => {
     const request = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ workspaces: [] }))
+      .mockResolvedValueOnce(Response.json({ linked_workspaces_count: 0 }))
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({ success: true }));
     await ensureDesktopWorkspace(base, documents, request);
@@ -17,14 +17,15 @@ describe("desktop first workspace", () => {
   });
   it("preserves an existing catalogue even when its drive is unavailable", async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
-      workspaces: [{ path: "/unavailable/drive", is_active: true }],
+      linked_workspaces_count: 1,
     }));
     await ensureDesktopWorkspace(base, documents, request);
     expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][0]).toBe(`${base}/api/app/settings`);
   });
   it("relinks existing workspace contents after configuration was removed", async () => {
     const request = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ workspaces: [] }))
+      .mockResolvedValueOnce(Response.json({ linked_workspaces_count: 0 }))
       .mockResolvedValueOnce(Response.json({ detail: "already exists" }, { status: 409 }))
       .mockResolvedValueOnce(Response.json({ success: true }));
     await ensureDesktopWorkspace(base, documents, request);
@@ -32,7 +33,7 @@ describe("desktop first workspace", () => {
   });
   it("reports a permissions error without pretending setup succeeded", async () => {
     const request = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ workspaces: [] }))
+      .mockResolvedValueOnce(Response.json({ linked_workspaces_count: 0 }))
       .mockResolvedValueOnce(new Response("Access denied", { status: 403 }));
     await expect(ensureDesktopWorkspace(base, documents, request)).rejects.toThrow("Access denied");
     expect(request).toHaveBeenCalledTimes(2);
