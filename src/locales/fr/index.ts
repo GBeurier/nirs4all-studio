@@ -2821,7 +2821,7 @@ notFound: {
       untitled: "Pipeline sans titre",
       lastEdited: "Dernière modification {{when}}",
       empty: "Brouillon vide : aucune étape pour le moment.",
-      resume: "Reprendre",
+      open: "Ouvrir",
     },
     recentRuns: {
       emptyTitle: "Aucune exécution récente",
@@ -2839,6 +2839,7 @@ notFound: {
       noPresets: "Aucun pipeline préréglé disponible",
       template: "Modèle",
       seeAll: "Tout voir",
+      openVariant: "Ouvrir {{variant}}",
       complexityTitle: "Complexité {{score}}/10 · {{label}}",
       variants: {
         regression: "Régression",

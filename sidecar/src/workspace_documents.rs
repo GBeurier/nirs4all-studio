@@ -530,7 +530,17 @@ pub fn active_path(settings: &AppSettingsStore) -> DocumentResult<PathBuf> {
         .active_linked_workspace_access()
         .map_err(storage)?
         .ok_or_else(|| (409, "No workspace selected".into()))?;
-    access.path().canonicalize().map_err(storage)
+    access.path().canonicalize().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            (
+                409,
+                "The active workspace folder is unavailable. Select an accessible workspace in Workspaces."
+                    .into(),
+            )
+        } else {
+            storage(error)
+        }
+    })
 }
 
 pub fn linked_dataset(settings: &AppSettingsStore, id: &str) -> Result<Value, String> {
@@ -1156,6 +1166,41 @@ mod tests {
             response.status,
             serde_json::from_str(&response.body).unwrap(),
         )
+    }
+
+    #[test]
+    fn editor_reports_a_missing_active_workspace_before_accessing_saved_pipelines() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("disconnected");
+        fs::create_dir(&workspace).unwrap();
+        let mut state = SidecarState::with_app_settings_dir(root.path().join("config"));
+        assert_eq!(
+            call(
+                &mut state,
+                "POST",
+                "/api/workspace/select",
+                json!({"path": workspace})
+            )
+            .0,
+            200
+        );
+        fs::remove_dir_all(&workspace).unwrap();
+        for (method, path, body) in [
+            ("GET", "/api/pipelines", json!({})),
+            ("GET", "/api/pipelines/saved", json!({})),
+            (
+                "POST",
+                "/api/pipelines",
+                json!({"name": "Preset", "steps": []}),
+            ),
+        ] {
+            let (status, payload) = call(&mut state, method, path, body);
+            assert_eq!(status, 409, "{payload}");
+            assert!(payload["detail"]
+                .as_str()
+                .unwrap()
+                .contains("active workspace folder is unavailable"));
+        }
     }
 
     #[test]

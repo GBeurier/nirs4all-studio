@@ -133,7 +133,7 @@ export function DraftCard({ draft, onDiscard }: DraftCardProps) {
           onClick={() => navigate(resolveEditorPath(draft.id))}
           className="flex-1"
         >
-          {t("pipelines.drafts.resume")}
+          {t("pipelines.drafts.open")}
         </Button>
       </div>
     </motion.div>

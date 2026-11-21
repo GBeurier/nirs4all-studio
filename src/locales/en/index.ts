@@ -2821,7 +2821,7 @@ notFound: {
       untitled: "Untitled pipeline",
       lastEdited: "Last edited {{when}}",
       empty: "Empty draft — no steps yet.",
-      resume: "Resume",
+      open: "Open",
     },
     recentRuns: {
       emptyTitle: "No recent runs",
@@ -2839,6 +2839,7 @@ notFound: {
       noPresets: "No preset pipelines available",
       template: "Template",
       seeAll: "See all",
+      openVariant: "Open {{variant}}",
       complexityTitle: "Complexity {{score}}/10 · {{label}}",
       variants: {
         regression: "Regression",

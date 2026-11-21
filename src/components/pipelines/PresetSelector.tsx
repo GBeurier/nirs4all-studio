@@ -219,7 +219,9 @@ export function PresetSelector({
                         variantButtonToneStyles[variantId]
                       )}
                     >
-                      {t(`pipelines.presetSelector.variants.${variantId}`)}
+                      {t("pipelines.presetSelector.openVariant", {
+                        variant: t(`pipelines.presetSelector.variants.${variantId}`),
+                      })}
                     </Button>
                   ))}
                 </div>
@@ -275,7 +277,9 @@ export function PresetSelector({
                     onClick={() => onSelect(preset.id, variantId)}
                     className={cn(fullVariantButtonClass, "w-full", variantButtonToneStyles[variantId])}
                   >
-                    {t(`pipelines.presetSelector.variants.${variantId}`)}
+                    {t("pipelines.presetSelector.openVariant", {
+                      variant: t(`pipelines.presetSelector.variants.${variantId}`),
+                    })}
                   </Button>
                 )}
               />

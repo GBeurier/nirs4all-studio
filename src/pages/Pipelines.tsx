@@ -7,6 +7,7 @@ import { usePipelines } from "@/hooks/usePipelines";
 import { useDraftPipelines } from "@/hooks/useDraftPipelines";
 import { getAggregatedPredictions } from "@/api/aggregatedPredictions";
 import { listRuns } from "@/api/runs";
+import { describeApiError } from "@/lib/userFacingError";
 import {
   extractRecentRuns,
   filterRecentRuns,
@@ -146,15 +147,20 @@ export default function Pipelines() {
   }, [exportPipeline]);
 
   const handlePresetSelect = useCallback(async (presetId: string, variant: PipelinePresetVariantId) => {
-    const created = await createFromPreset(presetId, variant);
-    if (!created) {
-      toast.error(t("pipelines.toasts.templateFailed"));
-      return;
+    const fallback = t("pipelines.toasts.templateFailed");
+    try {
+      const created = await createFromPreset(presetId, variant);
+      if (!created) {
+        toast.error(fallback);
+        return;
+      }
+      toast.success(t("pipelines.toasts.templateAdded"), {
+        description: t("pipelines.toasts.templateReady", { name: created.name }),
+      });
+      navigate(`/pipelines/${created.id}`);
+    } catch (error) {
+      toast.error(describeApiError(error, t, fallback).message);
     }
-    toast.success(t("pipelines.toasts.templateAdded"), {
-      description: t("pipelines.toasts.templateReady", { name: created.name }),
-    });
-    navigate(`/pipelines/${created.id}`);
   }, [createFromPreset, navigate, t]);
 
   const handleImport = useCallback(async (jsonString: string) => {
