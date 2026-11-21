@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/tooltip';
 import { ModelSelector } from './ModelSelector';
 import { ShapSubsetsPanel } from './ShapSubsetsPanel';
+import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
 import {
   buildShapPredictHref,
   isNonAdditiveExplainer,
@@ -41,6 +42,8 @@ import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 interface VariableImportanceFormProps {
   chainId: string | null;
   datasetId: string | null;
+  needsDatasetSelection: boolean;
+  onDatasetSelect: (datasetId: string) => void;
   onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null, datasetId?: string | null) => void;
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
@@ -143,9 +146,39 @@ function Grid({ children }: { children: ReactNode }) {
   return <div className="grid grid-cols-2 gap-3">{children}</div>;
 }
 
+function ShapDatasetPicker({ datasetId, onSelect }: {
+  datasetId: string | null;
+  onSelect: (datasetId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const { data, isPending, error } = useDatasetsQuery();
+  const datasets = data?.datasets.filter((dataset) => dataset.status !== 'missing' && dataset.status !== 'error') ?? [];
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="shap-analysis-dataset">{t('results.variableImportance.model.analysisDataset')}</Label>
+      <select
+        id="shap-analysis-dataset"
+        className="w-full rounded-md border border-input bg-background p-2 text-sm"
+        value={datasetId ?? ''}
+        onChange={(event) => onSelect(event.target.value)}
+        disabled={isPending || datasets.length === 0}
+      >
+        <option value="">{t('results.variableImportance.model.chooseDataset')}</option>
+        {datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name}</option>)}
+      </select>
+      {error && <p role="alert" className="text-xs text-destructive">{t('results.variableImportance.model.loadDatasetsFailed')}</p>}
+      {!isPending && !error && datasets.length === 0 && (
+        <Link to="/datasets" className="text-xs underline">{t('results.variableImportance.model.linkDataset')}</Link>
+      )}
+    </div>
+  );
+}
+
 export function VariableImportanceForm({
   chainId,
   datasetId,
+  needsDatasetSelection,
+  onDatasetSelect,
   onChainSelect,
   partition,
   onPartitionChange,
@@ -186,6 +219,7 @@ export function VariableImportanceForm({
           onModelClassChange={setModelClass}
         />
       </div>
+      {needsDatasetSelection && <ShapDatasetPicker datasetId={datasetId} onSelect={onDatasetSelect} />}
 
       {options.subsets.enabled ? (
         <div className="space-y-1">
