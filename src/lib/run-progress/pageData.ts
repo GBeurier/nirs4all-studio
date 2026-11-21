@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import i18next from "i18next";
 import { formatRunTokenLabel } from "@/lib/runs/format";
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
@@ -168,7 +169,7 @@ export function buildRunDerivedLogs(run: Pick<Run, "datasets">): string[] {
 
     dataset.pipelines.forEach((pipeline, pipelineIndex) => {
       logs.push(
-        `[INFO] ${i18next.t("runs.progress.log.pipeline", { index: pipelineIndex + 1, total: dataset.pipelines.length, name: pipeline.pipeline_name, model: pipeline.model })}`,
+        `[INFO] ${i18next.t("runs.progress.log.pipeline", { index: pipelineIndex + 1, total: dataset.pipelines.length, name: formatStoredExecutionName(pipeline.pipeline_name), model: pipeline.model })}`,
       );
 
       const folds = Object.values(pipeline.fold_metrics ?? {});

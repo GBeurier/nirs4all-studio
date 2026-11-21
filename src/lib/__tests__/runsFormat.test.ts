@@ -7,10 +7,18 @@ import {
   formatElapsedClock,
   formatRunProgress,
   formatRunTokenLabel,
+  formatStoredExecutionName,
   getElapsedSeconds,
 } from "../runs/format";
 
 describe("runs format helpers", () => {
+  it("displays only the authored part of a generated execution name", () => {
+    expect(formatStoredExecutionName("Experiment_p0")).toBe("Experiment");
+    expect(formatStoredExecutionName("Experiment_p1_p0_8644dd71")).toBe("Experiment");
+    expect(formatStoredExecutionName("Experiment_p1_8644dd71_refit")).toBe("Experiment");
+    expect(formatStoredExecutionName("Reference_p1_scan")).toBe("Reference_p1_scan");
+  });
+
   it("formats progress as clamped rounded percentages", () => {
     expect(formatRunProgress(-5)).toBe("0%");
     expect(formatRunProgress(150)).toBe("100%");

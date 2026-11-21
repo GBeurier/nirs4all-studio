@@ -53,6 +53,11 @@ export function formatRunTokenLabel(value: string, t: TFunction): string {
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
+/** Display the authored label of a stored SDK execution. */
+export function formatStoredExecutionName(name: string): string {
+  return name.replace(/(?:_p\d+)+(?:_[0-9a-f]{8})?(?:_refit(?:_rmsecvt\d+)?)?$/i, "");
+}
+
 export function clampRunProgress(progress: number): number {
   if (!Number.isFinite(progress)) {
     return 0;

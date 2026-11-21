@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import {
   getResultAnalysisDisplayCellKey,
   getResultAnalysisInternalCellKey,
@@ -107,7 +108,7 @@ export function buildResultAnalysisLeaderboardViewModel<TView extends ResultAnal
       score,
       runId: chain.run_id,
       pipelineId: chain.pipeline_id,
-      pipelineName: chain.pipeline_name,
+      pipelineName: chain.pipeline_name == null ? null : formatStoredExecutionName(chain.pipeline_name),
       datasetName: chain.dataset_name,
       modelClass: chain.model_class,
       metric: chain.metric,

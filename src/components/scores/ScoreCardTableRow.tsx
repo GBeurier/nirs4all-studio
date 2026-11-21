@@ -1,13 +1,12 @@
-import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { formatBestParams } from "@/lib/score-adapters";
 import { getScoreCardAnyScore } from "@/lib/scoreRowData";
 import { buildTableScoreCardRowPresentation } from "@/lib/scoreCardRowPresentation";
 import { formatMetricValue } from "@/lib/scores";
 import { cn } from "@/lib/utils";
-import { Award, Box, ChevronDown, ChevronRight } from "lucide-react";
+import { Award, ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { TableScoreCardRowActions } from "./ScoreCardRowActions";
+import { ScoreCardModelName } from "./ScoreCardModelName";
 import { ScoreCardTypeBadge } from "./ScoreCardTypeBadge";
 import type { ScoreCardTableRowProps } from "./ScoreCardRowViewProps";
 
@@ -24,7 +23,6 @@ export function ScoreCardTableRow({
   maxTableMetrics,
 }: ScoreCardTableRowProps) {
   const { t } = useTranslation();
-  const variantLabel = (row.bestParams && formatBestParams(row.bestParams)) || row.variantLabel;
   const {
     isRefit,
     metric,
@@ -54,15 +52,8 @@ export function ScoreCardTableRow({
             </button>
           )}
           {isRefit && <Award className="h-3 w-3 text-emerald-500 shrink-0" />}
-          <Badge variant="outline" className={cn("text-[10px] font-mono", isRefit && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400")}>
-            <Box className="h-2.5 w-2.5 mr-0.5" />{row.modelName}
-          </Badge>
+          <ScoreCardModelName row={row} onViewDetails={onViewDetails} />
         </div>
-        {variantLabel && variantLabel !== row.modelName && (
-          <span className="block max-w-56 truncate text-[10px] text-muted-foreground" title={variantLabel}>
-            {variantLabel}
-          </span>
-        )}
       </TableCell>
       <TableCell className="text-muted-foreground">{row.datasetName || "\u2014"}</TableCell>
       <TableCell><span className="text-[10px] text-muted-foreground truncate max-w-[120px] block">{row.preprocessings || "\u2014"}</span></TableCell>

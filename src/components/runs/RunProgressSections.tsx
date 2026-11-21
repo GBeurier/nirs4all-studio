@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 /**
  * Presentational sections for the RunProgress page.
  *
@@ -75,7 +76,7 @@ export function RunProgressHeader({
         </Button>
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{run.name}</h1>
+            <h1 className="text-2xl font-bold">{formatStoredExecutionName(run.name)}</h1>
             <StatusBadge status={run.status} />
           </div>
           <p className="text-muted-foreground text-sm">

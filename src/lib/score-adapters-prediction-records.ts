@@ -31,7 +31,6 @@ export function predictionRecordToRow(pred: PredictionRecord): ScoreCardRow {
     modelClass: pred.model_classname || "",
     preprocessings: pred.preprocessings || null,
     bestParams: predictionRecordBestParams(pred),
-    variantLabel: pred.config_name,
     cardType: scoreCardTypeForFoldId(foldId),
     foldId,
     partition: pred.partition,

@@ -131,7 +131,7 @@ describe("runs page data projections", () => {
       name: "Experiment", duration: 2460,
       runs: [{ run_id: "child-a" }, { run_id: "child-b" }],
     });
-    expect(groups[1].runs[0].run_id).toBe("unrelated");
+    expect(groups[1]).toMatchObject({ name: "Experiment", runs: [{ run_id: "unrelated" }] });
   });
 
   it("merges enriched run history with queued and running API runs", () => {

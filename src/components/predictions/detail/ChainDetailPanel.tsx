@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 /**
  * ChainDetailPanel — single-view body rendered inside ChainDetailSheet.
  *
@@ -217,7 +218,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
             <ChainDetailPipelineIdentity
               title={detail?.pipeline?.name || prediction.model_class || t("predictions.detail.panel.pipelineFallbackTitle")}
               modelClass={prediction.model_class || null}
-              pipelineName={detail?.pipeline?.name ?? null}
+              pipelineName={detail?.pipeline?.name ? formatStoredExecutionName(detail.pipeline.name) : null}
               pipelineStats={pipelineStats}
               pipelineTree={pipelineTree}
               variantParams={variantParams}

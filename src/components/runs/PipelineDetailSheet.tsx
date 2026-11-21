@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -114,7 +115,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                 <SheetTitle className="text-lg">{t("runs.pipelineSheet.title")}</SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-1">
                   <span className="text-sm font-medium text-foreground">
-                    {pipeline.pipeline_name}
+                    {formatStoredExecutionName(pipeline.pipeline_name)}
                   </span>
                   <RuntimeEngineBadge source={pipeline} />
                 </SheetDescription>

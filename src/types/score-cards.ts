@@ -13,7 +13,6 @@ export type ScoreCardType = "train" | "crossval" | "refit";
  * PartitionPrediction, PredictionRecord) can be mapped into.
  */
 export interface ScoreCardRow {
-  variantLabel?: string | null;
   // Identity
   id: string;
   chainId: string;

@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 /**
  * RunProgress Page - Real-time run execution monitoring (Run A implementation)
  *
@@ -223,7 +224,7 @@ export default function RunProgress() {
         dataset.pipelines.map((pipeline) => ({
           datasetName: dataset.dataset_name,
           pipelineId: pipeline.id,
-          pipelineName: pipeline.pipeline_name,
+          pipelineName: formatStoredExecutionName(pipeline.pipeline_name),
         }))
       );
 

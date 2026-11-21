@@ -5,7 +5,7 @@ import {
   isClassificationTaskType,
   orderMetricKeys,
 } from "@/lib/scores";
-import { formatRunTokenLabel } from "@/lib/runs/format";
+import { formatRunTokenLabel, formatStoredExecutionName } from "@/lib/runs/format";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import type { Run, RunStatsResponse } from "@/types/runs";
 import { getActiveLocale } from "@/lib/activeLocale";
@@ -288,7 +288,7 @@ export function groupRunsByExecution(runs: readonly EnrichedRun[], records: read
         ? (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000
         : NaN;
       group = {
-        name: (job && readStringField(job.request, ["run_name"])) || run.name,
+        name: (job && readStringField(job.request, ["run_name"])) || formatStoredExecutionName(run.name),
         duration: typeof duration === "number" && Number.isFinite(duration) && duration >= 0
           ? duration
           : Number.isFinite(timestampDuration) && timestampDuration >= 0 ? timestampDuration : null,
