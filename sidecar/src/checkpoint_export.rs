@@ -4,6 +4,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
+#[allow(clippy::too_many_lines)] // Keep checkpoint validation and response mapping together.
 pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<HttpResponse> {
     if request.path != "/api/exports/n4a" {
         return None;

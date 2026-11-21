@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.19.4] - 2026-11-21
+## [0.19.5] - 2026-11-21
 
 ### Fixed
 
