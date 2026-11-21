@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ### Fixed
 
+- Open Studio without waiting for linked workspace directories to be scanned.
 - Show scientific runs with their wall-clock duration and keep model variants
   grouped under the run. Open a variant to inspect its parameters.
 - Show refit predictions and cross-validation folds in Results and Predictions,
