@@ -185,10 +185,10 @@ fn build_results_summary_with_provenance(
         if !linked_datasets.is_empty() {
             dataset["name"] = json!(dataset_name);
         }
-        let display_link = match linked_dataset_id.as_deref() {
-            Some(id) => dataset_links.contains(id).then_some(id),
-            None => legacy_links[&dataset_name],
-        };
+        let display_link = linked_dataset_id.as_deref().map_or_else(
+            || legacy_links[&dataset_name],
+            |id| dataset_links.contains(id).then_some(id),
+        );
         if let Some(id) = display_link {
             dataset["linked_dataset_id"] = json!(id);
         }

@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.19.7] - 2026-11-21
+
+### Fixed
+
+- Show one Results card per dataset when older and newer runs share a linked
+  dataset. Rank the combined results while keeping distinct dataset identities.
+
 ## [0.19.6] - 2026-11-21
 
 ### Fixed
