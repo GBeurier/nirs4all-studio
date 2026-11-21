@@ -155,6 +155,7 @@ export function PredictionsResultsSection({
         datasetOptions={rows.datasetOptions}
         modelOptions={rows.modelOptions}
         taskTypeOptions={rows.taskTypeOptions}
+        availableFoldTypes={rows.availableFoldTypes}
         visibleFoldTypes={rows.visibleFoldTypes}
         onVisibleFoldTypesChange={rows.setVisibleFoldTypes}
         visibleDataKinds={rows.visibleDataKinds}

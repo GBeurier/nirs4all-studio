@@ -1022,7 +1022,8 @@ fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Val
         "driver": {
             "backend": context.execution_backend,
             "mode": context.execution_mode,
-            "submission_transport": "studio-sidecar-rust"
+            "submission_transport": "studio-sidecar-rust",
+            "duration_seconds": snapshot.duration_seconds
         },
         "metrics": snapshot.metrics,
         "error": snapshot.error,

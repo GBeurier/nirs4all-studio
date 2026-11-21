@@ -59,7 +59,7 @@ export function buildInlineScoreCardRowPresentation(row: ScoreCardRow): InlineSc
     borderClass: cardTypeBorderClass(row.cardType),
     shellClass: getScoreCardRowShellClass(row.cardType),
     detailClass: getScoreCardRowDetailClass(row.cardType),
-    paramLabel: row.bestParams ? formatBestParams(row.bestParams) : null,
+    paramLabel: (row.bestParams && formatBestParams(row.bestParams)) || row.variantLabel || null,
   };
 }
 

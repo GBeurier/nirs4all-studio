@@ -156,13 +156,14 @@ fn create(
     id: &str,
     body: &[u8],
 ) -> HttpResponse {
-    let (payload, variant) = match selection(id, body) {
+    let (mut payload, variant) = match selection(id, body) {
         Ok(value) => value,
         Err((status, detail)) => return error_response(status, &detail),
     };
     let Some(host) = host else {
         return error_response(503, "Attested document library host unavailable");
     };
+    payload["studio_preset"] = json!(true);
     let mut document = match host.adapt_document("pipeline.import", &payload) {
         Ok(value) if value.is_object() => value,
         Ok(_) => return error_response(502, "Document translator returned an invalid object"),

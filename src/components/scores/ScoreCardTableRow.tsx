@@ -1,10 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { formatBestParams } from "@/lib/score-adapters";
 import { getScoreCardAnyScore } from "@/lib/scoreRowData";
 import { buildTableScoreCardRowPresentation } from "@/lib/scoreCardRowPresentation";
 import { formatMetricValue } from "@/lib/scores";
 import { cn } from "@/lib/utils";
-import { Award, Box } from "lucide-react";
+import { Award, Box, ChevronDown, ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { TableScoreCardRowActions } from "./ScoreCardRowActions";
 import { ScoreCardTypeBadge } from "./ScoreCardTypeBadge";
 import type { ScoreCardTableRowProps } from "./ScoreCardRowViewProps";
@@ -21,6 +23,8 @@ export function ScoreCardTableRow({
   onViewChart,
   maxTableMetrics,
 }: ScoreCardTableRowProps) {
+  const { t } = useTranslation();
+  const variantLabel = (row.bestParams && formatBestParams(row.bestParams)) || row.variantLabel;
   const {
     isRefit,
     metric,
@@ -29,7 +33,7 @@ export function ScoreCardTableRow({
   } = buildTableScoreCardRowPresentation(row, selectedMetrics, maxTableMetrics);
 
   return (
-    <TableRow className={cn("text-xs", isRefit && "bg-emerald-500/5", expanded && "bg-primary/5")} onClick={onToggleExpand}>
+    <TableRow className={cn("text-xs", isRefit && "bg-emerald-500/5", expanded && "bg-primary/5")}>
       <TableCell>
         {rank != null && (
           <span className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold", rank === 1 && isRefit ? "bg-emerald-500/20 text-emerald-500" : "bg-muted text-muted-foreground")}>{rank}</span>
@@ -38,11 +42,27 @@ export function ScoreCardTableRow({
       <TableCell><ScoreCardTypeBadge row={row} /></TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
+          {onToggleExpand && (
+            <button
+              type="button"
+              className="rounded p-0.5 hover:bg-muted"
+              aria-expanded={expanded ?? false}
+              aria-label={t("predictions.table.cvOutputs")}
+              onClick={onToggleExpand}
+            >
+              {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+            </button>
+          )}
           {isRefit && <Award className="h-3 w-3 text-emerald-500 shrink-0" />}
           <Badge variant="outline" className={cn("text-[10px] font-mono", isRefit && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400")}>
             <Box className="h-2.5 w-2.5 mr-0.5" />{row.modelName}
           </Badge>
         </div>
+        {variantLabel && variantLabel !== row.modelName && (
+          <span className="block max-w-56 truncate text-[10px] text-muted-foreground" title={variantLabel}>
+            {variantLabel}
+          </span>
+        )}
       </TableCell>
       <TableCell className="text-muted-foreground">{row.datasetName || "\u2014"}</TableCell>
       <TableCell><span className="text-[10px] text-muted-foreground truncate max-w-[120px] block">{row.preprocessings || "\u2014"}</span></TableCell>

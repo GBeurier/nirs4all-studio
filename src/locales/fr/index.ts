@@ -6818,6 +6818,13 @@ notFound: {
 
   // ============= Runs =============
   runs: {
+    export: {
+      label: "Exporter le lancement (.n4a)",
+      recipe: "Recettes des pipelines",
+      results: "Scores et métadonnées",
+      models: "Modèles réajustés enregistrés",
+      modelsHint: "Inclut une archive par modèle réajusté exportable.",
+    },
     jobRecord: {
       title: "Détails de l'exécution",
       titleDeveloper: "Enregistrement de la tâche d'exécution",
@@ -6957,6 +6964,9 @@ notFound: {
     },
     list: {
       summary: "Résumé des exécutions",
+      executionParts_one: "{{count}} pipeline modèle",
+      executionParts_other: "{{count}} pipelines modèles",
+      executionPart: "{{name}} · Pipeline {{index}}",
       scopeFiltered: "Exécutions filtrées",
       scopeWorkspace: "Totaux de l'espace de travail",
       scopeVisible: "Exécutions visibles",
@@ -7996,6 +8006,7 @@ notFound: {
       samples: "Échantillons",
       task: "Tâche",
       type: "Type",
+      cvOutputs: "Plis et sorties de prédiction",
       preprocShort: "Prétrait.",
       valShort: "Val",
       noMatch: "Aucun modèle ne correspond à vos filtres",
@@ -8270,8 +8281,9 @@ notFound: {
       val: "Validation",
       test: "Test",
       prediction: "Prédit (sans cible)",
-      predictedSamples_one: "{{count}} prédit sans cible",
-      predictedSamples_other: "{{count}} prédits sans cible",
+      predictedSamples_one: "{{count}} échantillon sans cible mesurée",
+      predictedSamples_other: "{{count}} échantillons sans cible mesurée",
+      predictedSamplesHint: "Ces échantillons sont exclus de l’entraînement et du calcul des scores. Le modèle enregistré a généré leurs prédictions.",
     },
     partitionsShort: {
       train: "Entr.",

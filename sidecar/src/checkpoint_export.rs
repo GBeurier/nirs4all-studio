@@ -31,7 +31,12 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
             fields.keys().any(|key| {
                 !matches!(
                     key.as_str(),
-                    "sections" | "dataset_id" | "bundle_path" | "shap_job_id"
+                    "sections"
+                        | "dataset_id"
+                        | "bundle_path"
+                        | "shap_job_id"
+                        | "run_ids"
+                        | "workspace_id"
                 )
             })
         }) {
@@ -58,7 +63,22 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
                     .map_err(|(_, detail)| detail)?;
             }
         }
-        if payload["sections"].get("model").is_some() {
+        if let Some(run_ids) = payload.get("run_ids") {
+            let run_ids = run_ids
+                .as_array()
+                .filter(|ids| !ids.is_empty())
+                .ok_or("Select a stored run to export")?;
+            for id in run_ids {
+                crate::library_analysis::identifier(id.as_str().ok_or("Invalid run identifier")?)?;
+            }
+            let access = settings
+                .active_linked_workspace_access()?
+                .ok_or("No active workspace")?;
+            if payload["workspace_id"].as_str() != Some(access.id()) {
+                return Err("The export workspace is no longer active".into());
+            }
+            payload["workspace_path"] = json!(access.path());
+        } else if payload["sections"].get("model").is_some() {
             let access = settings
                 .active_linked_workspace_access()?
                 .ok_or("No active workspace")?;

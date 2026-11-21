@@ -113,6 +113,7 @@ function buildCrossvalRow(
     modelClass: chain.model_class,
     preprocessings: chain.preprocessings || null,
     bestParams: displayParams(chain),
+    variantLabel: chain.pipeline_name,
     cardType: trainingOnly ? "train" : "crossval",
     foldId: trainingOnly ? "" : foldVariantId(chain.cv_summary_fold_id === "macro" ? "macro" : "avg", variant),
     partition: trainingOnly ? "train" : undefined,
@@ -160,6 +161,7 @@ function buildRefitRow(
     modelClass: chain.model_class,
     preprocessings: chain.preprocessings || null,
     bestParams: bestParams ?? null,
+    variantLabel: chain.pipeline_name,
     cardType: "refit",
     foldId: "final",
     foldCount: effectiveCvSource?.fold_count ?? chain.fold_count,
@@ -207,6 +209,7 @@ function buildAggregatedRefitRow(
     modelClass: chain.model_class,
     preprocessings: chain.preprocessings || null,
     bestParams: bestParams ?? null,
+    variantLabel: chain.pipeline_name,
     cardType: "refit",
     foldId: "final_agg",
     foldCount: effectiveCvSource?.fold_count ?? chain.fold_count,
@@ -474,20 +477,12 @@ export function datasetChainsToRows(
         ? findMatchingCvSourceExact(refitChain, cvCandidates, usedCvChainIds, metric)
         : findMatchingCvSource(refitChain, cvCandidates, usedCvChainIds, metric));
     if (matchedCv) usedCvChainIds.add(matchedCv.chain_id);
-    refitRows.push(buildRefitRow(
-      refitChain,
-      metric,
-      taskType,
-      matchedCv,
-    ));
+    const row = buildRefitRow(refitChain, metric, taskType, matchedCv);
     if (hasAggregatedRefitData(refitChain)) {
-      refitRows.push(buildAggregatedRefitRow(
-        refitChain,
-        metric,
-        taskType,
-        matchedCv,
-      ));
+      const aggregated = buildAggregatedRefitRow(refitChain, metric, taskType, matchedCv);
+      row.children = [...(row.children ?? []), { ...aggregated, children: [] }, ...(aggregated.children ?? [])];
     }
+    refitRows.push(row);
   }
 
   refitRows.sort((a, b) => compareRefitRows(a, b, metric));

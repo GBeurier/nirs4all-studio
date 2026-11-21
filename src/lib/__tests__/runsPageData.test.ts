@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { tEn } from "./support/enTranslator";
 import {
   buildRunPageIdLookup,
+  groupRunsByExecution,
   buildRunsExecutionJobListItems,
   buildRunsExecutionTaskPanelData,
   buildRunsStorageArtifactMetadata,
@@ -111,6 +112,28 @@ function executionJobRecord(overrides: Partial<ExecutionJobRecord> = {}): Execut
 }
 
 describe("runs page data projections", () => {
+  it("uses launch elapsed time and groups only the exact persisted children", () => {
+    const groups = groupRunsByExecution([
+      enrichedRun({ run_id: "child-b", name: "Experiment_p1", duration_seconds: 0 }),
+      enrichedRun({ run_id: "child-a", name: "Experiment_p0", duration_seconds: 1 }),
+      enrichedRun({ run_id: "unrelated", name: "Experiment_p0", duration_seconds: 5 }),
+    ], [
+      executionJobRecord({
+        status: "completed",
+        request: { run_name: "Experiment" },
+        driver: { store_run_ids: ["child-a", "child-b"] },
+        started_at: "2026-11-21T11:00:00Z",
+        completed_at: "2026-11-21T11:41:00Z",
+      }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({
+      name: "Experiment", duration: 2460,
+      runs: [{ run_id: "child-a" }, { run_id: "child-b" }],
+    });
+    expect(groups[1].runs[0].run_id).toBe("unrelated");
+  });
+
   it("merges enriched run history with queued and running API runs", () => {
     const runs = buildRunsPageItems(
       [

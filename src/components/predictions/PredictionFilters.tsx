@@ -22,6 +22,7 @@ interface PredictionFiltersProps {
   datasetOptions: string[];
   modelOptions: string[];
   taskTypeOptions: string[];
+  availableFoldTypes?: FoldVisibility[];
   visibleFoldTypes: FoldVisibility[];
   onVisibleFoldTypesChange: (value: FoldVisibility[]) => void;
   visibleDataKinds: DataVisibility[];
@@ -42,6 +43,7 @@ export function PredictionFilters({
   datasetOptions,
   modelOptions,
   taskTypeOptions,
+  availableFoldTypes,
   visibleFoldTypes,
   onVisibleFoldTypesChange,
   visibleDataKinds,
@@ -93,7 +95,9 @@ export function PredictionFilters({
       <PredictionVisibilityToggleGroup
         label={t(foldTypes.labelKey)}
         value={visibleFoldTypes}
-        options={foldTypes.options.map(({ value, labelKey }) => ({ value, label: t(labelKey) }))}
+        options={foldTypes.options
+          .filter(({ value }) => !availableFoldTypes || availableFoldTypes.includes(value))
+          .map(({ value, labelKey }) => ({ value, label: t(labelKey) }))}
         onValueChange={onVisibleFoldTypesChange}
       />
       <PredictionVisibilityToggleGroup

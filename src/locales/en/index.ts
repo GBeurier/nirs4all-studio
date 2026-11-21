@@ -6818,6 +6818,13 @@ notFound: {
 
   // ============= Runs =============
   runs: {
+    export: {
+      label: "Export run (.n4a)",
+      recipe: "Pipeline recipes",
+      results: "Scores and run metadata",
+      models: "Saved refit models",
+      modelsHint: "Include separate fitted archives for the models that can be exported.",
+    },
     jobRecord: {
       title: "Execution details",
       titleDeveloper: "Execution job record",
@@ -6957,6 +6964,9 @@ notFound: {
     },
     list: {
       summary: "Run summary",
+      executionParts_one: "{{count}} model pipeline",
+      executionParts_other: "{{count}} model pipelines",
+      executionPart: "{{name}} · Pipeline {{index}}",
       scopeFiltered: "Filtered runs",
       scopeWorkspace: "Workspace totals",
       scopeVisible: "Visible runs",
@@ -7996,6 +8006,7 @@ notFound: {
       samples: "Samples",
       task: "Task",
       type: "Type",
+      cvOutputs: "Folds and prediction outputs",
       preprocShort: "Preproc",
       valShort: "Val",
       noMatch: "No models match your filters",
@@ -8270,8 +8281,9 @@ notFound: {
       val: "Validation",
       test: "Test",
       prediction: "Predicted (no target)",
-      predictedSamples_one: "{{count}} predicted without target",
-      predictedSamples_other: "{{count}} predicted without target",
+      predictedSamples_one: "{{count}} sample with missing target",
+      predictedSamples_other: "{{count}} samples with missing targets",
+      predictedSamplesHint: "These samples were excluded from fitting and scoring. The saved predictor generated their predictions.",
     },
     partitionsShort: {
       train: "Train",

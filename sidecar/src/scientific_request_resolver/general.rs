@@ -33,7 +33,7 @@ pub(super) fn resolve(
     let workspace = canonical_directory(&preflight.workspace_path)
         .map_err(|()| ScientificResolveError::PipelineUnsafe)?;
     let mut options = json!({"workspace_path": workspace, "verbose": 0,
-        "save_artifacts": true, "save_charts": false});
+        "save_artifacts": true, "save_charts": false, "refit": true});
     if datasets.iter().all(|config| config.get("schema").is_none()) {
         let fingerprints = adapt(
             &datasets

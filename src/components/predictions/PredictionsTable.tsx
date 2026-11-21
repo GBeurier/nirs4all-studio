@@ -1,3 +1,4 @@
+import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,6 +34,7 @@ export function PredictionsTable({
   onViewDetails,
 }: PredictionsTableProps) {
   const { t } = useTranslation();
+  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
   return (
     <div className="glass-card overflow-hidden">
       <div className="overflow-x-auto">
@@ -71,18 +73,42 @@ export function PredictionsTable({
                 </td>
               </TableRow>
             ) : (
-              pageRows.map((row, index) => (
-                <ScoreCardRowView
-                  key={`${row.chainId}-${row.foldId}-${row.id}`}
-                  row={row}
-                  selectedMetrics={selectedMetrics}
-                  workspaceId={workspaceId}
-                  rank={startIndex + index + 1}
-                  variant="table-row"
-                  onViewPrediction={onViewPrediction}
-                  onViewDetails={() => onViewDetails(row)}
-                />
-              ))
+              pageRows.map((row, index) => {
+                const key = JSON.stringify([row.chainId, row.foldId, row.id]);
+                const expanded = expandedRows.has(key);
+                const toggle = row.children?.length ? () => setExpandedRows(current => {
+                  const next = new Set(current);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                }) : undefined;
+                return (
+                  <Fragment key={key}>
+                    <ScoreCardRowView
+                      row={row}
+                      selectedMetrics={selectedMetrics}
+                      workspaceId={workspaceId}
+                      rank={startIndex + index + 1}
+                      variant="table-row"
+                      expanded={expanded}
+                      onToggleExpand={toggle}
+                      onViewPrediction={onViewPrediction}
+                      onViewDetails={() => onViewDetails(row)}
+                    />
+                    {expanded && row.children?.map(child => (
+                      <ScoreCardRowView
+                        key={child.id}
+                        row={child}
+                        selectedMetrics={selectedMetrics}
+                        workspaceId={workspaceId}
+                        variant="table-row"
+                        onViewPrediction={onViewPrediction}
+                        onViewDetails={() => onViewDetails(child)}
+                      />
+                    ))}
+                  </Fragment>
+                );
+              })
             )}
           </TableBody>
         </Table>

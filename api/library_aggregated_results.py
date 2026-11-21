@@ -8,7 +8,7 @@ from typing import Any
 from .shared.json_safe import sanitize_dict
 from .store_adapter import (
     StoreAdapter,
-    _extract_model_params_from_expanded_config,
+    _attach_variant_params_inplace,
     _mark_refit_only_entries_inplace,
     _parse_json_maybe,
 )
@@ -26,6 +26,7 @@ def _summaries(adapter: StoreAdapter, document: dict[str, Any], *, top: bool = F
     records = [sanitize_dict(dict(row)) for row in frame.iter_rows(named=True)]
     if not records:
         return []
+    _attach_variant_params_inplace(records, adapter._get_pipeline_metadata_map(list({row["pipeline_id"] for row in records})))
     _mark_refit_only_entries_inplace(records)
     ids = list(dict.fromkeys(row["chain_id"] for row in records))
     artifacts: dict[str, Any] = {}
@@ -141,12 +142,6 @@ def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[st
             if not records and summary is None:
                 raise ValueError("not_found: Chain does not exist or has no predictions")
             pipeline = adapter._store.get_pipeline(summary["pipeline_id"]) if summary else None
-            if summary:
-                params = _parse_json_maybe(summary.get("best_params"))
-                summary["best_params"] = params if isinstance(params, dict) else None
-                model_params = _extract_model_params_from_expanded_config((pipeline or {}).get("expanded_config"), summary.get("model_step_idx"))
-                if model_params:
-                    summary["variant_params"] = {**(summary.get("variant_params") or {}), **model_params}
             info = sanitize_dict({key: pipeline.get(key) for key in (
                 "pipeline_id", "name", "dataset_name", "generator_choices", "status", "metric", "best_val", "best_test",
             )}) if pipeline else None

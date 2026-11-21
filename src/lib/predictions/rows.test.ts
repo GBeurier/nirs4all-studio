@@ -7,6 +7,7 @@ import {
   createRowComparator,
   foldSortValue,
   predictionGroupKey,
+  groupPredictionRows,
   rowDataVisibility,
   rowFoldVisibility,
 } from "./rows";
@@ -59,6 +60,27 @@ describe("predictionGroupKey", () => {
 });
 
 describe("buildPredictionModelRows", () => {
+  it("shows a captured refit first and keeps only its own fold outputs", () => {
+    const rows = groupPredictionRows(buildPredictionModelRows([
+      makePred({ id: "fold0", trace_id: "refitted", fold_id: "0", partition: "val" }),
+      makePred({ id: "avg", trace_id: "refitted", fold_id: "avg", partition: "val", val_score: 0.24 }),
+      makePred({ id: "final", trace_id: "refitted", fold_id: "final", partition: "test", val_score: null }),
+      makePred({ id: "other", trace_id: "cv-only", fold_id: "avg", partition: "val", val_score: 0.4 }),
+    ]));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      id: "final", primaryValScore: 0.24, children: [{ id: "avg" }, { id: "fold0" }],
+    });
+    expect(rows[1]).toMatchObject({ id: "other", children: [] });
+  });
+
+  it("keeps the predicted sample count out of the scored sample count", () => {
+    const [row] = buildPredictionModelRows([
+      makePred({ fold_id: "final", partition: "prediction", n_samples: 680 }),
+    ]);
+    expect(row).toMatchObject({ nSamplesEval: null, nSamplesPredicted: 680, partition: "prediction" });
+  });
+
   it("keeps a scored primary and counts samples predicted without a target", () => {
     const rows = buildPredictionModelRows([
       makePred({ id: "missing", trace_id: "t1", fold_id: "final", partition: "prediction", n_samples: 3, test_score: null, scores: {} }),

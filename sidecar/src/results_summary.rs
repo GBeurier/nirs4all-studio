@@ -429,8 +429,20 @@ fn extract_model_params(
     expanded_config: Option<&[Value]>,
     model_step_idx: i64,
 ) -> Option<&Map<String, Value>> {
-    let index = usize::try_from(model_step_idx.checked_sub(1)?).ok()?;
-    let step = expanded_config?.get(index)?.as_object()?;
+    let steps = expanded_config?;
+    let step = if let Ok(index) = usize::try_from(model_step_idx.checked_sub(1)?) {
+        steps.get(index)?.as_object()?
+    } else {
+        let mut models = steps
+            .iter()
+            .filter_map(Value::as_object)
+            .filter(|step| step.contains_key("model"));
+        let model = models.next()?;
+        if models.next().is_some() {
+            return None;
+        }
+        model
+    };
     if step.contains_key("model") {
         return step.get("model")?.as_object()?.get("params")?.as_object();
     }

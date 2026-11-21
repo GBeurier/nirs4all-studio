@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
 import {
   collectPresentMetricKeys,
   isClassificationTaskType,
@@ -263,6 +264,47 @@ export function buildRunsPageItems(
   });
 
   return [...activeOnlyRuns, ...mergedRuns];
+}
+
+export function groupRunsByExecution(runs: readonly EnrichedRun[], records: readonly ExecutionJobRecord[] = []) {
+  const completedByChild = new Map<string, { job: ExecutionJobRecord; index: number }>();
+  for (const record of records) {
+    if (record.job_type !== "training" || record.status !== "completed") continue;
+    const children = record.driver.store_run_ids;
+    if (!Array.isArray(children)) continue;
+    children.forEach((child, index) => {
+      if (typeof child === "string") completedByChild.set(child, { job: record, index });
+    });
+  }
+
+  const groups = new Map<string, { name: string; duration: number | null; runs: EnrichedRun[] }>();
+  for (const run of runs) {
+    const job = completedByChild.get(run.run_id)?.job;
+    const key = job ? `job:${job.job_id}` : `run:${run.run_id}`;
+    let group = groups.get(key);
+    if (!group) {
+      const duration = job?.driver.duration_seconds;
+      const timestampDuration = job?.started_at && job.completed_at
+        ? (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000
+        : NaN;
+      group = {
+        name: (job && readStringField(job.request, ["run_name"])) || run.name,
+        duration: typeof duration === "number" && Number.isFinite(duration) && duration >= 0
+          ? duration
+          : Number.isFinite(timestampDuration) && timestampDuration >= 0 ? timestampDuration : null,
+        runs: [],
+      };
+      groups.set(key, group);
+    }
+    group.runs.push(run);
+  }
+  return [...groups].map(([id, group]) => ({
+    id,
+    ...group,
+    runs: group.runs.sort((a, b) =>
+      (completedByChild.get(a.run_id)?.index ?? 0) - (completedByChild.get(b.run_id)?.index ?? 0),
+    ),
+  }));
 }
 
 export function buildRunPageIdLookup(activeRuns: readonly Run[] | undefined): Map<string, string> {

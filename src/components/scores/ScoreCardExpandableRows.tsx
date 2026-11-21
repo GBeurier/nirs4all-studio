@@ -133,6 +133,16 @@ export function RefitExpandableRow({
 }: ScoreCardExpandableRowProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const crossvalChildren = getScoreCardCrossvalChildren(row);
+  const aggregated = row.children?.find(child => child.foldId === "final_agg");
+  const aggregatedOutput = aggregated && (
+    <ScoreCardRowView
+      row={aggregated}
+      variant="inline"
+      selectedMetrics={selectedMetrics}
+      workspaceId={workspaceId}
+      onViewDetails={onViewDetails ? () => onViewDetails(aggregated) : undefined}
+    />
+  );
   const { handleViewChainChart } = useScoreCardChainDetail({ row, onViewPrediction });
   const toggleExpanded = () => setExpanded((current) => !current);
 
@@ -153,6 +163,7 @@ export function RefitExpandableRow({
         />
         {expanded && (
           <div className="ml-4 mt-0.5 space-y-0.5">
+            {aggregatedOutput}
             <ScoreCardCrossvalChildren
               crossvalChildren={crossvalChildren}
               selectedMetrics={selectedMetrics}
@@ -190,6 +201,7 @@ export function RefitExpandableRow({
         <tr>
           <td colSpan={100} className="p-0">
             <div className="border-t bg-muted/10 px-4 py-2 space-y-1">
+              {aggregatedOutput}
               <ScoreCardCrossvalChildren
                 crossvalChildren={crossvalChildren}
                 selectedMetrics={selectedMetrics}

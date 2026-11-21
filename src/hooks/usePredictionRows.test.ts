@@ -42,7 +42,7 @@ it("ranks classification scores highest first and changes the default with the t
   const rows: PredictionRecord[] = [0.2, 0.8].map((score, index) => ({
     id: `classification-${index}`, source_dataset: "classes", source_file: "store.sqlite",
     dataset_name: "classes", model_name: `RF${index}`, trace_id: `chain-${index}`,
-    partition: "test", fold_id: "final", task_type: "classification", metric: "balanced_accuracy", test_score: score,
+    partition: "test", fold_id: "final", task_type: "classification", metric: "balanced_accuracy", val_score: score, test_score: 1 - score,
   }));
   function Consumer({ task }: { task: "regression" | "classification" }) {
     current = usePredictionRows(rows, task);
@@ -53,8 +53,8 @@ it("ranks classification scores highest first and changes the default with the t
     expect(current.sortOrder).toBe("asc");
     await act(async () => root.render(createElement(Consumer, { task: "classification" })));
     expect(current.sortOrder).toBe("desc");
-    expect(current.pageRows.map(row => row.primaryTestScore)).toEqual([0.8, 0.2]);
-    await act(async () => current.handleSort("test_score"));
-    expect(current.pageRows.map(row => row.primaryTestScore)).toEqual([0.2, 0.8]);
+    expect(current.pageRows.map(row => row.primaryValScore)).toEqual([0.8, 0.2]);
+    await act(async () => current.handleSort("val_score"));
+    expect(current.pageRows.map(row => row.primaryValScore)).toEqual([0.2, 0.8]);
   } finally { await act(async () => root.unmount()); }
 });
