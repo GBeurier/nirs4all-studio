@@ -7,16 +7,6 @@ import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -36,6 +26,8 @@ import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
 import { formatDatetime, formatDuration } from "./runDetailUtils";
 import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
+import { hideRunsFromHistory } from "@/hooks/useHiddenRuns";
+import { RunRemovalDialog, type RunRemovalChoice } from "./RunRemovalDialog";
 import { getApiErrorMessage } from "@/api/transport";
 import {
   formatMetricValue,
@@ -214,7 +206,13 @@ export const RunItem = memo(function RunItem({
     return isBetterScore(score, bestScore, ds.metric ?? best.metric) ? ds : best;
   }, null);
 
-  const handleDeleteRun = async () => {
+  const handleRemoveRun = async (choice: RunRemovalChoice) => {
+    if (choice === "entry") {
+      hideRunsFromHistory(workspaceId, [run.run_id]);
+      setDeleteOpen(false);
+      toast.success(t("runs.removal.entryDone", { name: run.name || run.run_id }));
+      return;
+    }
     if (!canDeleteRun) return;
 
     setDeleteBusy(true);
@@ -431,23 +429,14 @@ export const RunItem = memo(function RunItem({
         </Card>
       </Collapsible>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("runs.item.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("runs.item.deleteDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBusy}>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteRun} disabled={!canDeleteRun || deleteBusy}>
-              {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-              {t("runs.item.deleteRun")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RunRemovalDialog
+        open={deleteOpen}
+        runName={run.name || run.run_id}
+        busy={deleteBusy}
+        canDelete={canDeleteRun}
+        onChoose={(choice) => void handleRemoveRun(choice)}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </>
   );
 });

@@ -7007,6 +7007,17 @@ notFound: {
       showFewer: "Show fewer",
       moreCount: "+{{count}} more",
     },
+    removal: {
+      title: "Remove \"{{name}}\"?",
+      entryDescription: "Remove from history: hides this entry from the Runs list only. Its results, predictions and models stay in the workspace and remain available in Results, Predictions and the other screens.",
+      everythingDescription: "Delete everything: permanently removes the run and all linked predictions, chains, arrays, logs and orphaned artifacts from the workspace.",
+      entry: "Remove from history",
+      everything: "Delete everything",
+      applyToAll: "Apply my choice to all ({{count}} remaining)",
+      entryDone: "\"{{name}}\" removed from history",
+      clearHistory: "Clear history",
+      historyCleared: "Run history cleared",
+    },
     item: {
       datasets: "Datasets",
       pipelineRuns: "Pipeline runs",
@@ -7855,6 +7866,7 @@ notFound: {
         showing_one: "Showing SHAP for {{count}} selected sample",
         showing_other: "Showing SHAP for {{count}} selected samples",
         loadingDetail: "Loading sample detail...",
+        detailFailed: "Could not load the selected samples; showing all samples.",
         importance: "Importance",
         absorbance: "Absorbance",
         absorbanceValue: "Absorbance: {{value}}",
@@ -7867,7 +7879,6 @@ notFound: {
       },
       waterfall: {
         loadFailed: "Failed to load sample explanation",
-        detailFailed: "Could not load the selected samples; showing all samples.",
         noData: "No explanation data available",
         sampleLabel: "Sample:",
         previousSample: "Previous sample",

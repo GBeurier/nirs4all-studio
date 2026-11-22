@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -69,6 +69,7 @@ interface RunsPageHeaderProps {
   onSelectedMetricsChange: (metrics: string[]) => void;
   selectedMetrics: string[];
   selectedProjectId: string | null;
+  actions?: ReactNode;
 }
 
 export function RunsPageHeader({
@@ -77,6 +78,7 @@ export function RunsPageHeader({
   onSelectedMetricsChange,
   selectedMetrics,
   selectedProjectId,
+  actions,
 }: RunsPageHeaderProps) {
   const { t } = useTranslation();
 
@@ -95,6 +97,7 @@ export function RunsPageHeader({
           availableMetricKeys={metricContext.availableMetricKeys}
         />
         <ProjectFilter selectedProjectId={selectedProjectId} onProjectChange={onProjectChange} />
+        {actions}
         <Button asChild>
           <Link to="/editor">
             <Plus className="h-4 w-4 mr-2" />

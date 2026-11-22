@@ -7007,6 +7007,17 @@ notFound: {
       showFewer: "Afficher moins",
       moreCount: "+{{count}} de plus",
     },
+    removal: {
+      title: "Retirer « {{name}} » ?",
+      entryDescription: "Retirer de l'historique : masque seulement cette entrée de la liste des exécutions. Ses résultats, prédictions et modèles restent dans l'espace de travail et restent accessibles dans Résultats, Prédictions et les autres écrans.",
+      everythingDescription: "Tout supprimer : supprime définitivement l'exécution ainsi que les prédictions, chaînes, tableaux, journaux et artefacts orphelins associés de l'espace de travail.",
+      entry: "Retirer de l'historique",
+      everything: "Tout supprimer",
+      applyToAll: "Appliquer mon choix à toutes ({{count}} restantes)",
+      entryDone: "« {{name}} » retirée de l'historique",
+      clearHistory: "Vider l'historique",
+      historyCleared: "Historique des exécutions vidé",
+    },
     item: {
       datasets: "Jeux de données",
       pipelineRuns: "Exécutions de pipeline",
@@ -7855,6 +7866,7 @@ notFound: {
         showing_one: "SHAP affiché pour {{count}} échantillon sélectionné",
         showing_other: "SHAP affiché pour {{count}} échantillons sélectionnés",
         loadingDetail: "Chargement du détail de l'échantillon...",
+        detailFailed: "Impossible de charger les échantillons sélectionnés ; affichage de tous les échantillons.",
         importance: "Importance",
         absorbance: "Absorbance",
         absorbanceValue: "Absorbance : {{value}}",
@@ -7867,7 +7879,6 @@ notFound: {
       },
       waterfall: {
         loadFailed: "Impossible de charger l'explication de l'échantillon",
-        detailFailed: "Impossible de charger les échantillons sélectionnés ; affichage de tous les échantillons.",
         noData: "Aucune donnée d'explication disponible",
         sampleLabel: "Échantillon :",
         previousSample: "Échantillon précédent",

@@ -178,6 +178,11 @@ export const clientStorageKeys = {
     scope: "session",
     description: "Workspace and job identities dismissed from the execution tasks panel in this session.",
   }),
+  hiddenWorkspaceRuns: defineClientStorageKey<string[]>("hidden-workspace-runs", {
+    area: "local",
+    scope: "workspace",
+    description: "Workspace and run identities removed from the Runs history list; their results stay in the workspace.",
+  }),
   dismissedLegacyWorkspaceNotices: defineClientStorageKey<string[]>("nirs4all-dismissed-legacy-workspace-notices", {
     area: "local",
     scope: "user",
