@@ -7866,6 +7866,7 @@ notFound: {
       },
       waterfall: {
         loadFailed: "Failed to load sample explanation",
+        detailFailed: "Could not load the selected samples; showing all samples.",
         noData: "No explanation data available",
         sampleLabel: "Sample:",
         previousSample: "Previous sample",

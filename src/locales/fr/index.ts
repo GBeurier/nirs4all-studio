@@ -7866,6 +7866,7 @@ notFound: {
       },
       waterfall: {
         loadFailed: "Impossible de charger l'explication de l'échantillon",
+        detailFailed: "Impossible de charger les échantillons sélectionnés ; affichage de tous les échantillons.",
         noData: "Aucune donnée d'explication disponible",
         sampleLabel: "Échantillon :",
         previousSample: "Échantillon précédent",

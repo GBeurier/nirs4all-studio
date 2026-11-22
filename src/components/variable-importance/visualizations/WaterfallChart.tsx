@@ -45,18 +45,23 @@ export function WaterfallChart({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // A response belongs to the sample that requested it: stale responses are ignored.
+    let current = true;
     setLoading(true);
     setError(null);
 
     getSampleExplanation(jobId, sampleIdx, 12)
       .then((response) => {
+        if (!current) return;
         setData(response);
         setLoading(false);
       })
       .catch((err) => {
+        if (!current) return;
         setError(err.message || t('results.variableImportance.waterfall.loadFailed'));
         setLoading(false);
       });
+    return () => { current = false; };
   }, [jobId, sampleIdx, t]);
 
   const chartData = useMemo(() => {
