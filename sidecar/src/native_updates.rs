@@ -327,6 +327,22 @@ pub fn route(state: &SidecarState, method: &str, path: &str) -> Option<HttpRespo
     ))
 }
 
+/// Release check with the network request outside the global route lock.
+pub(crate) fn check_without_global_lock(state: &Arc<Mutex<SidecarState>>) -> HttpResponse {
+    let updater = {
+        let state = state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let updater = state.native_updater.clone();
+        updater.sync_preferences(&state.update_settings.load());
+        updater
+    };
+    updater.status_json(true).map_or_else(
+        |error| detail(400, error),
+        |value| HttpResponse::json(200, value.to_string()),
+    )
+}
+
 fn parse_changelog_query(path: &str) -> Result<Option<String>, String> {
     let (pathname, query) = path
         .split_once('?')

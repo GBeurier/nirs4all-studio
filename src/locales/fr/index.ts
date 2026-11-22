@@ -2752,6 +2752,7 @@ notFound: {
       },
     },
     toasts: {
+      templateCreating: "Création du pipeline à partir du modèle...",
       templateFailed: "Échec de la création du pipeline à partir du modèle",
       templateAdded: "Modèle ajouté à votre espace de travail",
       templateReady: "« {{name}} » est prêt à être modifié.",

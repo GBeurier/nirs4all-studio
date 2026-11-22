@@ -2752,6 +2752,7 @@ notFound: {
       },
     },
     toasts: {
+      templateCreating: "Creating pipeline from template...",
       templateFailed: "Failed to create pipeline from template",
       templateAdded: "Template added to your workspace",
       templateReady: "\"{{name}}\" is ready to edit.",

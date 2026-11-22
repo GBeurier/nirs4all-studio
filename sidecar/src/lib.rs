@@ -1999,11 +1999,22 @@ fn route_workspace_workflows_without_global_lock(
         .or_else(|| dataset_import::route(state, request))
         .or_else(|| dataset_inspection_http::route(state, request))
         .or_else(|| route_pipeline_presets_without_global_lock(state, request))
+        .or_else(|| route_update_check_without_global_lock(state, request))
         .or_else(|| route_workspace_run_history(state, request))
         .or_else(|| run_deletion::route(state, request))
         .or_else(|| run_management::route(state, request))
         .or_else(|| prediction_results::route(state, request))
         .or_else(|| run_listing::route(state, request))
+}
+
+/// `POST /api/updates/check` calls GitHub with a network timeout: offline it
+/// must not hold the global route lock and stall every other request.
+fn route_update_check_without_global_lock(
+    state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    (request.method == "POST" && request.path == "/api/updates/check" && request.query.is_none())
+        .then(|| native_updates::check_without_global_lock(state))
 }
 
 fn route_pipeline_presets_without_global_lock(
