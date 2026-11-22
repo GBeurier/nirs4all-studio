@@ -1,4 +1,5 @@
 import { isLowerBetter } from '@/lib/scores';
+import { resolveScoreCardRankMetric, sortScoreCardRowsByRank } from '@/lib/scoreCardTreeData';
 import type { PartitionPrediction, ChainPartitionDetailResponse } from '@/types/aggregated-predictions';
 import type { AllChainEntry, EnrichedDatasetRun, TopChainResult } from '@/types/enriched-runs';
 import type { ScoreCardRow, ScoreCardType } from '@/types/score-cards';
@@ -190,18 +191,19 @@ export function buildPredictionViewerHeader({
 }
 
 export function buildDatasetResultHeaderSummary({
-  scoreRows,
+  scoreRows: unrankedRows,
   chains,
   metric,
+  selectedMetrics = [],
 }: {
   scoreRows: ScoreCardRow[];
   chains: TopChainResult[];
   metric: string | null;
+  selectedMetrics?: readonly string[];
 }): DatasetResultHeaderSummary {
-  const bestTraining = scoreRows.filter(row => row.cardType === 'train' && row.primaryTrainScore != null)
-    .sort((a, b) => isLowerBetter(metric)
-      ? a.primaryTrainScore! - b.primaryTrainScore!
-      : b.primaryTrainScore! - a.primaryTrainScore!)[0];
+  // Same CV-based ranking as the score tree, on the selected metric.
+  const scoreRows = sortScoreCardRowsByRank(unrankedRows, resolveScoreCardRankMetric(unrankedRows, selectedMetrics));
+  const bestTraining = scoreRows.find(row => row.cardType === 'train' && row.primaryTrainScore != null);
   const bestRow = scoreRows.find(row => row.cardType === 'refit' && !row.syntheticRefit && row.primaryTestScore != null)
     ?? scoreRows.find(row => row.cardType === 'crossval' && row.primaryValScore != null)
     ?? bestTraining ?? scoreRows[0];

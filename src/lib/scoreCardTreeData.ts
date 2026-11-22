@@ -5,6 +5,8 @@ import {
   enrichCrossvalRow,
   partitionPredToTrainCard,
 } from '@/lib/score-adapters';
+import { canonicalMetricKey, getScoreMapValue, isLowerBetter } from '@/lib/scores';
+import { filterScoreRowMetricsForTaskType, getScoreCardPrimaryMetric } from '@/lib/scoreRowData';
 import type { PartitionPrediction } from '@/types/aggregated-predictions';
 import type { ScoreCardRow } from '@/types/score-cards';
 
@@ -37,6 +39,57 @@ export function partitionScoreCardRows(rows: ScoreCardRow[]): ScoreCardTreeSecti
     }
     return sections;
   }, { refitRows: [], cvRows: [], trainRows: [] });
+}
+
+/**
+ * Metric used to rank score rows: the first selected metric that rows actually
+ * carry, else the rows' primary metric.
+ */
+export function resolveScoreCardRankMetric(rows: ScoreCardRow[], selectedMetrics: readonly string[]): string {
+  const primary = rows[0] ? getScoreCardPrimaryMetric(rows[0]) : '';
+  const candidates = filterScoreRowMetricsForTaskType(selectedMetrics, rows[0]?.taskType);
+  return candidates.find((metric) => rows.some((row) => scoreCardRankScore(row, metric) != null)) ?? primary;
+}
+
+/**
+ * Ranking score of a row for one metric. Refit and CV rows rank on the
+ * cross-validation (validation/OOF) score, never on the retained test score.
+ * Training-only rows have no CV score and rank on their training score.
+ */
+export function scoreCardRankScore(row: ScoreCardRow, metric: string): number | null {
+  const key = canonicalMetricKey(metric);
+  const isPrimary = key === getScoreCardPrimaryMetric(row);
+  if (row.cardType === 'refit') {
+    return getScoreMapValue(row.avgValScores, key) ?? (isPrimary ? row.primaryValScore ?? null : null);
+  }
+  if (row.cardType === 'crossval') {
+    return getScoreMapValue(row.valScores, key)
+      ?? getScoreMapValue(row.avgValScores, key)
+      ?? (isPrimary ? row.primaryValScore ?? null : null);
+  }
+  return getScoreMapValue(row.trainScores, key) ?? (isPrimary ? row.primaryTrainScore ?? null : null);
+}
+
+function compareNullable(a: number | null, b: number | null, lowerBetter: boolean): number {
+  if (a == null || !Number.isFinite(a)) return b == null || !Number.isFinite(b) ? 0 : 1;
+  if (b == null || !Number.isFinite(b)) return -1;
+  return lowerBetter ? a - b : b - a;
+}
+
+/**
+ * Sorts rows best-first on {@link scoreCardRankScore}; ties keep their incoming order.
+ * An aggregated refit row without its own CV score ranks with its chain's CV score.
+ */
+export function sortScoreCardRowsByRank(rows: ScoreCardRow[], metric: string): ScoreCardRow[] {
+  const lowerBetter = isLowerBetter(metric);
+  const chainScores = new Map<string, number>();
+  for (const row of rows) {
+    const score = scoreCardRankScore(row, metric);
+    if (row.cardType === 'refit' && score != null && !chainScores.has(row.chainId)) chainScores.set(row.chainId, score);
+  }
+  const rank = (row: ScoreCardRow) => scoreCardRankScore(row, metric)
+    ?? (row.cardType === 'refit' ? chainScores.get(row.chainId) ?? null : null);
+  return [...rows].sort((a, b) => compareNullable(rank(a), rank(b), lowerBetter));
 }
 
 export function getScoreCardCrossvalChildren(row: ScoreCardRow): ScoreCardRow[] {
