@@ -7017,6 +7017,7 @@ notFound: {
       entryDone: "« {{name}} » retirée de l'historique",
       clearHistory: "Vider l'historique",
       historyCleared: "Historique des exécutions vidé",
+      historyPartiallyCleared: "Historique vidé ; {{count}} exécution(s) n'ont pas pu être supprimée(s)",
     },
     item: {
       datasets: "Jeux de données",

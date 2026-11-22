@@ -7,7 +7,7 @@ use std::{
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
-use super::{read_enriched_runs, read_enriched_runs_from_connection};
+use super::{enrich_dataset, read_enriched_runs, read_enriched_runs_from_connection};
 use crate::workspace_store::WorkspaceStoreReadError;
 
 struct Fixture(PathBuf);
@@ -374,4 +374,17 @@ fn history_null_config_uses_available_metadata_but_preserves_explicit_values() {
     assert_eq!(explicit["runs"][0]["config"]["has_refit"], false);
     assert_eq!(explicit["runs"][0]["config"]["cv_folds"], 0);
     assert_eq!(explicit["runs"][0]["config"]["metric"], "explicit");
+}
+
+#[test]
+fn best_final_score_comes_from_the_cv_best_chain_not_the_best_test() {
+    let summary = json!({"dataset_name": "corn", "metric": "rmse", "task_type": "regression",
+    "top_chains": [
+        {"chain_id": "cv-best", "avg_val_score": 0.2, "final_test_score": 0.5},
+        {"chain_id": "test-best", "avg_val_score": 0.3, "final_test_score": 0.1},
+        {"chain_id": "refit-only", "final_test_score": 0.05},
+    ]});
+    let dataset = enrich_dataset(&summary, &[], &std::collections::BTreeMap::default(), "run");
+    assert_eq!(dataset["best_avg_val_score"], json!(0.2));
+    assert_eq!(dataset["best_final_score"], json!(0.5));
 }

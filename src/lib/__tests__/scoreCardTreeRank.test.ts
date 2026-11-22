@@ -22,6 +22,7 @@ function refit(chainId: string, cv: Record<string, number>, test: Record<string,
     primaryTestScore: test.rmse ?? null,
     primaryValScore: foldId === "final" ? cv.rmse ?? null : null,
     primaryTrainScore: null,
+    hasRefitArtifact: false,
   };
 }
 

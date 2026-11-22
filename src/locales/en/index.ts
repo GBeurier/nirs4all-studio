@@ -7017,6 +7017,7 @@ notFound: {
       entryDone: "\"{{name}}\" removed from history",
       clearHistory: "Clear history",
       historyCleared: "Run history cleared",
+      historyPartiallyCleared: "Run history cleared; {{count}} run(s) could not be deleted",
     },
     item: {
       datasets: "Datasets",

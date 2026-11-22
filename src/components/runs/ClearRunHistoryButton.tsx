@@ -25,12 +25,14 @@ export function ClearRunHistoryButton({ workspaceId, runs }: ClearRunHistoryButt
   const [queue, setQueue] = useState<EnrichedRun[]>([]);
   const [applyToAll, setApplyToAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [failures, setFailures] = useState(0);
   const removable = runs.filter(run => !getRuntimeResultStatusDisplay(run.status).isBusy);
   const current = queue[0];
 
   const apply = async (choice: RunRemovalChoice) => {
     if (!workspaceId || !current) return;
     const targets = applyToAll ? queue : [current];
+    let failed = failures;
     if (choice === "entry") {
       hideRunsFromHistory(workspaceId, targets.map(run => run.run_id));
     } else {
@@ -39,6 +41,7 @@ export function ClearRunHistoryButton({ workspaceId, runs }: ClearRunHistoryButt
         try {
           await deleteN4AWorkspaceRun(workspaceId, run.run_id);
         } catch (error) {
+          failed += 1;
           notifyApiError(error, t("errors.action.deleteRun"));
         }
       }
@@ -47,9 +50,12 @@ export function ClearRunHistoryButton({ workspaceId, runs }: ClearRunHistoryButt
     }
     const rest = queue.slice(targets.length);
     setQueue(rest);
+    setFailures(failed);
     if (rest.length === 0) {
       setApplyToAll(false);
-      toast.success(t("runs.removal.historyCleared"));
+      setFailures(0);
+      if (failed === 0) toast.success(t("runs.removal.historyCleared"));
+      else toast.warning(t("runs.removal.historyPartiallyCleared", { count: failed }));
     }
   };
 
@@ -58,7 +64,7 @@ export function ClearRunHistoryButton({ workspaceId, runs }: ClearRunHistoryButt
       <Button
         variant="outline"
         disabled={!workspaceId || removable.length === 0}
-        onClick={() => { setApplyToAll(false); setQueue(removable); }}
+        onClick={() => { setApplyToAll(false); setFailures(0); setQueue(removable); }}
       >
         <Eraser className="h-4 w-4 mr-2" />
         {t("runs.removal.clearHistory")}
