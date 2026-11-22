@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import {
   isActiveExecutionStatus,
   isFailedExecutionStatus,
@@ -291,7 +292,7 @@ export function buildRunsExecutionTaskPanelData(
     .map((record): RunsExecutionTaskItem => ({
       jobId: record.job_id,
       runId: record.run_id,
-      runName: record.run_name,
+      runName: formatStoredExecutionName(record.run_name),
       runStatus: record.run_status,
       requestedBackend: record.requested_backend,
       executionBackend: record.execution_backend,

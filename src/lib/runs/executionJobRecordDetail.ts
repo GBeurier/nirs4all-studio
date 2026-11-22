@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import type { TFunction } from "i18next";
 import type { ExecutionJobRecord, ExecutionJobRecordObject } from "./executionJobRecords";
 import {
@@ -169,7 +170,7 @@ export function buildExecutionJobRecordDetail(record: ExecutionJobRecord, t: TFu
     { id: "job_id", label: t("runs.jobDetail.jobId"), value: record.job_id },
     { id: "job_type", label: t("runs.jobDetail.type"), value: record.job_type },
     { id: "run_id", label: t("runs.jobDetail.runId"), value: record.run_id || null },
-    { id: "run_name", label: t("runs.jobDetail.runName"), value: record.run_name || null },
+    { id: "run_name", label: t("runs.jobDetail.runName"), value: formatStoredExecutionName(record.run_name) || null },
     { id: "run_status", label: t("runs.jobDetail.runStatus"), value: record.run_status },
     { id: "requested_backend", label: t("runs.jobDetail.requestedBackend"), value: record.requested_backend },
     { id: "execution_backend", label: t("runs.jobDetail.executionBackend"), value: record.execution_backend },
@@ -188,7 +189,7 @@ export function buildExecutionJobRecordDetail(record: ExecutionJobRecord, t: TFu
     { id: "status", label: t("runs.jobDetail.status"), value: formatRunTokenLabel(record.status, t) },
     { id: "progress", label: t("runs.jobDetail.progress"), value: formatRunProgress(record.progress) },
     { id: "run_id", label: t("runs.jobDetail.runId"), value: record.run_id || "-" },
-    { id: "run_name", label: t("runs.jobDetail.runName"), value: record.run_name || "-" },
+    { id: "run_name", label: t("runs.jobDetail.runName"), value: formatStoredExecutionName(record.run_name) || "-" },
     { id: "run_status", label: t("runs.jobDetail.runStatus"), value: formatRunTokenLabel(record.run_status, t) },
     { id: "requested_backend", label: t("runs.jobDetail.requestedBackend"), value: formatRunTokenLabel(record.requested_backend, t) },
     { id: "execution_backend", label: t("runs.jobDetail.executionBackend"), value: formatRunTokenLabel(record.execution_backend, t) },

@@ -90,6 +90,7 @@ export interface LinkedWorkspaceDiscoveredPredictions {
  * Contains metadata about a model's predictions on a dataset.
  */
 export interface PredictionRecord {
+  variant_params?: Record<string, unknown> | null;
   id: string;
   source_dataset: string;
   source_file: string;

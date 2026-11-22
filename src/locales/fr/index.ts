@@ -2821,7 +2821,7 @@ notFound: {
       untitled: "Pipeline sans titre",
       lastEdited: "Dernière modification {{when}}",
       empty: "Brouillon vide : aucune étape pour le moment.",
-      resume: "Reprendre",
+      open: "Ouvrir",
     },
     recentRuns: {
       emptyTitle: "Aucune exécution récente",
@@ -2839,6 +2839,7 @@ notFound: {
       noPresets: "Aucun pipeline préréglé disponible",
       template: "Modèle",
       seeAll: "Tout voir",
+      openVariant: "Ouvrir {{variant}}",
       complexityTitle: "Complexité {{score}}/10 · {{label}}",
       variants: {
         regression: "Régression",
@@ -6818,6 +6819,13 @@ notFound: {
 
   // ============= Runs =============
   runs: {
+    export: {
+      label: "Exporter le lancement (.n4a)",
+      recipe: "Recettes des pipelines",
+      results: "Scores et métadonnées",
+      models: "Modèles réajustés enregistrés",
+      modelsHint: "Inclut une archive par modèle réajusté exportable.",
+    },
     jobRecord: {
       title: "Détails de l'exécution",
       titleDeveloper: "Enregistrement de la tâche d'exécution",
@@ -6957,6 +6965,9 @@ notFound: {
     },
     list: {
       summary: "Résumé des exécutions",
+      executionParts_one: "{{count}} pipeline modèle",
+      executionParts_other: "{{count}} pipelines modèles",
+      executionPart: "{{name}} · Pipeline {{index}}",
       scopeFiltered: "Exécutions filtrées",
       scopeWorkspace: "Totaux de l'espace de travail",
       scopeVisible: "Exécutions visibles",
@@ -7996,6 +8007,7 @@ notFound: {
       samples: "Échantillons",
       task: "Tâche",
       type: "Type",
+      cvOutputs: "Plis et sorties de prédiction",
       preprocShort: "Prétrait.",
       valShort: "Val",
       noMatch: "Aucun modèle ne correspond à vos filtres",
@@ -8210,7 +8222,9 @@ notFound: {
     },
     export: {
       title: "Exporter les prédictions",
-      description: "Sélectionnez les jeux de données à exporter (.parquet ou .zip).",
+      description: "Sélectionnez les jeux de données et le format de fichier.",
+      format: "Format de fichier",
+      parquet: "Parquet (ZIP pour plusieurs jeux de données)",
       selectAtLeastOne: "Sélectionnez au moins un jeu de données",
       ready: "Export prêt",
       failed: "Échec de l'export",
@@ -8270,8 +8284,9 @@ notFound: {
       val: "Validation",
       test: "Test",
       prediction: "Prédit (sans cible)",
-      predictedSamples_one: "{{count}} prédit sans cible",
-      predictedSamples_other: "{{count}} prédits sans cible",
+      predictedSamples_one: "{{count}} échantillon sans cible mesurée",
+      predictedSamples_other: "{{count}} échantillons sans cible mesurée",
+      predictedSamplesHint: "Ces échantillons sont exclus de l’entraînement et du calcul des scores. Le modèle enregistré a généré leurs prédictions.",
     },
     partitionsShort: {
       train: "Entr.",
@@ -9266,6 +9281,7 @@ transferAnalysis: {
       binStride: "Pas de bin",
       aggregation: "Agrégation",
       engine: "Moteur SHAP",
+      installPython: "Installer SHAP Python",
       engineHelp: "SHAP Python utilise le package shap. SHAP natif utilise les noyaux nirs4all-methods partagés avec nirs4all Web, avec davantage d'explicateurs et de réglages.",
       engines: {
         python: "SHAP Python (package shap)",

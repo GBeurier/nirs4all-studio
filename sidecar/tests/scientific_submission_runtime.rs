@@ -642,6 +642,7 @@ fn selected_submission_registers_publishes_persists_and_submits_once() {
     let config = root.join("config");
     let workspace = root.join("workspace");
     configure_active_workspace(&config, &workspace);
+    fs::remove_dir(workspace.join("runs")).unwrap();
     let executor = Arc::new(RecordingScientificExecutor::default());
     let runtime = Arc::new(NativeJobRuntime::with_executor(executor.clone()));
     let mut state =

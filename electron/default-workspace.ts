@@ -18,13 +18,15 @@ export async function ensureDesktopWorkspace(
     }
     return response.json() as Promise<Record<string, unknown>>;
   };
-  const catalogue = await call("/workspaces");
-  if (!Array.isArray(catalogue.workspaces)) {
-    throw new Error("The workspace catalogue is invalid");
+  // The full workspace catalogue scans linked directories. Startup only
+  // needs the persisted count, even if one of those directories is slow.
+  const { linked_workspaces_count: workspaceCount } = await call("/app/settings");
+  if (typeof workspaceCount !== "number" || !Number.isSafeInteger(workspaceCount) || workspaceCount < 0) {
+    throw new Error("The linked workspace count is invalid");
   }
   // Preserve the user's catalogue and active workspace, including unavailable
   // removable/network drives. A missing drive is not a first installation.
-  if (catalogue.workspaces.length > 0) return;
+  if (workspaceCount > 0) return;
   const workspacePath = path.join(documentsDirectory, "nirs4all Studio", "workspace");
   const response = await request(`${baseUrl}/api/workspace/create`, {
     method: "POST",

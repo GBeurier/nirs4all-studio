@@ -23,6 +23,7 @@ import {
   resolveRunStatus,
   type RunDetailTab,
 } from "./RunDetailSheetDisplay";
+import { RunN4aExportButton } from "./RunN4aExportButton";
 import { RunDetailSheetHeader } from "./RunDetailSheetHeader";
 import { RunDetailSheetTabs } from "./RunDetailSheetTabs";
 
@@ -131,6 +132,9 @@ export function RunDetailSheet({
           status={status}
           detail={detail ?? null}
           datasetsCount={datasets.length}
+          exportControl={run.status === "completed" && (
+            <RunN4aExportButton runs={[run]} workspaceId={workspaceId} filename={run.name || run.run_id} />
+          )}
           runPageId={runPageId}
           canRerun={canRerun}
           isRerunning={rerunMutation.isPending}

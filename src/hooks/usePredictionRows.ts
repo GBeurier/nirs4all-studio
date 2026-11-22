@@ -8,6 +8,7 @@ import {
   buildPredictionModelRows,
   collectSortedUniqueStrings,
   createRowComparator,
+  groupPredictionRows,
   rowDataVisibility,
   rowFoldVisibility,
   rowMatchesFacetScope,
@@ -45,6 +46,7 @@ export interface PredictionRowsState {
   setFilterModel: (value: string) => void;
   filterTaskType: string;
   setFilterTaskType: (value: string) => void;
+  availableFoldTypes: FoldVisibility[];
   visibleFoldTypes: FoldVisibility[];
   setVisibleFoldTypes: (value: FoldVisibility[]) => void;
   visibleDataKinds: DataVisibility[];
@@ -81,7 +83,7 @@ export function usePredictionRows(
   const [filterDataset, setFilterDataset] = useState("all");
   const [filterModel, setFilterModel] = useState("all");
   const [filterTaskType, setFilterTaskType] = useState("all");
-  const [sortField, setSortField] = useState<SortField>("test_score");
+  const [sortField, setSortField] = useState<SortField>("val_score");
   const [sortPreference, setSortPreference] = useState<{ task: MetricTaskFilter; order: SortOrder } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -181,7 +183,7 @@ export function usePredictionRows(
       && visibleDataKinds.includes(rowDataVisibility(row)),
     );
 
-    return [...rows].sort(createRowComparator(sortField, sortOrder));
+    return groupPredictionRows(rows).sort(createRowComparator(sortField, sortOrder));
   }, [contextRows, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
 
   useEffect(() => {
@@ -323,6 +325,7 @@ export function usePredictionRows(
     setFilterModel,
     filterTaskType,
     setFilterTaskType,
+    availableFoldTypes: [...new Set(contextRows.map(rowFoldVisibility))],
     visibleFoldTypes,
     setVisibleFoldTypes,
     visibleDataKinds,

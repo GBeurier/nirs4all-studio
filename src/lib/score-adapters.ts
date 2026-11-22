@@ -474,20 +474,12 @@ export function datasetChainsToRows(
         ? findMatchingCvSourceExact(refitChain, cvCandidates, usedCvChainIds, metric)
         : findMatchingCvSource(refitChain, cvCandidates, usedCvChainIds, metric));
     if (matchedCv) usedCvChainIds.add(matchedCv.chain_id);
-    refitRows.push(buildRefitRow(
-      refitChain,
-      metric,
-      taskType,
-      matchedCv,
-    ));
+    const row = buildRefitRow(refitChain, metric, taskType, matchedCv);
     if (hasAggregatedRefitData(refitChain)) {
-      refitRows.push(buildAggregatedRefitRow(
-        refitChain,
-        metric,
-        taskType,
-        matchedCv,
-      ));
+      const aggregated = buildAggregatedRefitRow(refitChain, metric, taskType, matchedCv);
+      row.children = [...(row.children ?? []), { ...aggregated, children: [] }, ...(aggregated.children ?? [])];
     }
+    refitRows.push(row);
   }
 
   refitRows.sort((a, b) => compareRefitRows(a, b, metric));

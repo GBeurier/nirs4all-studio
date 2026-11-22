@@ -7,6 +7,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import i18n from "i18next";
 import { api } from "@/api/transport";
+import { describeApiError } from "@/lib/userFacingError";
 import type {
   Pipeline,
   PipelinePreset,
@@ -64,7 +65,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }));
       setPipelines(formattedPipelines);
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.fetch"));
+      setError(describeApiError(err, i18n.t, i18n.t("pipelines.library.errors.fetch")).message);
     } finally {
       setLoading(false);
     }
@@ -121,21 +122,13 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
     variant?: PipelinePresetVariantId,
     name?: string
   ): Promise<Pipeline | null> => {
-    try {
-      const response = await api.post<{ success: boolean; pipeline: Pipeline }>(
-        `/pipelines/from-preset/${presetId}`,
-        { name, variant }
-      );
-
-      if (response.success) {
-        await fetchPipelines();
-        return response.pipeline;
-      }
-      return null;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.createFromPreset"));
-      return null;
-    }
+    const response = await api.post<{ success: boolean; pipeline: Pipeline }>(
+      `/pipelines/from-preset/${presetId}`,
+      { name, variant }
+    );
+    if (!response.success) return null;
+    await fetchPipelines();
+    return response.pipeline;
   }, [fetchPipelines]);
 
   // Update pipeline

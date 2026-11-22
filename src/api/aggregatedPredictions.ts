@@ -209,11 +209,11 @@ export async function downloadAggregatedDatasetParquet(
 }
 
 /**
- * Bulk export dataset parquet files as zip (or single parquet).
+ * Export dataset prediction arrays as Parquet, ZIP, or a Core container.
  */
 export async function exportAggregatedPredictions(options: {
   dataset_names?: string[];
-  format: "parquet" | "zip";
+  format: "parquet" | "zip" | "n4a";
 }): Promise<Blob> {
   return requestBinary("/aggregated-predictions/export", "POST", options);
 }

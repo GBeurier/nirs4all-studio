@@ -31,12 +31,14 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { RunN4aExportButton } from "@/components/runs/RunN4aExportButton";
 import { RunItem } from "@/components/runs/RunItem";
 import { ProjectFilter } from "@/components/runs/ProjectFilter";
 import { MetricSelector } from "@/components/scores/MetricSelector";
 import { NoWorkspaceState, EmptyState, CardSkeleton, ErrorState } from "@/components/ui/state-display";
 import { useIsDeveloperMode } from "@/context/useDeveloperMode";
 import { cn } from "@/lib/utils";
+import { groupRunsByExecution } from "@/lib/runs/pageData";
 import type {
   RunsExecutionTaskPanelData,
   RunsExecutionJobListIndicators,
@@ -58,7 +60,7 @@ import {
   type ExecutionJobRecordDetailActionId,
   type ExecutionJobRecordDetailField,
 } from "@/lib/runs/executionJobRecordDetail";
-import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
+import { formatElapsedClock, formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
 import type { EnrichedRun } from "@/types/enriched-runs";
 
 interface RunsPageHeaderProps {
@@ -685,6 +687,7 @@ interface RunsListProps {
   runs: EnrichedRun[];
   selectedMetrics: string[];
   workspaceId: string | undefined;
+  executionJobRecords?: readonly ExecutionJobRecord[];
   executionJobIndicators?: ReadonlyMap<string, RunsExecutionJobListIndicators>;
 }
 
@@ -697,9 +700,22 @@ export function RunsList({
   runs,
   selectedMetrics,
   workspaceId,
+  executionJobRecords,
   executionJobIndicators,
 }: RunsListProps) {
   const { t } = useTranslation();
+
+  const groups = groupRunsByExecution(runs, executionJobRecords);
+  const renderRun = (run: EnrichedRun) => (
+    <RunItem
+      key={run.run_id}
+      run={run}
+      onViewDetails={onViewDetails}
+      workspaceId={workspaceId!}
+      selectedMetrics={selectedMetrics}
+      executionJob={executionJobIndicators?.get(run.run_id)}
+    />
+  );
 
   return (
     <div className="space-y-3">
@@ -718,16 +734,33 @@ export function RunsList({
       ) : runs.length === 0 ? (
         <EmptyState icon={Play} title={t("runs.empty")} description={t("runs.emptyHint")} action={{ label: t("runs.newRun"), href: "/editor" }} />
       ) : (
-        runs.map(run => (
-          <RunItem
-            key={run.run_id}
-            run={run}
-            onViewDetails={onViewDetails}
-            workspaceId={workspaceId!}
-            selectedMetrics={selectedMetrics}
-            executionJob={executionJobIndicators?.get(run.run_id)}
-          />
-        ))
+        groups.map(group => {
+          if (group.runs.length === 1) {
+            const [run] = group.runs;
+            return renderRun({ ...run, name: group.name, duration_seconds: group.duration ?? run.duration_seconds });
+          }
+          return (
+            <details key={group.id} className="glass-card rounded-lg p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                {group.name}
+                <span className="ml-3 text-xs text-muted-foreground">
+                  {t("runs.list.executionParts", { count: group.runs.length })}
+                  {group.duration != null && ` · ${formatElapsedClock(group.duration)}`}
+                </span>
+              </summary>
+              <div className="mt-3 space-y-2">
+                {workspaceId && (
+                  <RunN4aExportButton runs={group.runs} workspaceId={workspaceId} filename={group.name} />
+                )}
+                {group.runs.map((run, index) => renderRun({
+                  ...run,
+                  name: t("runs.list.executionPart", { name: group.name, index: index + 1 }),
+                  duration_seconds: null,
+                }))}
+              </div>
+            </details>
+          );
+        })
       )}
     </div>
   );

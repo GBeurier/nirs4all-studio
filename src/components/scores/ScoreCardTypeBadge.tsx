@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { foldBadgeClasses, foldLabel } from "@/lib/fold-utils";
-import { PREDICTION_ONLY_BADGE_CLASS } from "@/lib/partitionColors";
+import { isPredictionOnlyPartition, PREDICTION_ONLY_BADGE_CLASS } from "@/lib/partitionColors";
 import { cn } from "@/lib/utils";
 import type { ScoreCardRow } from "@/types/score-cards";
 
@@ -19,7 +19,9 @@ export function ScoreCardTypeBadge({ row }: { row: ScoreCardRow }) {
     return (
       <div className="flex items-center gap-1 shrink-0">
         <Badge variant="outline" className="text-[9px] border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-          {t("results.scores.badge.refit")}
+          {isPredictionOnlyPartition(row.partition)
+            ? t("predictions.partitions.prediction")
+            : t("results.scores.badge.refit")}
         </Badge>
         {row.foldId?.endsWith("_agg") && (
           <Badge variant="outline" className="text-[9px] border-purple-500/30 text-purple-500">
@@ -30,7 +32,7 @@ export function ScoreCardTypeBadge({ row }: { row: ScoreCardRow }) {
           <Badge
             variant="outline"
             className={cn("text-[9px]", PREDICTION_ONLY_BADGE_CLASS)}
-            title={t("predictions.partitions.prediction")}
+            title={t("predictions.partitions.predictedSamplesHint")}
           >
             {t("predictions.partitions.predictedSamples", { count: row.nSamplesPredicted })}
           </Badge>

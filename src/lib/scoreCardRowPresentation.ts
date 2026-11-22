@@ -1,6 +1,5 @@
 import { foldLabelShort } from '@/lib/fold-utils';
 import { canonicalMetricKey } from '@/lib/scores';
-import { formatBestParams } from '@/lib/score-adapters';
 import { cardTypeBorderClass } from '@/lib/scoreColumnData';
 import type { ScoreCardRow, ScoreCardType } from '@/types/score-cards';
 
@@ -14,7 +13,6 @@ export interface InlineScoreCardRowPresentation extends ScoreCardRowTypeFlags {
   borderClass: string;
   shellClass: string;
   detailClass: string;
-  paramLabel: string | null;
 }
 
 export interface TableScoreCardRowPresentation extends ScoreCardRowTypeFlags {
@@ -59,7 +57,6 @@ export function buildInlineScoreCardRowPresentation(row: ScoreCardRow): InlineSc
     borderClass: cardTypeBorderClass(row.cardType),
     shellClass: getScoreCardRowShellClass(row.cardType),
     detailClass: getScoreCardRowDetailClass(row.cardType),
-    paramLabel: row.bestParams ? formatBestParams(row.bestParams) : null,
   };
 }
 

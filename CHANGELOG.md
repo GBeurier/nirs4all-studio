@@ -6,6 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.19.7] - 2026-11-21
+
+### Fixed
+
+- Show one Results card per dataset when older and newer runs share a linked
+  dataset. Rank the combined results while keeping distinct dataset identities.
+
+## [0.19.6] - 2026-11-21
+
+### Fixed
+
+- Open Studio without waiting for linked workspace directories to be scanned.
+- Show scientific runs with their wall-clock duration and keep model variants
+  grouped under the run. Open a variant to inspect its parameters.
+- Show refit predictions and cross-validation folds in Results and Predictions,
+  rank models by validation score, and distinguish predictions with missing
+  reference targets from scored predictions.
+- Run the NICON preset with supported training controls.
+- Explain when the active workspace folder is unavailable in the pipeline editor
+  and library. Label draft and preset actions as Open.
+- Create the durable job directory when the first experiment starts in an
+  existing workspace that does not have one.
+- Export fitted model bundles in the .n4a format from a run.
+- Export selected datasets’ prediction arrays in a Core .n4a container.
+- Keep Shapley available with its native engine when the optional Python
+  shap package is missing.
+
 ## [0.19.2] - 2026-11-20
 
 ### Fixed

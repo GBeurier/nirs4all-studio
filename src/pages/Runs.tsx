@@ -255,6 +255,7 @@ export default function Runs() {
         workspaceId={activeWorkspaceId}
         selectedMetrics={selectedMetrics}
         executionJobIndicators={executionJobIndicators}
+        executionJobRecords={executionJobRecordsData?.records}
       />
 
       <RunDetailSheet

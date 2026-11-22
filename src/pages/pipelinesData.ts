@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import type { ChainSummary } from "@/types/aggregated-predictions";
 import type { Pipeline, PipelinePreset, SortBy } from "@/types/pipelines";
 import type { Run } from "@/types/runs";
@@ -98,7 +99,7 @@ export function extractRecentRuns(runs: Run[] | undefined, limit: number): Recen
             ? `${run.id}:${p.id}`
             : `${fallbackKeyBase}:${fallbackKeyCount}`,
           pipelineId: p.pipeline_id,
-          pipelineName: p.pipeline_name || "Unknown pipeline",
+          pipelineName: formatStoredExecutionName(p.pipeline_name) || "Unknown pipeline",
           runId: run.id,
           storeRunId: run.store_run_id ?? null,
           runName: run.name,

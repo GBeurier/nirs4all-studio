@@ -58,9 +58,18 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
             "Scientific library runtime is unavailable".into(),
         ));
     };
+    let store_path = if selection["format"] == "n4a" {
+        crate::workspace_store::workspace_store_path(access.path())
+    } else {
+        None
+    };
+    let workspace_path = store_path
+        .as_deref()
+        .and_then(std::path::Path::parent)
+        .unwrap_or_else(|| access.path());
     let value = match host.adapt_document(
         "results.export",
-        &json!({"workspace_path":access.path(),"request":selection}),
+        &json!({"workspace_path":workspace_path,"request":selection}),
     ) {
         Ok(value) => value,
         Err(detail) => {
@@ -123,7 +132,7 @@ fn selection(request: &HttpRequest, dataset: Option<&str>) -> Result<Value, Stri
     if fields
         .keys()
         .any(|key| !matches!(key.as_str(), "format" | "dataset_names"))
-        || !matches!(value["format"].as_str(), Some("parquet" | "zip"))
+        || !matches!(value["format"].as_str(), Some("parquet" | "zip" | "n4a"))
     {
         return Err("Invalid prediction export fields".into());
     }

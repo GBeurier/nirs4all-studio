@@ -12,6 +12,7 @@ import json
 import math
 import re
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -442,10 +443,17 @@ def _extract_model_params_from_expanded_config(
     except Exception:
         return None
 
-    if idx < 0 or idx >= len(steps):
+    if idx < 0:
+        # DAG projections use synthetic chain indices (-1 or 0). The
+        # authored template is useful only when it identifies one model.
+        models = [step for step in steps if isinstance(step, dict) and "model" in step]
+        if len(models) != 1:
+            return None
+        step = models[0]
+    elif idx < len(steps):
+        step = steps[idx]
+    else:
         return None
-
-    step = steps[idx]
     if isinstance(step, dict) and "model" in step:
         model_spec = step.get("model")
         if isinstance(model_spec, dict):
@@ -459,6 +467,38 @@ def _extract_model_params_from_expanded_config(
         if isinstance(params, dict):
             return params
 
+    return None
+
+
+@lru_cache(maxsize=16)
+def _named_pipeline_variants(template: str, label: str) -> dict[str, list[Any]]:
+    """Index an owner-expanded recipe by its own persisted configuration names."""
+    from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
+
+    try:
+        configs = PipelineConfigs(json.loads(template), name=label)
+    except (TypeError, ValueError):
+        return {}
+    return dict(zip(configs.names, configs.steps, strict=True))
+
+
+def _variant_step_params(expanded_config: Any, model_step_idx: Any, config_name: Any) -> dict[str, Any] | None:
+    """Resolve the native variant from its exact name before reading concrete parameters."""
+    steps = _parse_json_maybe(expanded_config)
+    match = re.fullmatch(r"(.+)_([0-9a-f]{8})", config_name) if isinstance(config_name, str) else None
+    if match and isinstance(steps, list):
+        from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
+
+        if PipelineConfigs._has_gen_keys(steps):
+            template = expanded_config if isinstance(expanded_config, str) else json.dumps(steps)
+            concrete = _named_pipeline_variants(template, match[1]).get(config_name)
+            if concrete is not None:
+                steps = concrete
+    params = _extract_model_params_from_expanded_config(steps, model_step_idx)
+    if isinstance(params, dict):
+        from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
+
+        return {key: value for key, value in params.items() if not PipelineConfigs._has_gen_keys(value)} or None
     return None
 
 
@@ -594,9 +634,8 @@ def _attach_variant_params_inplace(
             best_params = None
         row["best_params"] = best_params
         row["variant_params"] = _merge_variant_params(
-            _extract_model_params_from_expanded_config(
-                pipeline_row.get("expanded_config"),
-                row.get("model_step_idx"),
+            _variant_step_params(
+                pipeline_row.get("expanded_config"), row.get("model_step_idx"), pipeline_row.get("name"),
             ),
             best_params,
         )
@@ -1428,6 +1467,26 @@ class StoreAdapter:
                 offset=offset,
             )
 
+        chain_ids = list({r["chain_id"] for r in records if r.get("chain_id")})
+        if chain_ids:
+            placeholders = ",".join("?" for _ in chain_ids)
+            variants = {
+                row["chain_id"]: row
+                for row in self._store._fetch_pl(
+                    f"SELECT c.chain_id, c.model_step_idx, c.best_params, p.name AS config_name, p.expanded_config "
+                    f"FROM chains c JOIN pipelines p ON p.pipeline_id=c.pipeline_id WHERE c.chain_id IN ({placeholders})",
+                    chain_ids,
+                ).iter_rows(named=True)
+            }
+            for record in records:
+                variant = variants.get(record.get("chain_id"))
+                if variant:
+                    record["config_name"] = variant["config_name"]
+                    record["variant_params"] = _merge_variant_params(
+                        _variant_step_params(variant["expanded_config"], variant["model_step_idx"], variant["config_name"]),
+                        _merge_variant_params(_parse_json_maybe(variant["best_params"]), record.get("best_params")),
+                    )
+
         # Enrich refit predictions: set val_score from chain summary
         refit_chain_ids = list({
             r.get("chain_id", "")
@@ -1934,11 +1993,10 @@ class StoreAdapter:
         )
         bp_raw = entry.get("best_params")
         best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
-        step_params = _extract_model_params_from_expanded_config(
-            pipeline_row.get("expanded_config"),
-            entry.get("model_step_idx"),
+        variant_params = entry.get("variant_params") or _merge_variant_params(
+            _variant_step_params(pipeline_row.get("expanded_config"), entry.get("model_step_idx"), pipeline_row.get("name")),
+            best_params,
         )
-        variant_params = _merge_variant_params(step_params, best_params)
         payload = {
             "chain_id": entry.get("chain_id", ""),
             "run_id": entry.get("run_id", ""),

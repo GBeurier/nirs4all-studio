@@ -38,8 +38,6 @@ function compareNullableScores(
 
 export function compareRefitChains(a: TopChainResult, b: TopChainResult, metric: string | null): number {
   const lowerBetter = isLowerBetter(metric);
-  const byFinal = compareNullableScores(a.final_test_score, b.final_test_score, lowerBetter);
-  if (byFinal !== 0) return byFinal;
   const byCv = compareNullableScores(a.avg_val_score, b.avg_val_score, lowerBetter);
   if (byCv !== 0) return byCv;
   return a.chain_id.localeCompare(b.chain_id);
@@ -49,17 +47,13 @@ export function compareCvChains(a: TopChainResult, b: TopChainResult, metric: st
   const lowerBetter = isLowerBetter(metric);
   const byVal = compareNullableScores(a.avg_val_score, b.avg_val_score, lowerBetter);
   if (byVal !== 0) return byVal;
-  const byTest = compareNullableScores(a.avg_test_score, b.avg_test_score, lowerBetter);
-  if (byTest !== 0) return byTest;
   return a.chain_id.localeCompare(b.chain_id);
 }
 
 export function compareRefitRows(a: ScoreCardRow, b: ScoreCardRow, metric: string | null): number {
   const lowerBetter = isLowerBetter(metric);
-  const byTest = compareNullableScores(a.primaryTestScore, b.primaryTestScore, lowerBetter);
-  if (byTest !== 0) return byTest;
-  const byTrain = compareNullableScores(a.primaryTrainScore, b.primaryTrainScore, lowerBetter);
-  if (byTrain !== 0) return byTrain;
+  const byCv = compareNullableScores(a.primaryValScore, b.primaryValScore, lowerBetter);
+  if (byCv !== 0) return byCv;
   const byModel = a.modelName.localeCompare(b.modelName);
   if (byModel !== 0) return byModel;
   const byChain = a.chainId.localeCompare(b.chainId);
@@ -126,7 +120,7 @@ export function findMatchingCvSource(
   const sameRunAvailable = refitChain.run_id
     ? available.filter(chain => chain.run_id === refitChain.run_id)
     : [];
-  const searchPools = sameRunAvailable.length > 0 ? [sameRunAvailable, available] : [available];
+  const searchPools = [refitChain.run_id ? sameRunAvailable : available];
   const matchers = [
     (chain: TopChainResult) => {
       const sig = signatureParts(chain);
@@ -189,7 +183,7 @@ export function findMatchingCvSourceExact(
   const sameRunAvailable = refitChain.run_id
     ? available.filter(chain => chain.run_id === refitChain.run_id)
     : [];
-  for (const pool of (sameRunAvailable.length > 0 ? [sameRunAvailable, available] : [available])) {
+  for (const pool of [refitChain.run_id ? sameRunAvailable : available]) {
     const candidates = pool
       .filter(chain => signaturePartsExactlyMatch(refitChain, chain))
       .sort((a, b) => compareCvChains(a, b, metric));

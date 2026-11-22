@@ -283,6 +283,7 @@ describe("smoke-archive-standalone", () => {
 
   it("launches one experiment on a dataset with a missing target and requires its completion", async () => {
     const calls: string[] = [];
+    let workspacePath = "";
     let polls = 0;
     let refusal: string | null = null;
     vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
@@ -290,7 +291,11 @@ describe("smoke-archive-standalone", () => {
       calls.push(route);
       const body = typeof options.body === "string" ? JSON.parse(options.body) : {};
       let value: unknown = { success: true };
-      if (route === "/datasets/link") {
+      if (route === "/workspace/select") {
+        workspacePath = body.path;
+        expect(fs.statSync(workspacePath).isDirectory()).toBe(true);
+        expect(fs.existsSync(path.join(workspacePath, "runs"))).toBe(false);
+      } else if (route === "/datasets/link") {
         expect(fs.readFileSync(path.join(body.path, "Ytrain.csv"), "utf8").split("\n")[6]).toBe("");
         value = { success: true, dataset: { id: "dataset-a", targets: [{ column: "target", missing_count: 1 }] } };
       } else if (route === "/pipelines/import") {
@@ -301,13 +306,19 @@ describe("smoke-archive-standalone", () => {
         value = { job_id: "job-a" };
       } else if (route === "/training/job-a") {
         polls += 1;
-        value = { status: polls < 2 ? "running" : "completed" };
+        const status = polls < 2 ? "running" : "completed";
+        if (status === "completed") {
+          const jobPath = path.join(workspacePath, "runs", "job-a");
+          fs.mkdirSync(jobPath, { recursive: true });
+          fs.writeFileSync(path.join(jobPath, "execution_job_record.json"), JSON.stringify({ status }));
+        }
+        value = { status };
       }
       return { ok: true, json: async () => value };
     }));
     try {
       await smokeModule.verifyRunLaunch(43123, "test-session");
-      expect(calls).toEqual(["/workspace/create", "/workspace/select", "/datasets/link", "/pipelines/import", "/runs/run-groups", "/training/job-a", "/training/job-a"]);
+      expect(calls).toEqual(["/workspace/select", "/datasets/link", "/pipelines/import", "/runs/run-groups", "/training/job-a", "/training/job-a"]);
       refusal = JSON.stringify({ code: "scientific_dataset_invalid", detail: "The run cannot start" });
       await expect(smokeModule.verifyRunLaunch(43123, "test-session")).rejects.toThrow(/run-groups: HTTP 503.*scientific_dataset_invalid/);
     } finally { vi.unstubAllGlobals(); }

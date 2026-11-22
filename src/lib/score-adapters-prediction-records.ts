@@ -5,8 +5,8 @@ import { buildPredictionRecordModelArtifactRefs } from "@/lib/resultArtifacts";
 import { parseJsonRecord } from "@/ui/score";
 import { projectPartitionScoreMaps } from "@/lib/score-adapters-fold-scores";
 
-export function predictionRecordBestParams(pred: Pick<PredictionRecord, "best_params">): Record<string, unknown> | null {
-  const parsed = parseJsonRecord(pred.best_params);
+export function predictionRecordBestParams(pred: Pick<PredictionRecord, "best_params" | "variant_params">): Record<string, unknown> | null {
+  const parsed = parseJsonRecord(pred.variant_params) ?? parseJsonRecord(pred.best_params);
   return parsed && Object.keys(parsed).length > 0 ? parsed : null;
 }
 

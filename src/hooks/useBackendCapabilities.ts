@@ -129,9 +129,7 @@ export function useDeepLearningAvailable(): boolean {
 }
 
 /**
- * Whether `shap` is installed in the running backend. Hides the SHAP /
- * explainability UI (the Lab "Shapley" tab and the `/lab/shapley` route)
- * when absent.
+ * Whether the running backend advertises the optional Python SHAP package.
  */
 export function useShapAvailable(): boolean {
   return useCapability("shap");

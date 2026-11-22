@@ -2821,7 +2821,7 @@ notFound: {
       untitled: "Untitled pipeline",
       lastEdited: "Last edited {{when}}",
       empty: "Empty draft — no steps yet.",
-      resume: "Resume",
+      open: "Open",
     },
     recentRuns: {
       emptyTitle: "No recent runs",
@@ -2839,6 +2839,7 @@ notFound: {
       noPresets: "No preset pipelines available",
       template: "Template",
       seeAll: "See all",
+      openVariant: "Open {{variant}}",
       complexityTitle: "Complexity {{score}}/10 · {{label}}",
       variants: {
         regression: "Regression",
@@ -6818,6 +6819,13 @@ notFound: {
 
   // ============= Runs =============
   runs: {
+    export: {
+      label: "Export run (.n4a)",
+      recipe: "Pipeline recipes",
+      results: "Scores and run metadata",
+      models: "Saved refit models",
+      modelsHint: "Include separate fitted archives for the models that can be exported.",
+    },
     jobRecord: {
       title: "Execution details",
       titleDeveloper: "Execution job record",
@@ -6957,6 +6965,9 @@ notFound: {
     },
     list: {
       summary: "Run summary",
+      executionParts_one: "{{count}} model pipeline",
+      executionParts_other: "{{count}} model pipelines",
+      executionPart: "{{name}} · Pipeline {{index}}",
       scopeFiltered: "Filtered runs",
       scopeWorkspace: "Workspace totals",
       scopeVisible: "Visible runs",
@@ -7996,6 +8007,7 @@ notFound: {
       samples: "Samples",
       task: "Task",
       type: "Type",
+      cvOutputs: "Folds and prediction outputs",
       preprocShort: "Preproc",
       valShort: "Val",
       noMatch: "No models match your filters",
@@ -8210,7 +8222,9 @@ notFound: {
     },
     export: {
       title: "Export Predictions",
-      description: "Select datasets to export (.parquet or .zip).",
+      description: "Select the datasets and file format to export.",
+      format: "File format",
+      parquet: "Parquet (ZIP for multiple datasets)",
       selectAtLeastOne: "Select at least one dataset",
       ready: "Export ready",
       failed: "Export failed",
@@ -8270,8 +8284,9 @@ notFound: {
       val: "Validation",
       test: "Test",
       prediction: "Predicted (no target)",
-      predictedSamples_one: "{{count}} predicted without target",
-      predictedSamples_other: "{{count}} predicted without target",
+      predictedSamples_one: "{{count}} sample with missing target",
+      predictedSamples_other: "{{count}} samples with missing targets",
+      predictedSamplesHint: "These samples were excluded from fitting and scoring. The saved predictor generated their predictions.",
     },
     partitionsShort: {
       train: "Train",
@@ -9266,6 +9281,7 @@ transferAnalysis: {
       binStride: "Bin Stride",
       aggregation: "Aggregation",
       engine: "SHAP engine",
+      installPython: "Install Python SHAP",
       engineHelp: "Python SHAP uses the shap package. Native SHAP uses the nirs4all-methods kernels shared with nirs4all Web, with more explainers and settings.",
       engines: {
         python: "Python SHAP (shap package)",

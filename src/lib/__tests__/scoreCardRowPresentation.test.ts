@@ -50,8 +50,7 @@ describe('score card row presentation helpers', () => {
 
     expect(presentation.isRefit).toBe(true);
     expect(presentation.borderClass).toContain('emerald');
-    expect(presentation.paramLabel).toContain('n_components');
-    expect(presentation.paramLabel).toContain('4');
+    expect(presentation).not.toHaveProperty('paramLabel');
   });
 
   it('builds table row metric and fold projections', () => {

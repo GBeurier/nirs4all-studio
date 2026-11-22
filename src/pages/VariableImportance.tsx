@@ -10,6 +10,8 @@ import {
   persistShapSessionState,
 } from '@/lib/shapSessionCache';
 import { useShapAnalysisJob } from '@/hooks/useShapAnalysisJob';
+import { useShapAvailable } from '@/hooks/useBackendCapabilities';
+import { usePythonEnv } from '@/context/usePythonEnv';
 import type {
   ShapTab,
   Partition,
@@ -32,6 +34,12 @@ const itemVariants = {
 
 export default function VariableImportance() {
   const persistedSession = useMemo(() => loadShapSessionState(), []);
+  const { state: pythonEnv } = usePythonEnv();
+  const backendShapAvailable = useShapAvailable();
+  const shapPackage = pythonEnv?.selected?.recommended.find((item) => item.name === 'shap');
+  const pythonShapAvailable = shapPackage
+    ? Boolean(shapPackage.installedVersion && !shapPackage.belowMinimum)
+    : backendShapAvailable;
 
   // Selection state
   const [chainId, setChainId] = useState<string | null>(() => persistedSession?.chainId ?? null);
@@ -42,6 +50,11 @@ export default function VariableImportance() {
 
   // Configuration state
   const [options, setOptions] = useState<ShapAnalysisOptions>(() => normalizeShapOptions(persistedSession?.options));
+  const effectiveOptions = useMemo(() =>
+    pythonShapAvailable || options.engine === 'native'
+      ? options
+      : normalizeShapOptions({ ...options, engine: 'native' }),
+  [options, pythonShapAvailable]);
 
   // UI state
   const [activeTab, setActiveTab] = useState<ShapTab>(() => persistedSession?.activeTab ?? 'spectral');
@@ -110,8 +123,8 @@ export default function VariableImportance() {
   }, [datasetName]);
 
   const handleRunAnalysis = useCallback(async () => {
-    await runAnalysis({ chainId, modelRef, datasetId, partition, options });
-  }, [chainId, datasetId, modelRef, options, partition, runAnalysis]);
+    await runAnalysis({ chainId, modelRef, datasetId, partition, options: effectiveOptions });
+  }, [chainId, datasetId, modelRef, effectiveOptions, partition, runAnalysis]);
 
   const canRun = Boolean(chainId && datasetId && !isRunning);
 
@@ -134,7 +147,8 @@ export default function VariableImportance() {
           onChainSelect={handleChainSelect}
           partition={partition}
           onPartitionChange={setPartition}
-          options={options}
+          options={effectiveOptions}
+          pythonShapAvailable={pythonShapAvailable}
           onOptionsChange={setOptions}
           error={error}
           isRunning={isRunning}

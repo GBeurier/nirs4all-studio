@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -63,6 +64,7 @@ export function RunDetailSheetHeader({
   canRerun,
   isRerunning,
   onRerun,
+  exportControl,
 }: {
   run: EnrichedRun;
   status: string;
@@ -72,6 +74,7 @@ export function RunDetailSheetHeader({
   canRerun: boolean;
   isRerunning: boolean;
   onRerun: () => void;
+  exportControl?: ReactNode;
 }) {
   const { t } = useTranslation();
   const storageArtifactMetadata = buildRunStorageArtifactMetadata(run, t);
@@ -106,6 +109,7 @@ export function RunDetailSheetHeader({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:justify-end">
+          {exportControl}
           <Button variant="outline" size="sm" asChild>
             <Link to={`/results?run_id=${encodeURIComponent(run.run_id)}`}>
               <BarChart3 className="mr-2 h-4 w-4" />

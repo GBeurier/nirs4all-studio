@@ -7,14 +7,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 export interface N4aExportSection extends N4aExportOption {
   payload: unknown | (() => unknown | Promise<unknown>);
+  checkedByDefault?: boolean;
 }
 
 /** Host-side IO around the shared controlled content selector. */
-export function N4aExportButton({ sections, datasetId, bundlePath, shapJobId, filename = 'checkpoint', label = 'Export .n4a' }: {
+export function N4aExportButton({ sections, datasetId, bundlePath, shapJobId, runIds, workspaceId, filename = 'checkpoint', label = 'Export .n4a' }: {
   sections: N4aExportSection[];
   datasetId?: string;
   bundlePath?: string;
   shapJobId?: string;
+  runIds?: string[];
+  workspaceId?: string;
   filename?: string;
   label?: string;
 }) {
@@ -30,7 +33,10 @@ export function N4aExportButton({ sections, datasetId, bundlePath, shapJobId, fi
       for (const section of sections.filter(section => selected.includes(section.id) && !section.disabled)) {
         values[section.id] = typeof section.payload === 'function' ? await section.payload() : section.payload;
       }
-      const blob = await requestBinary('/exports/n4a', 'POST', { sections: values, dataset_id: datasetId, bundle_path: bundlePath, shap_job_id: shapJobId });
+      const blob = await requestBinary('/exports/n4a', 'POST', {
+        sections: values, dataset_id: datasetId, bundle_path: bundlePath, shap_job_id: shapJobId,
+        run_ids: runIds, workspace_id: workspaceId,
+      });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -46,7 +52,7 @@ export function N4aExportButton({ sections, datasetId, bundlePath, shapJobId, fi
   };
   return <>
     <Button variant="outline" size="sm" onClick={() => {
-      setSelected(sections.filter(section => !section.disabled).map(section => section.id));
+      setSelected(sections.filter(section => !section.disabled && section.checkedByDefault !== false).map(section => section.id));
       setError(null);
       setOpen(true);
     }}><Download className="mr-2 h-4 w-4" />{label}</Button>

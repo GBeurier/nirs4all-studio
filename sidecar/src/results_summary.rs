@@ -26,6 +26,8 @@ const LOWER_IS_BETTER: [&str; 8] = [
     "rmse", "rmsecv", "rmsep", "mae", "mse", "mape", "bias", "sep",
 ];
 
+type DatasetProvenance = BTreeMap<(String, String), Option<String>>;
+
 #[derive(Clone)]
 struct SummaryRow {
     source: WorkspaceStoreResultsSummarySourceRow,
@@ -74,8 +76,8 @@ pub fn build_results_summary(
 fn read_dataset_provenance(
     connection: &Connection,
     rows: &[WorkspaceStoreResultsSummarySourceRow],
-) -> Result<BTreeMap<(String, String), String>, WorkspaceStoreReadError> {
-    let mut provenance = BTreeMap::<(String, String), Option<String>>::new();
+) -> Result<DatasetProvenance, WorkspaceStoreReadError> {
+    let mut provenance = DatasetProvenance::new();
     let ids = rows
         .iter()
         .map(|row| row.run_id.as_str())
@@ -105,23 +107,34 @@ fn read_dataset_provenance(
             }
         }
     }
-    Ok(provenance
-        .into_iter()
-        .filter_map(|(key, id)| id.map(|id| (key, id)))
-        .collect())
+    Ok(provenance)
 }
 
 fn build_results_summary_with_provenance(
     rows: Vec<WorkspaceStoreResultsSummarySourceRow>,
     workspace_id: &str,
     linked_datasets: &[DatasetLinkIdentity],
-    provenance: &BTreeMap<(String, String), String>,
+    provenance: &DatasetProvenance,
 ) -> Value {
+    let dataset_links = DatasetLinkMatcher::new(linked_datasets);
+    let historical_ids = historical_dataset_ids(provenance);
+    let mut legacy_links = BTreeMap::new();
     let mut grouped = BTreeMap::<(Option<String>, String), Vec<SummaryRow>>::new();
     for source in rows {
         if source.dataset_name.is_empty() {
             continue;
         }
+        let name = &source.dataset_name;
+        let historical_id = historical_ids.get(name.as_str());
+        let legacy_link = *legacy_links.entry(name.clone()).or_insert_with(|| {
+            dataset_links
+                .match_name(name)
+                .filter(|id| historical_id.is_none_or(|historical| *historical == Some(*id)))
+        });
+        let group_id = provenance
+            .get(&(source.run_id.clone(), name.clone()))
+            .cloned()
+            .unwrap_or_else(|| historical_id.and(legacy_link).map(str::to_owned));
         let mut row = SummaryRow {
             source,
             synthetic_refit: false,
@@ -130,12 +143,7 @@ fn build_results_summary_with_provenance(
         row.is_refit_only = has_meaningful_final(&row) && !has_cv_payload(&row);
         apply_synthetic_refit(&mut row);
         grouped
-            .entry((
-                provenance
-                    .get(&(row.source.run_id.clone(), row.source.dataset_name.clone()))
-                    .cloned(),
-                row.source.dataset_name.clone(),
-            ))
+            .entry((group_id, row.source.dataset_name.clone()))
             .or_default()
             .push(row);
     }
@@ -168,19 +176,43 @@ fn build_results_summary_with_provenance(
             .into_iter()
             .map(|(index, is_refit_only)| serialize_chain(&rows[index], is_refit_only))
             .collect::<Vec<_>>();
-        datasets.push(json!({
+        let mut dataset = json!({
             "dataset_name": dataset_name,
             "metric": metric,
             "task_type": task_type,
             "top_chains": top_chains,
-        }));
-        if let Some(id) = linked_dataset_id {
-            datasets.last_mut().unwrap()["linked_dataset_id"] = json!(id);
+        });
+        if !linked_datasets.is_empty() {
+            dataset["name"] = json!(dataset_name);
         }
+        let display_link = linked_dataset_id.as_deref().map_or_else(
+            || legacy_links[&dataset_name],
+            |id| dataset_links.contains(id).then_some(id),
+        );
+        if let Some(id) = display_link {
+            dataset["linked_dataset_id"] = json!(id);
+        }
+        datasets.push(dataset);
     }
 
-    augment_dataset_links(&mut datasets, linked_datasets);
     json!({"workspace_id": workspace_id, "datasets": datasets})
+}
+
+// A unique catalogue match can join legacy results to identified ones only
+// when it agrees with all recorded identities for that stored name.
+fn historical_dataset_ids(provenance: &DatasetProvenance) -> BTreeMap<&str, Option<&str>> {
+    let mut ids = BTreeMap::new();
+    for ((_, name), id) in provenance {
+        let id = id.as_deref();
+        ids.entry(name.as_str())
+            .and_modify(|current| {
+                if *current != id {
+                    *current = None;
+                }
+            })
+            .or_insert(id);
+    }
+    ids
 }
 
 fn has_meaningful_final(row: &SummaryRow) -> bool {
@@ -429,8 +461,20 @@ fn extract_model_params(
     expanded_config: Option<&[Value]>,
     model_step_idx: i64,
 ) -> Option<&Map<String, Value>> {
-    let index = usize::try_from(model_step_idx.checked_sub(1)?).ok()?;
-    let step = expanded_config?.get(index)?.as_object()?;
+    let steps = expanded_config?;
+    let step = if let Ok(index) = usize::try_from(model_step_idx.checked_sub(1)?) {
+        steps.get(index)?.as_object()?
+    } else {
+        let mut models = steps
+            .iter()
+            .filter_map(Value::as_object)
+            .filter(|step| step.contains_key("model"));
+        let model = models.next()?;
+        if models.next().is_some() {
+            return None;
+        }
+        model
+    };
     if step.contains_key("model") {
         return step.get("model")?.as_object()?.get("params")?.as_object();
     }
@@ -472,21 +516,7 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
         }
         return;
     }
-    let linked_info = linked
-        .iter()
-        .map(|dataset| {
-            let folder = Path::new(&dataset.path)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or_default();
-            (
-                dataset.id.as_str(),
-                dataset.name.to_lowercase(),
-                dataset_match_key(&dataset.name),
-                dataset_match_key(folder),
-            )
-        })
-        .collect::<Vec<_>>();
+    let matcher = DatasetLinkMatcher::new(linked);
 
     for dataset in datasets {
         let Some(object) = dataset.as_object_mut() else {
@@ -510,7 +540,7 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
             .or_insert_with(|| Value::String(store_name.clone()));
 
         if let Some(id) = object.get("linked_dataset_id").and_then(Value::as_str) {
-            if !linked.iter().any(|dataset| dataset.id == id) {
+            if !matcher.contains(id) {
                 object.remove("linked_dataset_id");
             }
             // An explicit owner identity cannot be rebound to another import
@@ -518,54 +548,86 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
             continue;
         }
 
-        let store_lower = store_name.to_lowercase();
-        let store_key = dataset_match_key(&store_name);
-        let exact = linked_info
-            .iter()
-            .filter_map(|(id, name_lower, name_key, _)| {
-                ((store_lower == *name_lower || (!store_key.is_empty() && store_key == *name_key))
-                    && !id.is_empty())
-                .then_some(*id)
-            })
-            .collect::<Vec<_>>();
-        if exact.len() > 1 {
-            // A display name is not an identity (several imports can be "raw").
+        if let Some(id) = matcher.match_name(&store_name) {
+            object.insert("linked_dataset_id".into(), Value::String(id.into()));
+        } else {
             object.remove("linked_dataset_id");
-            continue;
         }
-        if let Some(id) = exact.first() {
-            object.insert("linked_dataset_id".into(), Value::String((*id).into()));
-            continue;
+    }
+}
+
+struct DatasetLinkKeys<'a> {
+    id: &'a str,
+    lower_name: String,
+    name_key: String,
+    folder_key: String,
+}
+
+struct DatasetLinkMatcher<'a>(Vec<DatasetLinkKeys<'a>>);
+
+impl<'a> DatasetLinkMatcher<'a> {
+    fn new(linked: &'a [DatasetLinkIdentity]) -> Self {
+        Self(
+            linked
+                .iter()
+                .map(|dataset| {
+                    let folder = Path::new(&dataset.path)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_default();
+                    DatasetLinkKeys {
+                        id: &dataset.id,
+                        lower_name: dataset.name.to_lowercase(),
+                        name_key: dataset_match_key(&dataset.name),
+                        folder_key: dataset_match_key(folder),
+                    }
+                })
+                .collect(),
+        )
+    }
+
+    fn contains(&self, id: &str) -> bool {
+        self.0.iter().any(|dataset| dataset.id == id)
+    }
+
+    fn match_name(&self, store_name: &str) -> Option<&'a str> {
+        let store_lower = store_name.to_lowercase();
+        let store_key = dataset_match_key(store_name);
+        let mut exact = self.0.iter().filter(|dataset| {
+            !dataset.id.is_empty()
+                && (store_lower == dataset.lower_name
+                    || (!store_key.is_empty() && store_key == dataset.name_key))
+        });
+        if let Some(dataset) = exact.next() {
+            // Several imports may share one display name, such as "raw".
+            return exact.next().is_none().then_some(dataset.id);
         }
 
         for use_folder in [true, false] {
             let mut candidates = Vec::new();
             let mut best_len = 0;
-            for (id, _, name_key, folder_key) in &linked_info {
-                let key = if use_folder { folder_key } else { name_key };
-                if id.is_empty() || key.is_empty() || !store_key.starts_with(key) {
+            for dataset in &self.0 {
+                let key = if use_folder {
+                    &dataset.folder_key
+                } else {
+                    &dataset.name_key
+                };
+                if dataset.id.is_empty() || key.is_empty() || !store_key.starts_with(key) {
                     continue;
                 }
                 if key.len() > best_len {
                     candidates.clear();
                     best_len = key.len();
                 }
-                if key.len() == best_len && !candidates.contains(id) {
-                    candidates.push(*id);
+                if key.len() == best_len && !candidates.contains(&dataset.id) {
+                    candidates.push(dataset.id);
                 }
             }
-            if candidates.len() == 1 {
-                object.insert(
-                    "linked_dataset_id".into(),
-                    Value::String(candidates[0].into()),
-                );
-                break;
-            }
-            if candidates.len() > 1 {
-                object.remove("linked_dataset_id");
-                break;
+            if !candidates.is_empty() {
+                return (candidates.len() == 1).then_some(candidates[0]);
             }
         }
+        None
     }
 }
 
@@ -643,6 +705,49 @@ mod tests {
     }
 
     #[test]
+    fn legacy_and_identified_runs_share_one_dataset_card_before_ranking() {
+        let workspace = fixture_workspace();
+        let mut rows = crate::workspace_store::read_results_summary_source(&workspace).unwrap();
+        fs::remove_dir_all(workspace).unwrap();
+        rows.truncate(2);
+        for (row, id) in rows.iter_mut().zip(["current", "legacy"]) {
+            row.run_id = id.into();
+            row.dataset_name = "raw".into();
+            row.metric = Some("rmse".into());
+            row.cv_fold_count = 3;
+            row.cv_val_score = Some(0.2);
+        }
+        let links = [DatasetLinkIdentity {
+            id: "linked-raw".into(),
+            name: "raw".into(),
+            path: "/workspace/raw".into(),
+        }];
+        let current_dataset = ("current".into(), "raw".into());
+        let mut provenance =
+            super::DatasetProvenance::from([(current_dataset.clone(), Some("linked-raw".into()))]);
+        let summary =
+            super::build_results_summary_with_provenance(rows.clone(), "ws", &links, &provenance);
+        let datasets = summary["datasets"].as_array().unwrap();
+        assert_eq!(datasets.len(), 1);
+        assert_eq!(datasets[0]["linked_dataset_id"], "linked-raw");
+        let visible_runs = datasets[0]["top_chains"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|chain| chain["run_id"].as_str().unwrap())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(visible_runs, ["current", "legacy"].into());
+
+        provenance.insert(current_dataset, Some("unlinked-raw".into()));
+        let summary = super::build_results_summary_with_provenance(rows, "ws", &links, &provenance);
+        let datasets = summary["datasets"].as_array().unwrap();
+        assert_eq!(datasets.len(), 2);
+        assert!(datasets
+            .iter()
+            .all(|dataset| dataset.get("linked_dataset_id").is_none()));
+    }
+
+    #[test]
     fn owner_provenance_keeps_same_basename_datasets_separate_and_ambiguity_unlinked() {
         let workspace = fixture_workspace();
         let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
@@ -703,11 +808,14 @@ mod tests {
             crate::workspace_store::read_results_summary_source_from_connection(&connection)
                 .unwrap();
         let provenance = super::read_dataset_provenance(&connection, &source).unwrap();
-        assert!(!provenance.contains_key(&("run-beer".into(), "raw".into())));
+        assert_eq!(
+            provenance.get(&("run-beer".into(), "raw".into())),
+            Some(&None)
+        );
         assert_eq!(
             provenance
                 .get(&("run-alpine".into(), "raw".into()))
-                .map(String::as_str),
+                .and_then(Option::as_deref),
             Some("alpine")
         );
         drop(connection);

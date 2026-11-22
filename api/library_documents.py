@@ -21,6 +21,33 @@ from .pipeline_canonical import (
 )
 from .shared.dataset_config import MISSING_TARGET_NA_POLICIES, build_nirs4all_config, build_nirs4all_config_from_stored, feature_na_params, for_dataset_configs
 
+_OLD_NICON_SCHEDULE = {"cyclic_lr": True, "cyclic_lr_mode": "triangular2", "base_lr": 0.0005, "max_lr": 0.01, "step_size": 120}
+_NICON_PRESET_FACTORIES = {
+    "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
+    "nirs4all.operators.models.pytorch.nicon.customizable_nicon_classification",
+}
+
+
+def _migrate_saved_nicon_preset(value: Any) -> None:
+    """Translate the exact training defaults shipped by older Studio presets."""
+    if isinstance(value, list):
+        for child in value:
+            _migrate_saved_nicon_preset(child)
+    elif isinstance(value, dict):
+        model = value.get("model")
+        params = value.get("train_params")
+        if (
+            value.get("name") == "NICON-CNN"
+            and isinstance(model, dict) and isinstance(model.get("function"), str)
+            and model["function"] in _NICON_PRESET_FACTORIES
+            and isinstance(params, dict) and "lr" not in params and "learning_rate" not in params
+            and all(params.get(key) == default for key, default in _OLD_NICON_SCHEDULE.items())
+        ):
+            value["train_params"] = {key: item for key, item in params.items() if key not in _OLD_NICON_SCHEDULE}
+            value["train_params"]["learning_rate"] = 0.005
+        for child in value.values():
+            _migrate_saved_nicon_preset(child)
+
 
 def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
     """Validate and preserve a general editor pipeline using library semantics."""
@@ -49,6 +76,7 @@ def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
         from nirs4all.api.studio_scientific import StudioScientificJobError
         from nirs4all.api.studio_scientific_general import _preflight_optional_product_operators
 
+        _migrate_saved_nicon_preset(result["runtime_pipeline"])
         # Reuse the library's execution check before Rust admits a job. Editing
         # and importing optional model presets remain independent of installation.
         try:
@@ -79,6 +107,8 @@ def import_pipeline(document: dict[str, Any]) -> dict[str, Any]:
     validate_studio_pipeline_config(
         payload.get("pipeline", payload.get("steps")) if isinstance(payload, dict) else payload
     )
+    if document.get("studio_preset") is True:
+        _migrate_saved_nicon_preset(payload)
     if isinstance(payload, list):
         steps, name, description = canonical_to_editor(payload), None, ""
     elif isinstance(payload, dict) and "pipeline" in payload:

@@ -3,6 +3,7 @@ import type { NavigateFunction } from "react-router-dom";
 import i18n from "i18next";
 import { toast } from "sonner";
 import { getPipeline, previewPipelineImport } from "@/api/pipelines";
+import { describeApiError } from "@/lib/userFacingError";
 import {
   getChainPipelineSteps,
   getRunPipelineSteps,
@@ -71,7 +72,7 @@ export function usePipelineEditorRouteImports({
         console.error("Failed to load pipeline:", error);
         toast.error(
           i18n.t("pipelineEditor.hooks.loadFailed", {
-            message: error instanceof Error ? error.message : i18n.t("pipelineEditor.hooks.unknownError"),
+            message: describeApiError(error, i18n.t, i18n.t("pipelineEditor.hooks.unknownError")).message,
           }),
         );
       }

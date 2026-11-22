@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import { N4aExportButton } from '@/components/exports/N4aExportButton';
 import { buildPipelineRunArtifactRefs } from '@/lib/resultArtifacts';
 import { useTranslation } from "react-i18next";
@@ -71,7 +72,7 @@ export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: Re
           <ResultMetricsRobustnessSummary summary={robustnessSummary} />
 
           {pipeline.status === "completed" && (
-            <N4aExportButton label={pipeline.has_refit ? "Export Final Model (.n4a)" : "Export .n4a"} filename={pipeline.pipeline_name} bundlePath={buildPipelineRunArtifactRefs(pipeline).find(ref => ref.bundlePath)?.bundlePath ?? undefined} sections={[
+            <N4aExportButton label={pipeline.has_refit ? "Export Final Model (.n4a)" : "Export .n4a"} filename={formatStoredExecutionName(pipeline.pipeline_name)} bundlePath={buildPipelineRunArtifactRefs(pipeline).find(ref => ref.bundlePath)?.bundlePath ?? undefined} sections={[
               { id: 'results', label: 'Run results', description: 'Stored metrics, configuration and result references', payload: pipeline },
               { id: 'model', label: 'Trained model', description: 'Preserve the existing fitted archive and prediction entrypoint', payload: true, disabled: !buildPipelineRunArtifactRefs(pipeline).some(ref => ref.bundlePath) },
             ]} />

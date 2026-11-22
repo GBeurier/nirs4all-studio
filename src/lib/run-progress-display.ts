@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import i18next from "i18next";
 import type { PipelineRun, RunMetrics } from "@/types/runs";
 
@@ -176,7 +177,7 @@ export function formatPipelineChainLabel(
     return preprocessingLabel;
   }
 
-  const pipelineLabel = pipelineName ? formatSerializedDisplayValue(pipelineName) : "";
+  const pipelineLabel = pipelineName ? formatSerializedDisplayValue(formatStoredExecutionName(pipelineName)) : "";
   if (pipelineLabel && pipelineLabel !== model) {
     return pipelineLabel;
   }

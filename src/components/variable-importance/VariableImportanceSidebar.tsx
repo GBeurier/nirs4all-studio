@@ -17,6 +17,7 @@ interface VariableImportanceSidebarProps {
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
   options: ShapAnalysisOptions;
+  pythonShapAvailable: boolean;
   onOptionsChange: (options: ShapAnalysisOptions) => void;
   error: string | null;
   isRunning: boolean;
@@ -34,6 +35,7 @@ export function VariableImportanceSidebar({
   partition,
   onPartitionChange,
   options,
+  pythonShapAvailable,
   onOptionsChange,
   error,
   isRunning,
@@ -65,6 +67,7 @@ export function VariableImportanceSidebar({
           partition={partition}
           onPartitionChange={onPartitionChange}
           options={options}
+          pythonShapAvailable={pythonShapAvailable}
           onOptionsChange={onOptionsChange}
         />
 

@@ -1,3 +1,4 @@
+import { formatStoredExecutionName } from "@/lib/runs/format";
 import { Box, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -53,7 +54,7 @@ export function PipelineProgress({
       : null
   );
   const displayMetrics = getPipelineDisplayMetrics(pipeline);
-  const primarySummary = buildPipelinePrimarySummary(pipelineIndex, totalPipelines, pipeline) || pipeline.pipeline_name;
+  const primarySummary = buildPipelinePrimarySummary(pipelineIndex, totalPipelines, pipeline) || formatStoredExecutionName(pipeline.pipeline_name);
 
   return (
     <Card className={cn(
