@@ -22,8 +22,25 @@ use crate::{
 };
 
 const TOP_N: usize = 5;
-const LOWER_IS_BETTER: [&str; 8] = [
-    "rmse", "rmsecv", "rmsep", "mae", "mse", "mape", "bias", "sep",
+// Mirrors nirs4all-ui `LOWER_IS_BETTER` so backend top-N selection and UI
+// ordering agree. Debt: direction belongs to the DAG-ML metric registry
+// (docs/development/TECHNICAL_DEBT.md, TD-STUDIO-2026-11-22-01).
+const LOWER_IS_BETTER: [&str; 15] = [
+    "rmse",
+    "rmsecv",
+    "rmsep",
+    "mse",
+    "mae",
+    "mape",
+    "bias",
+    "sep",
+    "nrmse",
+    "nmse",
+    "nmae",
+    "max_error",
+    "median_ae",
+    "hamming_loss",
+    "log_loss",
 ];
 
 type DatasetProvenance = BTreeMap<(String, String), Option<String>>;

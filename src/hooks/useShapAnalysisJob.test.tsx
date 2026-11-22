@@ -302,7 +302,7 @@ describe('useShapAnalysisJob', () => {
       await mounted.result.current?.runAnalysis({ chainId: 'corn-pls', datasetId: null, partition: 'test', options: { ...DEFAULT_SHAP_OPTIONS, explainerType: 'auto' } });
     });
     expect(apiMocks.computeShapExplanation).not.toHaveBeenCalled();
-    expect(mounted.result.current?.error).toContain('no authorized dataset link');
+    expect(mounted.result.current?.error).toBe('Choose a linked dataset to explain this model.');
     expect(mounted.result.current?.isSubmitting).toBe(false);
     await mounted.unmount();
   });

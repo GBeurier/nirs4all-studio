@@ -22,8 +22,11 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { isLowerBetter } from "@/lib/scores";
-import { partitionScoreCardRows } from "@/lib/scoreCardTreeData";
+import {
+  partitionScoreCardRows,
+  resolveScoreCardRankMetric,
+  sortScoreCardRowsByRank,
+} from "@/lib/scoreCardTreeData";
 import type { ScoreCardRow } from "@/types/score-cards";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import {
@@ -63,15 +66,13 @@ export function ScoreCardTree({
 
   const { refitRows, cvRows, trainRows } = useMemo(() => {
     const sections = partitionScoreCardRows(rows);
-    sections.trainRows.sort((a, b) => {
-      if (a.primaryTrainScore == null) return b.primaryTrainScore == null ? 0 : 1;
-      if (b.primaryTrainScore == null) return -1;
-      return isLowerBetter(a.metric)
-        ? a.primaryTrainScore - b.primaryTrainScore
-        : b.primaryTrainScore - a.primaryTrainScore;
-    });
-    return sections;
-  }, [rows]);
+    const rankMetric = resolveScoreCardRankMetric(rows, selectedMetrics);
+    return {
+      refitRows: sortScoreCardRowsByRank(sections.refitRows, rankMetric),
+      cvRows: sortScoreCardRowsByRank(sections.cvRows, rankMetric),
+      trainRows: sortScoreCardRowsByRank(sections.trainRows, rankMetric),
+    };
+  }, [rows, selectedMetrics]);
 
   const trainingSection = showNonRefitSection && trainRows.length > 0 ? (
     <div className="space-y-1">

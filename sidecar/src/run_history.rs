@@ -204,10 +204,23 @@ fn enrich_dataset(
                 higher,
             )
         });
+    // Final score of the CV-best refit chain: ranking uses validation/OOF,
+    // never the retained test score. Refits without a CV score rank last.
     let final_score = top
         .iter()
-        .filter_map(|chain| chain["final_test_score"].as_f64())
-        .min_by(|left, right| compare_scores(*left, *right, higher));
+        .filter(|chain| chain["final_test_score"].as_f64().is_some())
+        .min_by(|left, right| {
+            match (
+                left["avg_val_score"].as_f64(),
+                right["avg_val_score"].as_f64(),
+            ) {
+                (Some(left), Some(right)) => compare_scores(left, right, higher),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        })
+        .and_then(|chain| chain["final_test_score"].as_f64());
     // Same historical comparator as Studio: all other stored runs, not merely
     // the currently visible page or project. Preserve metric identity.
     let historical = historical_scores

@@ -41,13 +41,18 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
   const [filteredShap, setFilteredShap] = useState<number[] | null>(null);
   const [filteredSpectrum, setFilteredSpectrum] = useState<number[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailFailed, setDetailFailed] = useState(false);
   const fetchTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
-  // Debounced fetch of sample-filtered spectral detail (300ms)
+  // Debounced fetch of sample-filtered spectral detail (300ms). A response
+  // belongs to the selection that requested it: stale responses are ignored.
   useEffect(() => {
+    let current = true;
+    setDetailFailed(false);
+    setFilteredShap(null);
+    setFilteredSpectrum(null);
     if (!selectedSamples || selectedSamples.length === 0) {
-      setFilteredShap(null);
-      setFilteredSpectrum(null);
+      setLoadingDetail(false);
       return;
     }
 
@@ -56,17 +61,20 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
       setLoadingDetail(true);
       getSpectralDetail(jobId, selectedSamples)
         .then((detail) => {
+          if (!current) return;
           setFilteredShap(detail.mean_abs_shap);
           setFilteredSpectrum(detail.mean_spectrum);
         })
         .catch(() => {
-          setFilteredShap(null);
-          setFilteredSpectrum(null);
+          if (current) setDetailFailed(true);
         })
-        .finally(() => setLoadingDetail(false));
+        .finally(() => {
+          if (current) setLoadingDetail(false);
+        });
     }, 300);
 
     return () => {
+      current = false;
       if (fetchTimer.current) clearTimeout(fetchTimer.current);
     };
   }, [jobId, selectedSamples]);
@@ -97,8 +105,11 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
       {(loadingDetail || (selectedSamples && selectedSamples.length > 0)) && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
           {loadingDetail && <Loader2 className="h-3 w-3 animate-spin" />}
-          {selectedSamples && selectedSamples.length > 0 && !loadingDetail && (
+          {selectedSamples && selectedSamples.length > 0 && !loadingDetail && !detailFailed && (
             <span>{t('results.variableImportance.spectral.showing', { count: selectedSamples.length })}</span>
+          )}
+          {detailFailed && !loadingDetail && (
+            <span className="text-destructive">{t('results.variableImportance.spectral.detailFailed')}</span>
           )}
           {loadingDetail && <span>{t('results.variableImportance.spectral.loadingDetail')}</span>}
         </div>

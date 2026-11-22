@@ -151,7 +151,7 @@ export function ModelSelector({ selectedChainId, onChainSelect, onModelClassChan
       </div>
 
       <Select value={selectedChainId || ''} onValueChange={handleSelect}>
-        <SelectTrigger>
+        <SelectTrigger aria-label={t('shap.form.model')}>
           <SelectValue placeholder={t('shap.selectModel')} />
         </SelectTrigger>
         <SelectContent className="max-h-80">
@@ -175,7 +175,7 @@ export function ModelSelector({ selectedChainId, onChainSelect, onModelClassChan
                 const visibleScore = getVisibleShapChainScore(chain, t);
 
                 return (
-                  <SelectItem key={chain.chain_id} value={chain.chain_id} disabled={!chain.linked_dataset_id || chain.dataset_link_status !== 'linked'}>
+                  <SelectItem key={chain.chain_id} value={chain.chain_id}>
                     <div className="flex items-center gap-2 min-w-0" title={chainTooltip}>
                       <span className="truncate max-w-[160px]">{chainLabel}</span>
                       {chain.dataset_link_status !== 'linked' && <span className="text-xs">{t('results.variableImportance.model.linkUnavailable')}</span>}
@@ -200,7 +200,7 @@ export function ModelSelector({ selectedChainId, onChainSelect, onModelClassChan
                 {t('shap.bundles')}
               </SelectLabel>
               {filteredBundles.map((bundle) => (
-                <SelectItem key={bundle.bundle_path} value={bundle.bundle_path} disabled={!bundle.linked_dataset_id || bundle.dataset_link_status !== 'linked'}>
+                <SelectItem key={bundle.bundle_path} value={bundle.bundle_path}>
                   <div className="flex items-center gap-2">
                     <span className="truncate max-w-[180px]">{bundle.display_name}</span>
                     {bundle.dataset_link_status !== 'linked' && <span className="text-xs">{t('results.variableImportance.model.linkUnavailable')}</span>}
@@ -214,9 +214,6 @@ export function ModelSelector({ selectedChainId, onChainSelect, onModelClassChan
           )}
         </SelectContent>
       </Select>
-      {selectedChainId && !resolveShapModelSelection(selectedChainId, allChains, data?.bundles ?? []).datasetId && (
-        <p className="text-xs text-muted-foreground">{t('results.variableImportance.model.noAuthorizedLink')}</p>
-      )}
     </div>
   );
 }

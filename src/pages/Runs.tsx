@@ -2,6 +2,8 @@ import { useCallback, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
+import { ClearRunHistoryButton } from "@/components/runs/ClearRunHistoryButton";
+import { useHiddenRuns } from "@/hooks/useHiddenRuns";
 import { useMetricSelection } from "@/components/scores/useMetricSelection";
 import {
   RunsExecutionJobRecordDialog,
@@ -121,9 +123,10 @@ export default function Runs() {
     refetchInterval: (query) => getExecutionJobRecordDetailRefetchInterval(query.state.data),
   });
 
+  const { isHidden } = useHiddenRuns(activeWorkspaceId);
   const runs = useMemo(
-    () => buildRunsPageItems(enrichedData?.runs, runsData?.runs),
-    [enrichedData, runsData],
+    () => buildRunsPageItems(enrichedData?.runs, runsData?.runs).filter(run => !isHidden(run.run_id)),
+    [enrichedData, runsData, isHidden],
   );
 
   const executionJobIndicators = useMemo(() => {
@@ -220,6 +223,7 @@ export default function Runs() {
         onSelectedMetricsChange={setSelectedMetrics}
         selectedProjectId={selectedProjectId}
         onProjectChange={setSelectedProjectId}
+        actions={<ClearRunHistoryButton workspaceId={activeWorkspaceId} runs={runs} />}
       />
 
       <RunsStatsGrid stats={stats} scope={statsScope} />

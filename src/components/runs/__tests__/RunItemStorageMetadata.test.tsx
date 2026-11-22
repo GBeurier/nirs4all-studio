@@ -13,6 +13,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { RunItem } from "../RunItem";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
+import { clientStorageKeys, readClientStorageJson } from "@/lib/clientStorage";
 
 beforeAll(async () => {
   await i18n.changeLanguage("en");
@@ -120,7 +121,7 @@ describe("RunItem storage metadata", () => {
     expect(deleteButton?.disabled).toBe(false);
     await act(async () => { deleteButton!.click(); });
     const confirmButton = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
-      .find(button => button.textContent?.trim() === "Delete run");
+      .find(button => button.textContent?.trim() === "Delete everything");
     expect(confirmButton).toBeDefined();
     await act(async () => { confirmButton!.click(); });
 
@@ -128,6 +129,24 @@ describe("RunItem storage metadata", () => {
     expect(invalidate).toHaveBeenCalled();
     expect(client.getQueryState(["enriched-runs", "workspace-1"])?.isInvalidated).toBe(true);
     expect(client.getQueryState(["runs"])?.isInvalidated).toBe(true);
+    await act(async () => { root.unmount(); });
+  });
+
+  it("removes only the history entry without deleting workspace data", async () => {
+    vi.mocked(deleteN4AWorkspaceRun).mockClear();
+    const client = createQueryClient();
+    const { container, root } = await render(
+      <RunItem run={run({ run_id: "kept-run", status: "completed", datasets: [] })}
+        onViewDetails={vi.fn()} workspaceId="workspace-1" />, client,
+    );
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[title="Delete run"]')!.click(); });
+    const entryButton = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+      .find(button => button.textContent?.trim() === "Remove from history");
+    expect(entryButton).toBeDefined();
+    await act(async () => { entryButton!.click(); });
+
+    expect(deleteN4AWorkspaceRun).not.toHaveBeenCalled();
+    expect(readClientStorageJson(clientStorageKeys.hiddenWorkspaceRuns)).toContain("workspace-1::kept-run");
     await act(async () => { root.unmount(); });
   });
 

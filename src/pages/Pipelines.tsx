@@ -1,4 +1,4 @@
-import { useState, useCallback, useDeferredValue, useMemo, startTransition } from "react";
+import { useState, useCallback, useDeferredValue, useMemo, useRef, startTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -146,20 +146,29 @@ export default function Pipelines() {
     setExportDialogOpen(true);
   }, [exportPipeline]);
 
+  // Creating from a template runs the document translator (a cold worker can
+  // take seconds): show progress and ignore repeated clicks meanwhile.
+  const creatingPreset = useRef(false);
   const handlePresetSelect = useCallback(async (presetId: string, variant: PipelinePresetVariantId) => {
+    if (creatingPreset.current) return;
+    creatingPreset.current = true;
     const fallback = t("pipelines.toasts.templateFailed");
+    const toastId = toast.loading(t("pipelines.toasts.templateCreating"));
     try {
       const created = await createFromPreset(presetId, variant);
       if (!created) {
-        toast.error(fallback);
+        toast.error(fallback, { id: toastId });
         return;
       }
       toast.success(t("pipelines.toasts.templateAdded"), {
+        id: toastId,
         description: t("pipelines.toasts.templateReady", { name: created.name }),
       });
       navigate(`/pipelines/${created.id}`);
     } catch (error) {
-      toast.error(describeApiError(error, t, fallback).message);
+      toast.error(describeApiError(error, t, fallback).message, { id: toastId });
+    } finally {
+      creatingPreset.current = false;
     }
   }, [createFromPreset, navigate, t]);
 

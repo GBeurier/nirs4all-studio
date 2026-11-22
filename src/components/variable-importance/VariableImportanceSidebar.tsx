@@ -13,6 +13,8 @@ import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 interface VariableImportanceSidebarProps {
   chainId: string | null;
   datasetId: string | null;
+  needsDatasetSelection: boolean;
+  onDatasetSelect: (datasetId: string) => void;
   onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null, datasetId?: string | null) => void;
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
@@ -31,6 +33,8 @@ interface VariableImportanceSidebarProps {
 export function VariableImportanceSidebar({
   chainId,
   datasetId,
+  needsDatasetSelection,
+  onDatasetSelect,
   onChainSelect,
   partition,
   onPartitionChange,
@@ -63,6 +67,8 @@ export function VariableImportanceSidebar({
         <VariableImportanceForm
           chainId={chainId}
           datasetId={datasetId}
+          needsDatasetSelection={needsDatasetSelection}
+          onDatasetSelect={onDatasetSelect}
           onChainSelect={onChainSelect}
           partition={partition}
           onPartitionChange={onPartitionChange}

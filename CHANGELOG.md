@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.19.8] - 2026-11-22
+
+### Added
+
+- Remove a run from the Runs history while keeping its results, predictions
+  and models in the workspace, or delete it with all its data. Clear history
+  asks the same for each run, with an option to apply the choice to all.
+
+### Fixed
+
+- Rank Results and Runs score rows on the cross-validation score of the
+  selected metric, never on the retained test score. Run summaries report the
+  final score of the CV-best chain, and backend top-model selection uses the
+  correct direction for nrmse, nmse, nmae, max_error, median_ae, hamming_loss
+  and log_loss.
+- Choose the dataset to explain when a saved model has no linked dataset on
+  the Shapley screen.
+- Keep SHAP spectral and waterfall views on the current selection when
+  responses arrive out of order, and report failed spectral detail requests.
+- Keep Studio responsive while an update check waits on the network, and show
+  progress while a pipeline is created from a template.
+
 ## [0.19.7] - 2026-11-21
 
 ### Fixed

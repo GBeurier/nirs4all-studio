@@ -84,6 +84,7 @@ export function DatasetResultCard({
   } = useDatasetResultCardQueries({
     dataset,
     allChains,
+    selectedMetrics,
     runId,
     workspaceId,
     expanded,

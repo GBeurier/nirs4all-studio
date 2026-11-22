@@ -22,6 +22,7 @@ import type { ScoreCardRow } from '@/types/score-cards';
 export interface UseDatasetResultCardQueriesInput {
   dataset: Pick<EnrichedDatasetRun, 'dataset_name' | 'metric' | 'task_type' | 'top_5'>;
   allChains?: TopChainResult[];
+  selectedMetrics?: readonly string[];
   runId?: string;
   workspaceId?: string;
   expanded: boolean;
@@ -33,6 +34,7 @@ export interface UseDatasetResultCardQueriesInput {
 export function useDatasetResultCardQueries({
   dataset,
   allChains,
+  selectedMetrics,
   runId,
   workspaceId,
   expanded,
@@ -99,7 +101,8 @@ export function useDatasetResultCardQueries({
     scoreRows,
     chains,
     metric: dataset.metric,
-  }), [scoreRows, chains, dataset.metric]);
+    selectedMetrics,
+  }), [scoreRows, chains, dataset.metric, selectedMetrics]);
 
   return {
     useFullDatasetChains,
