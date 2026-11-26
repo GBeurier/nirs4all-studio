@@ -487,9 +487,9 @@ The release workflow is `.github/workflows/release-unified.yml`.
 | `prepare` | Resolve the immutable source, version, runtime cohort and selected channels |
 | `quality` | Shared frontend, backend, Rust fmt/clippy/tests and native-session authentication gates |
 | `release-draft` | Prepare one source-verified draft under a per-tag lock; no installer assets or public release |
-| `installer-linux` | Qualify and publish each selected DEB variant independently |
+| `installer-linux` | Qualify each selected DEB variant and upload the tested installer for promotion |
 | `installer-windows` | Windows containment tests, then qualify and publish each selected NSIS variant independently |
-| `installer-macos-arm64` | Qualify and publish the Apple Silicon DMG; signing/notarization rules remain unchanged |
+| `installer-macos-arm64` | Qualify the Apple Silicon DMG and upload the tested installer for promotion; signing/notarization rules remain unchanged |
 | `docker` | Qualify and publish the exact tested native container image independently |
 | `delivery-summary` | Report available, pending and failed channels after delivery; no producer depends on it |
 
@@ -502,11 +502,13 @@ qualified channel. Shared source gates still block every publication when they
 fail; standalone CI also retains its full Docker and packaging checks.
 
 One serialized metadata job prepares the draft before installer producers;
-individual channels never create drafts. The first qualified installer makes
+individual channels never create drafts. The first qualified Windows installer makes
 the GitHub Release public. Later channels
 append their exact installer/checksum pair to the same immutable source tag;
 existing assets are verified and never replaced. Release notes distinguish
 attached assets from pending or failed channels and link the workflow evidence.
+Linux and macOS compile and test concurrently with Windows. Their publication jobs download the qualified payload from the same workflow run and confirm that the public release contains a Windows installer and its checksum before appending their own pair. A single-channel retry uses the same check against the release tag.
+
 Retry a missing channel by dispatching this workflow with its original `tag`,
 `publish_existing_tag=true` and the specific `delivery_channel`. Changes to
 application source require a new version and tag. Docker retries use

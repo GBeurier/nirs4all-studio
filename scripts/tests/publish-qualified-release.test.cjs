@@ -299,14 +299,15 @@ test("invalid local bytes and missing sidecars fail before GitHub", async (t) =>
   await assert.rejects(publishQualifiedRelease(options, dependencies), /inventory is incomplete/);
 });
 
-test("installer deliveries own their qualification and do not wait for other channels", () => {
+test("installer builds qualify in parallel and release Windows before other installers", () => {
   const workflow = yaml.load(fs.readFileSync(path.join(__dirname, "../../.github/workflows/release-unified.yml"), "utf8"));
   assert.equal(workflow.jobs.quality.with.delivery_source_only, true);
   assert.equal(workflow.jobs.release, undefined);
   for (const id of ["installer-linux", "installer-windows", "installer-macos-arm64"]) {
     const job = workflow.jobs[id];
     assert.deepEqual(job.needs, ["prepare", "quality", "release-draft"]);
-    const step = job.steps.find((entry) => entry.uses === "./.github/actions/publish-installer-channel");
+    const promotion = id === "installer-windows" ? job : workflow.jobs[id.replace("installer-", "publish-")];
+    const step = promotion.steps.find((entry) => entry.uses === "./.github/actions/publish-installer-channel");
     assert.match(step.if, /success\(\)/);
     assert.match(step.if, /is_tag_release == 'true'/);
     assert.match(step.if, /needs\.quality\.result == 'success'/);
@@ -314,7 +315,12 @@ test("installer deliveries own their qualification and do not wait for other cha
     assert.equal(step.with.tag, "${{ needs.prepare.outputs.tag }}");
     assert.equal(step.with.prerelease, "${{ needs.prepare.outputs.prerelease }}");
     const smoke = job.steps.findIndex((entry) => entry.name === "Smoke the packaged payload and the application's first launch");
-    assert(smoke >= 0 && job.steps.indexOf(step) > smoke);
+    assert(smoke >= 0);
+    if (promotion === job) assert(job.steps.indexOf(step) > smoke);
+    else {
+      assert(promotion.needs.includes(id) && promotion.needs.includes("installer-windows"));
+      assert.equal(step.with.artifact, job.steps.find((entry) => entry.name === "Upload artifacts").with.name);
+    }
   }
   const windows = workflow.jobs['installer-windows'].steps;
   const containment = windows.findIndex((entry) => entry.name === 'Check and test Windows Job containment');
@@ -806,4 +812,24 @@ test('legacy clients cannot discover a public channel until its payload is verif
   assert.equal(observations.at(-1).legacyOffer, true);
   assert(observations.at(-1).ready);
   assert.equal(remote.state.deletedAssets.length, 1);
+});
+
+
+test("non-Windows promotion requires a public Windows installer and its uploaded checksum", async (t) => {
+  const options = { ...fixture(t, "linux-standard"), requirePublicWindows: true };
+  const remote = github(options);
+  const dependencies = remote.dependencies;
+  await assert.rejects(publishQualifiedRelease(options, dependencies), /Windows installer must be public/);
+  remote.state.release.draft = false;
+  const [name] = expectedPublishedNames(options.version, "windows-standard");
+  const asset = { name, size: 128, sha256: "a".repeat(64) };
+  remote.state.assets.push(remote.state.asset(asset));
+  await assert.rejects(publishQualifiedRelease(options, dependencies), /installer and checksum/);
+  const checksum = remote.state.asset({ ...asset, name: name + ".sha256" });
+  remote.state.assets.push({ ...checksum, state: "starter" });
+  await assert.rejects(publishQualifiedRelease(options, dependencies), /installer and checksum/);
+  assert.deepEqual(remote.state.mutations, []);
+  remote.state.assets[1] = checksum;
+  const result = await publishQualifiedRelease(options, dependencies);
+  assert.equal(result.published, true);
 });

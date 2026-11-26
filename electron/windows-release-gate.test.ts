@@ -42,8 +42,8 @@ describe('installer product qualification and publication', () => {
       .toBeLessThan(steps.indexOf(publish));
   });
 
-  it('requires each producer and shared quality to succeed without inspecting sibling outcomes', () => {
-    for (const name of [...installers, 'docker']) {
+  it('requires shared quality and a successful publication step for every channel', () => {
+    for (const name of ['publish-linux', 'installer-windows', 'publish-macos-arm64', 'docker']) {
       const job = release.jobs[name];
       const publish = job.steps.find((step: { name?: string }) => step.name?.startsWith('Publish this qualified') || step.name === 'Publish the tested Docker image');
       expect(publish.if).toContain('success()');

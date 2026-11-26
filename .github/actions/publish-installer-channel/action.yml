@@ -1,6 +1,9 @@
 name: Publish qualified installer channel
 description: Append one qualified installer and checksum without waiting for other channels
 inputs:
+  artifact:
+    description: Qualified installer artifact for a non-Windows promotion
+    required: false
   channel:
     required: true
     description: Exact installer platform and variant
@@ -19,6 +22,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Download the qualified installer from this run
+      if: inputs.artifact != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact }}
+        path: release
     - name: Stage and verify this channel's exact assets
       shell: bash
       env:

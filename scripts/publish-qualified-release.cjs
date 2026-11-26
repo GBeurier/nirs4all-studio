@@ -234,6 +234,9 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   const releaseId = release.id;
   pinnedReleaseId = releaseId;
   const wasDraft = release.draft;
+  if (options.requirePublicWindows && wasDraft) {
+    throw new Error("A qualified Windows installer must be public before this channel.");
+  }
   const identities = new Map();
   const cleanedStarters = [];
   const expected = new Map(manifest.map((entry) => [entry.name, entry]));
@@ -253,6 +256,15 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     const pages = await api(`releases/${releaseId}/assets?per_page=100`, ["--paginate", "--slurp"]);
     if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
       throw new Error("Malformed release asset inventory");
+    }
+    if (options.requirePublicWindows) {
+      const uploaded = new Set(pages.flat().filter(asset => asset.state === "uploaded" &&
+        asset.size > 0 && /^sha256:[a-f0-9]{64}$/.test(asset.digest)).map(asset => asset.name));
+      const windowsReady = ["windows-standard", "windows-offline"].some(windowsChannel => {
+        const [name] = expectedPublishedNames(version, windowsChannel);
+        return uploaded.has(name) && uploaded.has(`${name}.sha256`);
+      });
+      if (current.draft || !windowsReady) throw new Error("A qualified Windows installer and checksum must be public before this channel.");
     }
     const present = new Map();
     const assetIds = new Set();
@@ -403,6 +415,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     version: argv[1],
     notesPath: env.RELEASE_NOTES_PATH || "release_notes.md",
     channel: argv[2] ?? null,
+    requirePublicWindows: argv[2] !== undefined && !argv[2].startsWith("windows-"),
   });
 }
 
