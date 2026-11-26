@@ -248,7 +248,11 @@ def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:
         assert job["needs"] == ["prepare", "quality", "release-draft"]
         assert "needs.quality.result == 'success' && needs.release-draft.result == 'success'" in job["if"]
         assert "needs.installer-" not in job["if"] and "needs.docker" not in job["if"]
-        publication = next(step for step in job["steps"] if step.get("name") == "Publish this qualified installer channel")
+        publisher = job if name == "installer-windows" else jobs[name.replace("installer-", "publish-")]
+        if publisher is not job:
+            assert name in publisher["needs"] and "installer-windows" in publisher["needs"]
+            assert not any(step.get("name") == "Publish this qualified installer channel" for step in job["steps"])
+        publication = next(step for step in publisher["steps"] if step.get("name") == "Publish this qualified installer channel")
         assert publication["if"] == publication_guard
         assert publication["uses"] == "./.github/actions/publish-installer-channel"
         channel = "macos-arm64" if name == "installer-macos-arm64" else name.removeprefix("installer-") + "-${{ matrix.variant }}"
@@ -275,9 +279,14 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
         steps = job["steps"]
         qualification = next(i for i, step in enumerate(steps) if "scripts/smoke-archive-standalone.cjs" in step.get("run", ""))
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
-        publication = next(i for i, step in enumerate(steps) if step.get("name") == "Publish this qualified installer channel")
-        assert qualification < upload < publication
-        assert steps[publication]["if"] == "success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'"
+        assert qualification < upload
+        if name == "installer-windows":
+            publication = next(i for i, step in enumerate(steps) if step.get("name") == "Publish this qualified installer channel")
+            assert upload < publication
+        else:
+            publisher = workflow["jobs"][name.replace("installer-", "publish-")]
+            publication_step = next(step for step in publisher["steps"] if step.get("name") == "Publish this qualified installer channel")
+            assert publication_step["with"]["artifact"] == steps[upload]["with"]["name"]
         qualifier = steps[qualification]["run"]
         assert "scripts/smoke-packaged-ui.cjs" in qualifier
         assert "--installer" in qualifier
@@ -294,7 +303,9 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
     # Each channel stages its own installer/checksum pair, then publishes that
     # qualified directory. Its owner script tests cover basename/hash checks.
     action = yaml.safe_load((ROOT / ".github/actions/publish-installer-channel/action.yml").read_text())
-    staging, publication = action["runs"]["steps"]
+    download, staging, publication = action["runs"]["steps"]
+    assert download["if"] == "inputs.artifact != ''"
+    assert download["with"] == {"name": "${{ inputs.artifact }}", "path": "release"}
     assert staging["run"] == "node scripts/stage-release-channel.cjs release qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'"
     assert publication["run"] == "node scripts/publish-qualified-release.cjs qualified-release '${{ inputs.version }}' '${{ inputs.channel }}'"
     assert staging["env"]["RELEASE_SHA"] == publication["env"]["RELEASE_SHA"] == "${{ inputs.source_sha }}"
