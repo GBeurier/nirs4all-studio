@@ -24,8 +24,8 @@ def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
     # Cross-repository owners are minor-level ranges; Cargo.lock holds the cohort.
-    assert dependencies["nirs4all"] == "0.6"
-    assert dependencies["nirs4all-io"] == "0.3"
+    assert dependencies["nirs4all"] == "0.7"
+    assert dependencies["nirs4all-io"] == "0.4"
     # Core and Studio resolve one public Rust IO cohort without overrides.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
