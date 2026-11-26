@@ -104,8 +104,9 @@ describe("CI release protection graph", () => {
       }
     }
     const action = yaml.load(fs.readFileSync('.github/actions/publish-installer-channel/action.yml', 'utf8')) as unknown as { runs: { steps: Step[] } };
-    expect(action.runs.steps[0].run).toContain('scripts/stage-release-channel.cjs');
-    expect(action.runs.steps[1].run).toContain('scripts/publish-qualified-release.cjs');
+    expect(action.runs.steps[0].uses).toBe('actions/download-artifact@v4');
+    expect(action.runs.steps[1].run).toContain('scripts/stage-release-channel.cjs');
+    expect(action.runs.steps[2].run).toContain('scripts/publish-qualified-release.cjs');
     expect(JSON.stringify(action)).not.toContain('wheels.tar.gz');
     const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
     for (const fullJourney of ["installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
@@ -160,12 +161,21 @@ describe("CI release protection graph", () => {
       expect(dependencies(job)).toEqual(name === "docker" ? ["prepare", "quality"] : ["prepare", "quality", "release-draft"]);
       expect(releaseGate(name)).toBe(true);
       for (const prerequisite of dependencies(job)) expect(releaseGate(name, { [prerequisite]: "failure" })).toBe(false);
-      const publish = job.steps!.find(step => step.name?.startsWith('Publish this qualified') || step.name === 'Publish the tested Docker image')!;
+      const promotionName = name === "installer-linux" ? "publish-linux" : name === "installer-macos-arm64" ? "publish-macos-arm64" : name;
+      const promotion = release.jobs[promotionName];
+      const publish = promotion.steps!.find(step => step.name?.startsWith('Publish this qualified') || step.name === 'Publish the tested Docker image')!;
       expect(publish.if).toContain('success()');
       expect(publish.if).toContain("needs.quality.result == 'success'");
       expect(publish.if).toContain("needs.prepare.outputs.is_tag_release == 'true'");
       expect(publish["continue-on-error"]).not.toBe(true);
-      expect(job.steps!.findIndex(step => step.run?.includes(name === 'docker' ? 'smoke-docker-native-runtime.sh' : 'smoke-packaged-ui.cjs'))).toBeLessThan(job.steps!.indexOf(publish));
+      const smoke = job.steps!.findIndex(step => step.run?.includes(name === 'docker' ? 'smoke-docker-native-runtime.sh' : 'smoke-packaged-ui.cjs'));
+      expect(smoke).toBeGreaterThanOrEqual(0);
+      if (promotion === job) expect(smoke).toBeLessThan(job.steps!.indexOf(publish));
+      else {
+        expect(dependencies(promotion)).toContain(name);
+        expect(dependencies(promotion)).toContain("installer-windows");
+        expect(publish.with?.artifact).toBe(job.steps!.find(step => step.name === "Upload artifacts")!.with?.name);
+      }
     }
   });
 

@@ -433,17 +433,6 @@ jobs:
             release/*.yml
           retention-days: 5
 
-      - name: Publish this qualified installer channel
-        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
-        uses: ./.github/actions/publish-installer-channel
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          channel: linux-${{ matrix.variant }}
-          version: ${{ needs.prepare.outputs.version }}
-          tag: ${{ needs.prepare.outputs.tag }}
-          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
-          prerelease: ${{ needs.prepare.outputs.prerelease }}
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: Windows x64 (Electron + Rust sidecar + uv + required wheels)
@@ -913,17 +902,6 @@ jobs:
             release/*.yml
           retention-days: 5
 
-      - name: Publish this qualified installer channel
-        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
-        uses: ./.github/actions/publish-installer-channel
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          channel: macos-arm64
-          version: ${{ needs.prepare.outputs.version }}
-          tag: ${{ needs.prepare.outputs.tag }}
-          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
-          prerelease: ${{ needs.prepare.outputs.prerelease }}
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Docker: static frontend + loopback Rust sidecar
@@ -1025,10 +1003,73 @@ jobs:
           fi
 
 
-  # Reporting waits for all attempts; delivery itself never does.
+  publish-linux:
+    name: Publish linux-${{ matrix.variant }} installer
+    needs: [prepare, quality, installer-linux, installer-windows]
+    if: >-
+      !cancelled() && needs.prepare.outputs.is_tag_release == 'true' &&
+      needs.quality.result == 'success' && contains(fromJSON('["success","failure"]'), needs.installer-linux.result)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.linux_matrix) }}
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Publish this qualified installer channel
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
+        uses: ./.github/actions/publish-installer-channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          artifact: installer-linux-x64-${{ matrix.variant }}-payload
+          channel: linux-${{ matrix.variant }}
+          version: ${{ needs.prepare.outputs.version }}
+          tag: ${{ needs.prepare.outputs.tag }}
+          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+
+  publish-macos-arm64:
+    name: Publish macos-arm64 installer
+    needs: [prepare, quality, installer-macos-arm64, installer-windows]
+    if: >-
+      !cancelled() && needs.prepare.outputs.is_tag_release == 'true' &&
+      needs.quality.result == 'success' && needs.installer-macos-arm64.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Publish this qualified installer channel
+        if: success() && needs.prepare.outputs.is_tag_release == 'true' && needs.quality.result == 'success'
+        uses: ./.github/actions/publish-installer-channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          artifact: installer-macos-arm64-payload
+          channel: macos-arm64
+          version: ${{ needs.prepare.outputs.version }}
+          tag: ${{ needs.prepare.outputs.tag }}
+          source_sha: ${{ needs.prepare.outputs.checkout_ref }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+
+  # Report all platform builds and publication attempts.
   delivery-summary:
     name: Report independent delivery status
-    needs: [prepare, quality, installer-linux, installer-windows, installer-macos-arm64, docker]
+    needs: [prepare, quality, installer-linux, installer-windows, installer-macos-arm64, publish-linux, publish-macos-arm64, docker]
     if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.is_tag_release == 'true'
     runs-on: ubuntu-latest
     concurrency:
